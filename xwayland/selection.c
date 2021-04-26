@@ -414,8 +414,11 @@ weston_wm_read_data_source(int fd, uint32_t mask, void *data)
 		return 1;
 	}
 
-	weston_log("read %d (available %d, mask 0x%x) bytes: \"%.*s\"\n",
-		len, available, mask, len, (char *) p);
+	weston_log("read %d (available %d, mask 0x%x)\n",
+		len, available, mask);
+	/*remove actual data due to privacy*/
+	/*weston_log("read %d (available %d, mask 0x%x) bytes: \"%.*s\"\n",
+		len, available, mask, len, (char *) p);*/
 
 	wm->source_data.size = current + len;
 	if (wm->source_data.size >= incr_chunk_size) {
@@ -495,6 +498,11 @@ weston_wm_send_data(struct weston_wm *wm, xcb_atom_t target, const char *mime_ty
 	struct weston_data_source *source;
 	struct weston_seat *seat = weston_wm_pick_seat(wm);
 	int p[2];
+
+	if (wm->property_source) {
+		weston_log("outstanding selection exist\n");
+		return;
+	}
 
 	if (pipe2(p, O_CLOEXEC | O_NONBLOCK) == -1) {
 		weston_log("pipe2 failed: %s\n", strerror(errno));
