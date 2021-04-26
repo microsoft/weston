@@ -684,6 +684,7 @@ app_list_monitor_thread(LPVOID arg)
 	UINT error = 0;
 	DWORD status = 0;
 	DWORD num_events = 0;
+	int num_watch = 0;
 	HANDLE events[NUM_CONTROL_EVENT + ARRAY_LENGTH(app_list_folder)] = {};
 	struct inotify_event *event;
 	char buf[1024 * (sizeof *event + 16)];
@@ -727,10 +728,10 @@ app_list_monitor_thread(LPVOID arg)
 
 	if (shell->rdprail_api->notify_app_list) {
 		for (int i = 0; i < (int)ARRAY_LENGTH(app_list_folder); i++) {
-			fd[i] = inotify_init();
-			if (fd[i] < 0) {
+			fd[num_watch] = inotify_init();
+			if (fd[num_watch] < 0) {
 				weston_log("app_list_monitor_thread: inotify_init[%d] failed %s\n", i, strerror(errno));
-				goto Exit;
+				continue;
 			}
 
 			attach_app_list_namespace(shell);
@@ -739,6 +740,8 @@ app_list_monitor_thread(LPVOID arg)
 				home = getenv("HOME");
 				if (!home) {
 					detach_app_list_namespace(shell);
+					close(fd[num_watch]);
+					fd[num_watch] = 0;
 					continue;
 				}
 				copy_string(path, sizeof path, home);
@@ -749,29 +752,39 @@ app_list_monitor_thread(LPVOID arg)
 			if (!is_file_exist(folder)) {
 				shell_rdp_debug(shell, "app_list_monitor_thread: %s doesn't exist, skipping.\n", folder);
 				detach_app_list_namespace(shell);
+				close(fd[num_watch]);
+				fd[num_watch] = 0;
 				continue;
 			}
 
 			shell_rdp_debug(shell, "app_list_monitor_thread: inotify_add_watch(%s)\n", folder);
-			wd[i] = inotify_add_watch(fd[i], folder, IN_CREATE|IN_DELETE|IN_MODIFY|IN_MOVED_TO|IN_MOVED_FROM);
-			if (wd[i] < 0) {
+			wd[num_watch] = inotify_add_watch(fd[num_watch], folder, IN_CREATE|IN_DELETE|IN_MODIFY|IN_MOVED_TO|IN_MOVED_FROM);
+			if (wd[num_watch] < 0) {
 				weston_log("app_list_monitor_thread: inotify_add_watch failed: %s\n", strerror(errno));
 				detach_app_list_namespace(shell);
-				goto Exit;
+				close(fd[num_watch]);
+				fd[num_watch] = 0;
+				continue;
 			}
 			detach_app_list_namespace(shell);
 
-			events[num_events] = GetFileHandleForFileDescriptor(fd[i]);
+			events[num_events] = GetFileHandleForFileDescriptor(fd[num_watch]);
 			if (!events[num_events]) {
 				weston_log("app_list_monitor_thread: GetFileHandleForFileDescriptor failed\n");
-				goto Exit;
+				inotify_rm_watch(fd[num_watch], wd[num_watch]);
+				wd[num_watch] = 0;
+				close(fd[num_watch]);
+				fd[num_watch] = 0;
+				continue;
 			}
 			num_events++;
+			num_watch++;
 		}
 		assert(false == context->isAppListNamespaceAttached);
 
 		/* first scan folders to update all existing .desktop files */
-		app_list_update_all(shell);
+		if (num_watch)
+			app_list_update_all(shell);
 	}
 
 	/* now loop as changes are made or stop event is signaled */
@@ -832,8 +845,8 @@ app_list_monitor_thread(LPVOID arg)
 			continue;
 		}
 
-		if (shell->rdprail_api->notify_app_list) {
-			/* Somethings are changed in watch folders */
+		/* Somethings are changed in watch folders */
+		if (shell->rdprail_api->notify_app_list && num_watch) {
 			len = read(fd[status - WAIT_OBJECT_0 - NUM_CONTROL_EVENT], buf, sizeof buf); 
 			cur = 0;
 			while (cur < len) {
@@ -859,13 +872,13 @@ Exit:
 	assert(false == context->isAppListNamespaceAttached);
 
 	for (int i = 0; i < (int)ARRAY_LENGTH(app_list_folder); i++) {
+		if (events[i + NUM_CONTROL_EVENT])
+			CloseHandle(events[i + NUM_CONTROL_EVENT]);
 		if (fd[i] > 0) {
 			if (wd[i] > 0)
 				inotify_rm_watch(fd[i], wd[i]);
 			close(fd[i]);
 		}
-		if (events[i + NUM_CONTROL_EVENT])
-			CloseHandle(events[i + NUM_CONTROL_EVENT]);
 	}
 
 	if (context->weston_pidfd > 0) {
