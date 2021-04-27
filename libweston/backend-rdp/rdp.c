@@ -324,7 +324,7 @@ rdp_output_repaint(struct weston_output *output_base, pixman_region32_t *damage,
 					&ec->primary_plane.damage, damage);
 	}
 
-	wl_event_source_timer_update(output->finish_frame_timer, 16);
+	wl_event_source_timer_update(output->finish_frame_timer, b->rdp_repaint_delay_ms);
 	return 0;
 }
 
@@ -357,6 +357,7 @@ rdp_insert_new_mode(struct weston_output *output, int width, int height, int rat
 static struct weston_mode *
 ensure_matching_mode(struct weston_output *output, struct weston_mode *target)
 {
+	struct rdp_backend *b = to_rdp_backend(output->compositor);
 	struct weston_mode *local;
 
 	wl_list_for_each(local, &output->mode_list, link) {
@@ -364,7 +365,7 @@ ensure_matching_mode(struct weston_output *output, struct weston_mode *target)
 			return local;
 	}
 
-	return rdp_insert_new_mode(output, target->width, target->height, RDP_MODE_FREQ);
+	return rdp_insert_new_mode(output, target->width, target->height, b->rdp_monitor_refresh_rate);
 }
 
 static int
@@ -522,7 +523,7 @@ rdp_output_set_size(struct weston_output *base,
 	initMode.flags = WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED;
 	initMode.width = width;
 	initMode.height = height;
-	initMode.refresh = RDP_MODE_FREQ;
+	initMode.refresh = rdpBackend->rdp_monitor_refresh_rate;
 	currentMode = ensure_matching_mode(&output->base, &initMode);
 	if (!currentMode)
 		return -1;
@@ -1609,7 +1610,7 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 	uint32_t scan_code, vk_code, full_code;
 	enum wl_keyboard_key_state keyState;
 	RdpPeerContext *peerContext = (RdpPeerContext *)input->context;
-	struct rdp_backend *b = peerContext->rdpBackend;
+	/*struct rdp_backend *b = peerContext->rdpBackend;*/
 
 	int notify = 0;
 	struct timespec time;
@@ -2003,8 +2004,9 @@ rdp_backend_create(struct weston_compositor *compositor,
 	char *fd_tail;
 	int fd, ret;
 	struct rdp_output *output;
-	char *rdp_debug_level;
+	char *s;
 	int i;
+	struct timespec ts;
 
 	b = zalloc(sizeof *b);
 	if (b == NULL)
@@ -2028,16 +2030,38 @@ rdp_backend_create(struct weston_compositor *compositor,
 						   "rdp-backend",
 						   "Debug messages from RDP backend\n",
 						    NULL, NULL, NULL);
-	rdp_debug_level = getenv("WESTON_RDP_DEBUG_LEVEL");
-	if (rdp_debug_level) {
-		b->debugLevel = atoi(rdp_debug_level);
-		if (b->debugLevel > RDP_DEBUG_LEVEL_VERBOSE)
+	s = getenv("WESTON_RDP_DEBUG_LEVEL");
+	if (s) {
+		if (!safe_strtoint(s, &b->debugLevel))
+			b->debugLevel = RDP_DEBUG_LEVEL_DEFAULT;
+		else if (b->debugLevel > RDP_DEBUG_LEVEL_VERBOSE)
 			b->debugLevel = RDP_DEBUG_LEVEL_VERBOSE;
 	} else {
 		b->debugLevel = RDP_DEBUG_LEVEL_DEFAULT;
 	}
-	weston_log("RDP backend: WESTON_RDP_DEBUG_LEVEL: %d.\n", b->debugLevel);
+	weston_log("RDP backend: WESTON_RDP_DEBUG_LEVEL: %d\n", b->debugLevel);
 	/* After here, rdp_debug() is ready to be used */
+
+	s = getenv("WESTON_RDP_MONITOR_REFRESH_RATE"); 
+	if (s) {
+		if (!safe_strtoint(s, &b->rdp_monitor_refresh_rate))
+			b->rdp_monitor_refresh_rate = RDP_MODE_FREQ;
+	} else {
+		b->rdp_monitor_refresh_rate = RDP_MODE_FREQ;
+	}
+	rdp_debug(b, "RDP backend: WESTON_RDP_MONITOR_REFRESH_RATE: %d\n", b->rdp_monitor_refresh_rate);
+
+	s = getenv("WESTON_RDP_REPAINT_DELAY_MS"); 
+	if (s) {
+		if (!safe_strtoint(s, &b->rdp_repaint_delay_ms))
+			b->rdp_repaint_delay_ms = 16;
+	} else {
+		b->rdp_repaint_delay_ms = 16;
+	}
+	rdp_debug(b, "RDP backend: WESTON_RDP_REPAINT_DELAY_MS: %d\n", b->rdp_repaint_delay_ms);
+
+	clock_getres(CLOCK_MONOTONIC, &ts);
+	rdp_debug(b, "RDP backend: timer resolution tv_sec:%ld tv_nsec:%ld\n", (intmax_t)ts.tv_sec, ts.tv_nsec);
 
 	/* For diagnostics purpose, dump all enviroment to log file */
 	/* TODO: privacy review */

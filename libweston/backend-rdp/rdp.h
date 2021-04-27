@@ -183,6 +183,9 @@ struct rdp_backend {
 	bool enable_fractional_hi_dpi_support;
 	uint32_t debug_desktop_scaling_factor; /* must be between 100 to 500 */
 
+	int rdp_monitor_refresh_rate;
+	int rdp_repaint_delay_ms;
+
 #if defined(HAVE_FREERDP_RDPAPPLIST_H) || defined(HAVE_FREERDP_GFXREDIR_H)
 	void *libFreeRDPServer;
 #endif // defined(HAVE_FREERDP_RDPAPPLIST_H) || defined(HAVE_FREERDP_GFXREDIR_H)
