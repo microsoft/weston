@@ -341,6 +341,27 @@ emit_gpu_timestamp(struct timeline_emit_context *ctx, void *obj)
 	return 1;
 }
 
+static int
+emit_msec(struct timeline_emit_context *ctx, void *obj)
+{
+	int64_t *i = obj;
+
+	fprintf(ctx->cur, "\"msec\":%" PRId64 "", *i);
+
+	return 1;
+}
+
+static int
+emit_present_timestamp(struct timeline_emit_context *ctx, void *obj)
+{
+	struct timespec *ts = obj;
+
+	fprintf(ctx->cur, "\"next_present\":[%" PRId64 ", %ld]",
+		(int64_t)ts->tv_sec, ts->tv_nsec);
+
+	return 1;
+}
+
 static struct weston_timeline_subscription_object *
 weston_timeline_get_subscription_object(struct weston_log_subscription *sub,
 		void *object)
@@ -388,6 +409,8 @@ static const type_func type_dispatch[] = {
 	[TLT_SURFACE] = emit_weston_surface,
 	[TLT_VBLANK] = emit_vblank_timestamp,
 	[TLT_GPU] = emit_gpu_timestamp,
+	[TLT_MSEC] = emit_msec,
+	[TLT_PRESENT] = emit_present_timestamp,
 };
 
 /** Disseminates the message to all subscriptions of the scope \c

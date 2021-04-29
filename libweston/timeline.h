@@ -39,6 +39,8 @@ enum timeline_type {
 	TLT_SURFACE,
 	TLT_VBLANK,
 	TLT_GPU,
+	TLT_MSEC,
+	TLT_PRESENT,
 };
 
 /** Timeline subscription created for each subscription
@@ -83,6 +85,8 @@ struct weston_timeline_subscription_object {
 #define TLP_SURFACE(s) TLT_SURFACE, TYPEVERIFY(struct weston_surface *, (s))
 #define TLP_VBLANK(t) TLT_VBLANK, TYPEVERIFY(const struct timespec *, (t))
 #define TLP_GPU(t) TLT_GPU, TYPEVERIFY(const struct timespec *, (t))
+#define TLP_MSEC(i) TLT_MSEC, TYPEVERIFY(const int64_t *, (i))
+#define TLP_NEXT_PRESENT(t) TLT_PRESENT, TYPEVERIFY(const struct timespec *, (t))
 
 /** This macro is used to add timeline points.
  *
