@@ -3030,6 +3030,7 @@ weston_output_finish_frame(struct weston_output *output,
 	timespec_add_msec(&output->next_repaint, &output->next_repaint,
 			  -compositor->repaint_msec);
 	msec_rel = timespec_sub_to_msec(&output->next_repaint, &now);
+
 	if (msec_rel < -1000 || msec_rel > 1000) {
 		static bool warned;
 
