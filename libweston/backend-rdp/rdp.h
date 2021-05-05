@@ -156,6 +156,8 @@ struct rdp_backend {
 	uint32_t head_index;
 	struct weston_log_scope *debug;
 	uint32_t debugLevel;
+	struct weston_log_scope *debugClipboard;
+	uint32_t debugClipboardLevel;
 
 	char *server_cert;
 	char *server_key;
@@ -379,26 +381,35 @@ typedef struct rdp_peer_context RdpPeerContext;
 
 #define RDP_DEBUG_LEVEL_DEFAULT RDP_DEBUG_LEVEL_INFO
 
-/* Ideally here should use weston_log_scope_printf() instead of weston_log()
-   since weston_log() requires "log" scope to be enabled, but weston_log()
-   added timestamp which is often helpful, thus use weston_log() here.
+/* To enable rdp_debug message, add "--logger-scopes=rdp-backend". */
+#define rdp_debug_verbose(b, ...) \
+	if (b->debugLevel >= RDP_DEBUG_LEVEL_VERBOSE) \
+		rdp_debug_print(b->debug, false, __VA_ARGS__)
+#define rdp_debug_verbose_continue(b, ...) \
+	if (b->debugLevel >= RDP_DEBUG_LEVEL_VERBOSE) \
+		rdp_debug_print(b->debug, true,  __VA_ARGS__)
+#define rdp_debug(b, ...) \
+	if (b->debugLevel >= RDP_DEBUG_LEVEL_INFO) \
+		rdp_debug_print(b->debug, false, __VA_ARGS__)
+#define rdp_debug_continue(b, ...) \
+	if (b->debugLevel >= RDP_DEBUG_LEVEL_INFO) \
+		rdp_debug_print(b->debug, true,  __VA_ARGS__)
 
-   To enable rdp_debug message, add "--logger-scopes=rdp-backend,log" to
-   weston's command line, this added rdp-backend and log scopes          */
-/* TODO: support debug level */
-#define rdp_debug_level(b, cont, lvl, ...) \
-	if ((b) && (b)->debug && ((b)->debugLevel >= (lvl)) && weston_log_scope_is_enabled((b)->debug)) { \
-		if (cont) \
-			weston_log_continue(__VA_ARGS__); \
-		else \
-			weston_log(__VA_ARGS__); \
-	}
+/* To enable rdp_debug_clipboard message, add "--logger-scopes=rdp-backend-clipboard". */
+#define rdp_debug_clipboard_verbose(b, ...) \
+	if (b->debugClipboardLevel >= RDP_DEBUG_LEVEL_VERBOSE) \
+		rdp_debug_print(b->debugClipboard, false, __VA_ARGS__)
+#define rdp_debug_clipboard_verbose_continue(b, ...) \
+	if (b->debugClipboardLevel >= RDP_DEBUG_LEVEL_VERBOSE) \
+		rdp_debug_print(b->debugClipboard, true,  __VA_ARGS__)
+#define rdp_debug_clipboard(b, ...) \
+	if (b->debugClipboardLevel >= RDP_DEBUG_LEVEL_INFO) \
+		rdp_debug_print(b->debugClipboard, false, __VA_ARGS__)
+#define rdp_debug_clipboard_continue(b, ...) \
+	if (b->debugClipboardLevel >= RDP_DEBUG_LEVEL_INFO) \
+		rdp_debug_print(b->debugClipboard, true,  __VA_ARGS__)
 
-#define rdp_debug_verbose(b, ...) rdp_debug_level(b, FALSE, RDP_DEBUG_LEVEL_VERBOSE, __VA_ARGS__)
-#define rdp_debug(b, ...)         rdp_debug_level(b, FALSE, RDP_DEBUG_LEVEL_INFO, __VA_ARGS__)
-
-#define rdp_debug_verbose_continue(b, ...) rdp_debug_level(b, TRUE, RDP_DEBUG_LEVEL_VERBOSE, __VA_ARGS__)
-#define rdp_debug_continue(b, ...)         rdp_debug_level(b, TRUE, RDP_DEBUG_LEVEL_INFO, __VA_ARGS__)
+/* To enable rdp_debug message, add "--logger-scopes=rdp-backend". */
 
 // rdp.c
 void convert_rdp_keyboard_to_xkb_rule_names(UINT32 KeyboardType, UINT32 KeyboardLayout, struct xkb_rule_names *xkbRuleNames);
@@ -407,6 +418,7 @@ void rdp_head_destroy(struct weston_compositor *compositor, struct rdp_head *hea
 
 // rdputil.c
 pid_t rdp_get_tid(void);
+void rdp_debug_print(struct weston_log_scope *log_scope, bool cont, char *fmt, ...);
 #ifdef ENABLE_RDP_THREAD_CHECK
 void assert_compositor_thread(struct rdp_backend *b);
 void assert_not_compositor_thread(struct rdp_backend *b);

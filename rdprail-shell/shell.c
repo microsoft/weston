@@ -35,6 +35,7 @@
 #include <signal.h>
 #include <math.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <errno.h>
 
 #include "shell.h"
@@ -232,6 +233,66 @@ shell_surface_update_child_surface_layers(struct shell_surface *shsurf);
 
 #define ICON_STRIDE( W, BPP ) ((((W) * (BPP) + 31) / 32) * 4)
 
+static int cached_tm_mday = -1;
+
+static char *
+shell_rdp_log_timestamp(char *buf, size_t len)
+{
+	struct timeval tv;
+	struct tm *brokendown_time;
+	char datestr[128];
+	char timestr[128];
+
+	gettimeofday(&tv, NULL);
+
+	brokendown_time = localtime(&tv.tv_sec);
+	if (brokendown_time == NULL) {
+		snprintf(buf, len, "%s", "[(NULL)localtime] ");
+		return buf;
+	}
+
+	memset(datestr, 0, sizeof(datestr));
+	if (brokendown_time->tm_mday != cached_tm_mday) {
+		strftime(datestr, sizeof(datestr), "Date: %Y-%m-%d %Z\n",
+			 brokendown_time);
+		cached_tm_mday = brokendown_time->tm_mday;
+	}
+
+	strftime(timestr, sizeof(timestr), "%H:%M:%S", brokendown_time);
+	/* if datestr is empty it prints only timestr*/
+	snprintf(buf, len, "%s[%s.%03li]", datestr,
+		 timestr, (tv.tv_usec / 1000));
+
+	return buf;
+}
+
+void
+shell_rdp_debug_print(struct weston_log_scope *scope, bool cont, char *fmt, ...)
+{
+	if (scope && weston_log_scope_is_enabled(scope)) {
+		va_list ap;
+		va_start(ap, fmt);
+		if (cont) {
+			weston_log_scope_vprintf(scope, fmt, ap);
+		} else {
+			char timestr[128];
+			int len_va;
+			char *str;
+			shell_rdp_log_timestamp(timestr, sizeof(timestr));
+			len_va = vasprintf(&str, fmt, ap);
+			if (len_va >= 0) {
+				weston_log_scope_printf(scope, "%s %s",
+							timestr, str);
+				free(str);
+			} else {
+				const char *oom = "Out of memory";
+				weston_log_scope_printf(scope, "%s %s",
+							timestr, oom);
+			}
+		}
+	}
+}
+
 void
 shell_blend_overlay_icon(struct desktop_shell *shell, pixman_image_t *app_image, pixman_image_t *overlay_image)
 {
@@ -258,7 +319,7 @@ shell_blend_overlay_icon(struct desktop_shell *shell, pixman_image_t *app_image,
 	overlay_scale_width = 1.0f / (((double)app_width / overlay_width) / 1.75f);
 	overlay_scale_height = 1.0f / (((double)app_height / overlay_height) / 1.75f);
 
-	shell_rdp_debug(shell, "%s: app %dx%d; overlay %dx%d; scale %4.2fx%4.2f\n",
+	shell_rdp_debug_verbose(shell, "%s: app %dx%d; overlay %dx%d; scale %4.2fx%4.2f\n",
 		__func__, app_width, app_height, overlay_width, overlay_height,
 		overlay_scale_width, overlay_scale_height);
 

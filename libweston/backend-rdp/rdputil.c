@@ -34,6 +34,7 @@
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
@@ -46,6 +47,65 @@ pid_t rdp_get_tid()
 #else
 	return gettid();
 #endif
+}
+
+static int cached_tm_mday = -1;
+
+static char *
+rdp_log_timestamp(char *buf, size_t len)
+{
+	struct timeval tv;
+	struct tm *brokendown_time;
+	char datestr[128];
+	char timestr[128];
+
+	gettimeofday(&tv, NULL);
+
+	brokendown_time = localtime(&tv.tv_sec);
+	if (brokendown_time == NULL) {
+		snprintf(buf, len, "%s", "[(NULL)localtime] ");
+		return buf;
+	}
+
+	memset(datestr, 0, sizeof(datestr));
+	if (brokendown_time->tm_mday != cached_tm_mday) {
+		strftime(datestr, sizeof(datestr), "Date: %Y-%m-%d %Z\n",
+			 brokendown_time);
+		cached_tm_mday = brokendown_time->tm_mday;
+	}
+
+	strftime(timestr, sizeof(timestr), "%H:%M:%S", brokendown_time);
+	/* if datestr is empty it prints only timestr*/
+	snprintf(buf, len, "%s[%s.%03li]", datestr,
+		 timestr, (tv.tv_usec / 1000));
+
+	return buf;
+}
+
+void rdp_debug_print(struct weston_log_scope *log_scope, bool cont, char *fmt, ...)
+{
+	if (log_scope && weston_log_scope_is_enabled(log_scope)) {
+		va_list ap;
+		va_start(ap, fmt);
+		if (cont) {
+			weston_log_scope_vprintf(log_scope, fmt, ap);
+		} else {
+			char timestr[128];
+			int len_va;
+			char *str;
+			rdp_log_timestamp(timestr, sizeof(timestr));
+			len_va = vasprintf(&str, fmt, ap);
+			if (len_va >= 0) {
+				weston_log_scope_printf(log_scope, "%s %s",
+							timestr, str);
+				free(str);
+			} else {
+				const char *oom = "Out of memory";
+				weston_log_scope_printf(log_scope, "%s %s",
+							timestr, oom);
+			}
+		}
+	}
 }
 
 #ifdef ENABLE_RDP_THREAD_CHECK

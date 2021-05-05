@@ -2054,14 +2054,16 @@ rdp_backend_create(struct weston_compositor *compositor,
 						   "rdp-backend",
 						   "Debug messages from RDP backend\n",
 						    NULL, NULL, NULL);
-	s = getenv("WESTON_RDP_DEBUG_LEVEL");
-	if (s) {
-		if (!safe_strtoint(s, &b->debugLevel))
+	if (b->debug) {
+		s = getenv("WESTON_RDP_DEBUG_LEVEL");
+		if (s) {
+			if (!safe_strtoint(s, &b->debugLevel))
+				b->debugLevel = RDP_DEBUG_LEVEL_DEFAULT;
+			else if (b->debugLevel > RDP_DEBUG_LEVEL_VERBOSE)
+				b->debugLevel = RDP_DEBUG_LEVEL_VERBOSE;
+		} else {
 			b->debugLevel = RDP_DEBUG_LEVEL_DEFAULT;
-		else if (b->debugLevel > RDP_DEBUG_LEVEL_VERBOSE)
-			b->debugLevel = RDP_DEBUG_LEVEL_VERBOSE;
-	} else {
-		b->debugLevel = RDP_DEBUG_LEVEL_DEFAULT;
+		}
 	}
 	weston_log("RDP backend: WESTON_RDP_DEBUG_LEVEL: %d\n", b->debugLevel);
 	/* After here, rdp_debug() is ready to be used */
@@ -2186,6 +2188,8 @@ err_output:
 err_compositor:
 	weston_compositor_shutdown(compositor);
 err_free_strings:
+	if (b->debug)
+		weston_log_scope_destroy(b->debug);
 	free(b->rdp_key);
 	free(b->server_cert);
 	free(b->server_key);

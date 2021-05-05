@@ -42,18 +42,13 @@
 
 #define RDPRAIL_SHELL_DEBUG_LEVEL_DEFAULT RDPRAIL_SHELL_DEBUG_LEVEL_INFO
 
-/* Ideally here should use weston_log_scope_printf() instead of weston_log()
-   since weston_log() requires "log" scope to be enabled, but weston_log()
-   added timestamp which is often helpful, thus use weston_log() here.
-   To enable shell_rdp_debug message, add "--logger-scopes=rdprail-shell,log"
-   to weston's command line, this added rdprail-shell and log scopes      */
-#define shell_rdp_debug_level(s, lvl, ...) \
-	if ((s) && (s)->debug && ((s)->debugLevel >= (lvl)) && weston_log_scope_is_enabled((s)->debug)) { \
-		weston_log(__VA_ARGS__); \
-	}
-
-#define shell_rdp_debug_verbose(b, ...) shell_rdp_debug_level(b, RDPRAIL_SHELL_DEBUG_LEVEL_VERBOSE, __VA_ARGS__)
-#define shell_rdp_debug(b, ...)         shell_rdp_debug_level(b, RDPRAIL_SHELL_DEBUG_LEVEL_INFO, __VA_ARGS__)
+/* To enable shell_rdp_debug message, add "--logger-scopes=rdprail-shell" */
+#define shell_rdp_debug_verbose(b, ...) \
+	if (b->debugLevel >= RDPRAIL_SHELL_DEBUG_LEVEL_VERBOSE) \
+		shell_rdp_debug_print(b->debug, false, __VA_ARGS__)
+#define shell_rdp_debug(b, ...) \
+	if (b->debugLevel >= RDPRAIL_SHELL_DEBUG_LEVEL_INFO) \
+		shell_rdp_debug_print(b->debug, false, __VA_ARGS__)
 
 #define is_system_distro() (getenv("WSL2_VM_ID") != NULL)
 
@@ -179,6 +174,9 @@ void
 shell_blend_overlay_icon(struct desktop_shell *shell,
 			 pixman_image_t *app_image,
 			 pixman_image_t *overlay_image);
+
+void
+shell_rdp_debug_print(struct weston_log_scope *scope, bool cont, char *fmt, ...);
 
 void app_list_init(struct desktop_shell *shell);
 void app_list_destroy(struct desktop_shell *shell);
