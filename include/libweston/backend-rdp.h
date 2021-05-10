@@ -83,7 +83,7 @@ struct weston_rdprail_shell_api {
 
 	/** Activate a window.
 	 */
-	void (*request_window_activate)(struct weston_surface *surface, struct weston_seat *seat);
+	void (*request_window_activate)(void *shell_context, struct weston_seat *seat, struct weston_surface *surface);
 
 	/** Close a window.
 	 */
@@ -160,6 +160,11 @@ struct weston_rdprail_api {
 	/** Get primary output
 	 */
 	struct weston_output *(*get_primary_output)(void *rdp_backend);
+
+	/** Update window zorder
+	 */
+	void (*notify_window_zorder_change)(struct weston_compositor *compositor,
+		struct weston_surface *surface);
 };
 
 static inline const struct weston_rdprail_api *

@@ -834,15 +834,15 @@ clipboard_data_source_send(struct weston_data_source *base,
 			formatDataRequest.msgType = CB_FORMAT_DATA_REQUEST;
 			formatDataRequest.dataLen = 4;
 			formatDataRequest.requestedFormatId = source->client_format_id_table[index];
-			rdp_debug_clipboard(b, "RDP %s (%p) request index:%d formatId:%d %s\n",
-				__func__, source, index,
+			rdp_debug_clipboard(b, "RDP %s (%p) request \"%s\" index:%d formatId:%d %s\n",
+				__func__, source, mime_type, index,
 				formatDataRequest.requestedFormatId,
 				clipboard_format_id_to_string(formatDataRequest.requestedFormatId, false));
 			if (peerCtx->clipboard_server_context->ServerFormatDataRequest(peerCtx->clipboard_server_context, &formatDataRequest) != 0)
 				goto error_return_unref_source;
 		}
 	} else {
-		weston_log("RDP %s (%p) specified format (%s.%d.%d) is not supported by client\n",
+		weston_log("RDP %s (%p) specified format \"%s\" index:%d formatId:%d is not supported by client\n",
 			__func__, source, mime_type, index, source->client_format_id_table[index]);
 		goto error_return_close_fd;
 	}
@@ -878,11 +878,12 @@ clipboard_data_source_cancel(struct weston_data_source *base)
 	ASSERT_COMPOSITOR_THREAD(b);
 
 	if (source == peerCtx->clipboard_inflight_client_data_source) {
-		weston_log("RDP %s (%p): still inflight\n", __func__, source);
+		rdp_debug_clipboard(b, "RDP %s (%p): still inflight\n", __func__, source);
 		assert(source->refcount > 1);
 		source->is_canceled = TRUE;
 	} else {
 		/* everything outside of the base has to be cleaned up */
+		rdp_debug_clipboard_verbose(b, "RDP %s (%p): cancelled\n", __func__, source);
 		assert(source->event_source == NULL);
 		wl_array_release(&source->data_contents);
 		wl_array_init(&source->data_contents);
@@ -1183,7 +1184,8 @@ clipboard_client_format_list(CliprdrServerContext* context, const CLIPRDR_FORMAT
 				if (s) {
 					p = wl_array_add(&source->base.mime_types, sizeof *p);
 					if (p) {
-						rdp_debug_clipboard(b, "Client: %s (%p) mine_type:\"%s\"\n", __func__, source, s);
+						rdp_debug_clipboard(b, "Client: %s (%p) mine_type:\"%s\" index:%d formatId:%d\n",
+							__func__, source, s, index, format->formatId);
 						*p = s;
 					} else {
 						rdp_debug_clipboard(b, "Client: %s (%p) wl_array_add failed\n", __func__, source);

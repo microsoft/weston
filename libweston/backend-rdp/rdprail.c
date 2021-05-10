@@ -50,6 +50,7 @@ extern PWtsApiFunctionTable FreeRDP_InitWtsApi(void);
 
 static void rdp_rail_destroy_window(struct wl_listener *listener, void *data);
 static void rdp_rail_schedule_update_window(struct wl_listener *listener, void *data);
+static void rdp_rail_dump_window_label(struct weston_surface *surface, char *label, uint32_t label_size);
 
 struct rdp_dispatch_data {
 	struct rdp_loop_event_source _base;
@@ -293,19 +294,21 @@ rail_client_Activate_callback(void *arg)
 	freerdp_peer *client = data->client;
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = peerCtx->rdpBackend;
-	struct weston_surface *surface;
+	struct weston_surface *surface = NULL;
 
 	rdp_debug_verbose(b, "Client: ClientActivate: WindowId:0x%x, enabled:%d\n", activate->windowId, activate->enabled);
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
 	if (b->rdprail_shell_api &&
-		b->rdprail_shell_api->request_window_activate) {
-		surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, activate->windowId);
-		if (surface)
-			b->rdprail_shell_api->request_window_activate(surface, peerCtx->item.seat);
-		else
-			weston_log("Client: ClientActivate: WindowId:0x%x is not found.\n", activate->windowId);
+		b->rdprail_shell_api->request_window_activate &&
+		b->rdprail_shell_context) {
+		if (activate->windowId && activate->enabled) {
+			surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, activate->windowId);
+			if (!surface)
+				weston_log("Client: ClientActivate: WindowId:0x%x is not found.\n", activate->windowId);
+		}
+		b->rdprail_shell_api->request_window_activate(b->rdprail_shell_context, peerCtx->item.seat, surface);
 	}
 
 	RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, data);
@@ -314,18 +317,7 @@ rail_client_Activate_callback(void *arg)
 static UINT
 rail_client_Activate(RailServerContext* context, const RAIL_ACTIVATE_ORDER* arg)
 {
-	freerdp_peer *client = (freerdp_peer*)context->custom;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
-
-	if (arg->windowId == RDP_RAIL_MARKER_WINDOW_ID) {
-		rdp_debug_verbose(b, "Client: ClientActivate: marker window is %s.\n", arg->enabled ? "enabled" : "disabled");
-	} else if (arg->enabled) {
-		RDP_DISPATCH_TO_DISPLAY_LOOP(context, activate, arg, rail_client_Activate_callback);
-	} else {
-		/* no need to handle deactivate from client, just */
-		/* keep current focus until new focus reported.   */
-	}
+	RDP_DISPATCH_TO_DISPLAY_LOOP(context, activate, arg, rail_client_Activate_callback);
 	return CHANNEL_RC_OK;
 }
 
@@ -1448,6 +1440,12 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 	pixman_region32_init_rect(&rail_state->damage,
 		 0, 0, surface->width_from_buffer, surface->height_from_buffer);
 
+	/* as new window created, mark z order dirty */
+	/* TODO: ideally this better be triggered from shell, but shell isn't notified
+		 creation/destruction of certain type of window, such as dropdown menu
+		 (popup in Wayland, override_redirect in X), thus do it here. */
+	peerCtx->is_window_zorder_dirty = true;
+
 Exit:
 	/* once window is successfully created, start listening repaint update */
 	if (!rail_state->error) {
@@ -1580,6 +1578,15 @@ rdp_rail_destroy_window(struct wl_listener *listener, void *data)
 	rdp_id_manager_free_id(&peerCtx->windowId, window_id);
 	rail_state->window_id = 0;
 
+	/* as window destroyed, mark z order dirty and if this is active window, clear it */
+	/* TODO: ideally this better be triggered from shell, but shell isn't notified
+		 creation/destruction of certain type of window, such as dropdown menu
+		 (popup in Wayland, override_redirect in X), thus do it here. */
+	peerCtx->is_window_zorder_dirty = true;
+	if (peerCtx->active_surface == surface) {
+		peerCtx->active_surface = NULL;
+	}
+
 	if (rail_state->repaint_listener.notify) {
 		wl_list_remove(&rail_state->repaint_listener.link);
 		rail_state->repaint_listener.notify = NULL;
@@ -1638,8 +1645,15 @@ rdp_rail_schedule_update_window(struct wl_listener *listener, void *data)
 	return;
 }
 
+struct update_window_iter_data {
+	uint32_t output_id;
+	UINT32 startedFrameId;
+	BOOL needEndFrame;
+	BOOL isUpdatePending;
+};
+
 static int
-rdp_rail_update_window(struct weston_surface *surface, BOOL *needEndFrame, UINT32 *startedFrameId, BOOL *isUpdatePending)
+rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter_data *iter_data)
 {
 	struct weston_compositor *compositor = surface->compositor;
 	struct weston_surface_rail_state *rail_state = (struct weston_surface_rail_state *)surface->backend_state;
@@ -2218,7 +2232,7 @@ rdp_rail_update_window(struct weston_surface *surface, BOOL *needEndFrame, UINT3
 
 				if (peerCtx->gfxredir_server_context->PresentBuffer(peerCtx->gfxredir_server_context, &presentBuffer) == 0) {
 					rail_state->isUpdatePending = TRUE;
-					*isUpdatePending = TRUE;
+					iter_data->isUpdatePending = TRUE;
 				} else {
 					weston_log("PresentBuffer failed for windowId:0x%x\n",window_id);
 				}
@@ -2300,15 +2314,15 @@ rdp_rail_update_window(struct weston_surface *surface, BOOL *needEndFrame, UINT3
 					}
 				}
 
-				if (*needEndFrame == FALSE) {
+				if (iter_data->needEndFrame == FALSE) {
 					/* if frame is not started yet, send StartFrame first before sendng surface command. */
 					RDPGFX_START_FRAME_PDU startFrame = {};
 					startFrame.frameId = ++peerCtx->currentFrameId;
 					rdp_debug_verbose(b, "StartFrame(frameId:0x%x, windowId:0x%x)\n", startFrame.frameId, window_id);
 					peerCtx->rail_grfx_server_context->StartFrame(peerCtx->rail_grfx_server_context, &startFrame);
-					*startedFrameId = startFrame.frameId;
-					*needEndFrame = TRUE;
-					*isUpdatePending = TRUE;
+					iter_data->startedFrameId = startFrame.frameId;
+					iter_data->needEndFrame = TRUE;
+					iter_data->isUpdatePending = TRUE;
 				}
 
 				surfaceCommand.surfaceId = rail_state->surface_id;
@@ -2326,14 +2340,16 @@ rdp_rail_update_window(struct weston_surface *surface, BOOL *needEndFrame, UINT3
 				surfaceCommand.codecId = RDPGFX_CODECID_ALPHA;
 				surfaceCommand.length = alphaSize;
 				surfaceCommand.data = &alpha[0];
-				rdp_debug_verbose(b, "SurfaceCommand(frameId:0x%x, windowId:0x%x) for alpha\n", *startedFrameId, window_id);
+				rdp_debug_verbose(b, "SurfaceCommand(frameId:0x%x, windowId:0x%x) for alpha\n",
+					iter_data->startedFrameId, window_id);
 				peerCtx->rail_grfx_server_context->SurfaceCommand(peerCtx->rail_grfx_server_context, &surfaceCommand);
 
 				/* send bitmap data */
 				surfaceCommand.codecId = RDPGFX_CODECID_UNCOMPRESSED;
 				surfaceCommand.length = damageSize;
 				surfaceCommand.data = &data[0];
-				rdp_debug_verbose(b, "SurfaceCommand(frameId:0x%x, windowId:0x%x) for bitmap\n", *startedFrameId, window_id);
+				rdp_debug_verbose(b, "SurfaceCommand(frameId:0x%x, windowId:0x%x) for bitmap\n",
+					iter_data->startedFrameId, window_id);
 				peerCtx->rail_grfx_server_context->SurfaceCommand(peerCtx->rail_grfx_server_context, &surfaceCommand);
 
 				free(data);
@@ -2384,13 +2400,6 @@ rdp_rail_update_window(struct weston_surface *surface, BOOL *needEndFrame, UINT3
 	return 0;
 }
 
-struct update_window_iter_data {
-	uint32_t output_id;
-	UINT32 startedFrameId;
-	BOOL needEndFrame;
-	BOOL isUpdatePending;
-};
-
 static void
 rdp_rail_update_window_iter(void *element, void *data)
 {
@@ -2401,18 +2410,95 @@ rdp_rail_update_window_iter(void *element, void *data)
 	struct weston_surface_rail_state *rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 	assert(rail_state); // this iter is looping from window hash table, thus it must have rail_state initialized.
 	if (surface->output_mask & (1u << iter_data->output_id)) {
-		if (rail_state->isCursor) {
+		if (rail_state->isCursor)
 			rdp_rail_update_cursor(surface);
-		} else if (rail_state->isUpdatePending == FALSE) {
-			rdp_rail_update_window(surface,
-				&iter_data->needEndFrame,
-				&iter_data->startedFrameId,
-				&iter_data->isUpdatePending);
-		} else {
+		else if (rail_state->isUpdatePending == FALSE)
+			rdp_rail_update_window(surface, iter_data);
+		else
 			rdp_debug_verbose(b, "window update is skipped for windowId:0x%x, isUpdatePending = %d\n",
-						rail_state->window_id, rail_state->isUpdatePending);
+				rail_state->window_id, rail_state->isUpdatePending);
+	}
+}
+
+static void
+rdp_rail_sync_window_zorder(struct weston_compositor *compositor)
+{
+	struct rdp_backend *b = to_rdp_backend(compositor);
+	freerdp_peer* client = b->rdp_peer;
+	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
+	UINT32 numWindowId = 0;
+	UINT32 *windowIdArray = NULL;
+	WINDOW_ORDER_INFO window_order_info = {};
+	MONITORED_DESKTOP_ORDER monitored_desktop_order = {};
+	char label[256];
+	UINT32 i = 0;
+
+	ASSERT_COMPOSITOR_THREAD(b);
+
+	if (!b->enable_window_zorder_sync)
+		return;
+
+	numWindowId = peerCtx->windowId.id_used + 1; // +1 for marker window.
+	windowIdArray = zalloc(numWindowId * sizeof(UINT32));
+	if (!windowIdArray) {
+		weston_log("%s: zalloc(%ld bytes) failed\n", __func__, numWindowId * sizeof(UINT32)); 
+		return;
+	}
+
+	rdp_debug_verbose(b, "Dump Window Z order\n");
+	if (!peerCtx->active_surface) {
+		/* if no active window, put marker window top as client window has focus. */
+		rdp_debug_verbose(b, "    window[%d]: %x: %s\n", i, RDP_RAIL_MARKER_WINDOW_ID, "marker window");
+		windowIdArray[i++] = RDP_RAIL_MARKER_WINDOW_ID;
+	}
+	/* walk windows in z-order */
+	struct weston_layer *layer;
+	wl_list_for_each(layer, &compositor->layer_list, link) {
+		struct weston_view *view;
+		wl_list_for_each(view, &layer->view_list.link, layer_link.link) {
+			struct weston_surface_rail_state *rail_state =
+				(struct weston_surface_rail_state *)view->surface->backend_state;
+			if (rail_state->isWindowCreated &&
+			    !rail_state->is_minimized &&
+			    !rail_state->is_minimized_requested) {
+				if (i >= numWindowId) {
+					weston_log("%s: more windows in tree than ID manager tracking (%d vs %d)\n",
+							__func__, i, numWindowId);
+					goto Exit;
+				}
+				if (b->debugLevel >= RDP_DEBUG_LEVEL_VERBOSE) {
+					rdp_rail_dump_window_label(view->surface, label, sizeof(label));
+					rdp_debug_verbose(b, "    window[%d]: %x: %s\n", i, rail_state->window_id, label);
+				}
+				windowIdArray[i++] = rail_state->window_id;
+			}
 		}
 	}
+	if (peerCtx->active_surface) {
+		/* TODO: marker window better be placed correct place relative to client window, not always bottom */
+		/*       In order to do that, dummpy window to be created to track where is the highest client window. */
+		rdp_debug_verbose(b, "    window[%d]: %x: %s\n", i, RDP_RAIL_MARKER_WINDOW_ID, "marker window");
+		windowIdArray[i++] = RDP_RAIL_MARKER_WINDOW_ID;
+	}
+	assert(i <= numWindowId);
+	assert(i > 0);
+	rdp_debug_verbose(b, "    send Window Z order: numWindowIds:%d\n", i);
+
+	window_order_info.fieldFlags = WINDOW_ORDER_TYPE_DESKTOP |
+					WINDOW_ORDER_FIELD_DESKTOP_ZORDER |
+					WINDOW_ORDER_FIELD_DESKTOP_ACTIVE_WND; 
+	monitored_desktop_order.activeWindowId = windowIdArray[0];
+	monitored_desktop_order.numWindowIds = i;
+	monitored_desktop_order.windowIds = windowIdArray;
+
+	client->update->window->MonitoredDesktop(client->context, &window_order_info, &monitored_desktop_order);
+	client->DrainOutputBuffer(client);
+
+Exit:
+	if (windowIdArray)
+		free(windowIdArray);
+
+	return;
 }
 
 void 
@@ -2434,6 +2520,11 @@ rdp_rail_output_repaint(struct weston_output *output, pixman_region32_t *damage)
 			endFrame.frameId = iter_data.startedFrameId;
 			rdp_debug_verbose(b, "EndFrame(frameId:0x%x)\n", endFrame.frameId);
 			peerCtx->rail_grfx_server_context->EndFrame(peerCtx->rail_grfx_server_context, &endFrame);
+		}
+		if (peerCtx->is_window_zorder_dirty) {
+			/* notify window z order to client */
+			rdp_rail_sync_window_zorder(b->compositor);
+			peerCtx->is_window_zorder_dirty = false;
 		}
 		if (iter_data.isUpdatePending) {
 			/* By default, compositor won't update idle timer by screen activity,
@@ -2672,6 +2763,8 @@ rdp_rail_idle_handler(struct wl_listener *listener, void *data)
 		container_of(listener, RdpPeerContext, idle_listener);
 	struct rdp_backend *b = peerCtx->rdpBackend;
 
+	ASSERT_COMPOSITOR_THREAD(b);
+
 	rdp_debug(b, "%s is called on peerCtx:%p\n", __func__, peerCtx);
 
 	displayRequest.active = FALSE;
@@ -2687,11 +2780,28 @@ rdp_rail_wake_handler(struct wl_listener *listener, void *data)
 		container_of(listener, RdpPeerContext, wake_listener);
 	struct rdp_backend *b = peerCtx->rdpBackend;
 
+	ASSERT_COMPOSITOR_THREAD(b);
+
 	rdp_debug(b, "%s is called on peerCtx:%p\n", __func__, peerCtx);
 
 	displayRequest.active = TRUE;
 	peerCtx->rail_server_context->ServerPowerDisplayRequest(
 		peerCtx->rail_server_context, &displayRequest);
+}
+
+static void
+rdp_rail_notify_window_zorder_change(struct weston_compositor *compositor, struct weston_surface *active_surface)
+{
+	struct rdp_backend *b = to_rdp_backend(compositor);
+	freerdp_peer* client = b->rdp_peer;
+	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
+
+	ASSERT_COMPOSITOR_THREAD(b);
+
+	/* active_surface is NULL while client window has focus */
+	peerCtx->active_surface = active_surface;
+	/* z order will be sent to client at next repaint */
+	peerCtx->is_window_zorder_dirty = true;
 }
 
 void
@@ -2789,8 +2899,6 @@ rdp_rail_sync_window_status(freerdp_peer* client)
 				}
 			}
 		}
-
-		/* TODO: Z-order sync */ 
 
 		/* this assume repaint to be scheduled on idle loop, not directly from here */
 		weston_compositor_damage_all(b->compositor);
@@ -3230,6 +3338,19 @@ struct rdp_rail_dump_window_context {
 };
 
 static void
+rdp_rail_dump_window_label(struct weston_surface *surface, char *label, uint32_t label_size)
+{
+	if (surface->get_label) {
+		strcpy(label, "Label: "); // 7 chars
+		surface->get_label(surface, label + 7, label_size - 7);
+	} else if (surface->role_name) {
+		snprintf(label, label_size, "RoleName: %s", surface->role_name);
+	} else {
+		strcpy(label, "(No Label, No Role name)");
+	}
+}
+
+static void
 rdp_rail_dump_window_iter(void *element, void *data)
 {
 	struct weston_surface *surface = (struct weston_surface *)element;
@@ -3242,17 +3363,8 @@ rdp_rail_dump_window_iter(void *element, void *data)
 	int contentBufferWidth, contentBufferHeight;
 	weston_surface_get_content_size(surface, &contentBufferWidth, &contentBufferHeight);
 
-	if (surface->role_name || surface->get_label) {
-		if (surface->role_name)
-			fprintf(fp,"    RoleName: %s\n", surface->role_name);
-		if (surface->get_label) {
-			label[0] = '\0';
-			surface->get_label(surface, label, sizeof(label));
-			fprintf(fp,"    Label: %s\n", label);
-		}
-	} else {
-		fprintf(fp,"    (No Label, No Role name)\n");
-	}
+	rdp_rail_dump_window_label(surface, label, sizeof(label));
+	fprintf(fp,"    %s\n", label);
 	fprintf(fp,"    WindowId:0x%x, SurfaceId:0x%x\n",
 		rail_state->window_id, rail_state->surface_id);
 	fprintf(fp,"    PoolId:0x%x, BufferId:0x%x\n",
@@ -3442,7 +3554,7 @@ rdp_rail_set_window_icon(struct weston_surface *surface, pixman_image_t *icon)
 	if (width == 0 || height == 0)
 		return;
 
-	rdp_debug(b, "rdp_rail_set_window_icon: original icon width:%d height:%d format:%d\n",
+	rdp_debug_verbose(b, "rdp_rail_set_window_icon: original icon width:%d height:%d format:%d\n",
 			width, height, format);
 
 	/* TS_RAIL_CLIENTSTATUS_HIGH_DPI_ICONS_SUPPORTED
@@ -3506,7 +3618,7 @@ rdp_rail_set_window_icon(struct weston_surface *surface, pixman_image_t *icon)
 	assert(height == targetIconHeight);
 	assert(format == PIXMAN_a8r8g8b8);
 
-	rdp_debug(b, "rdp_rail_set_window_icon: converted icon width:%d height:%d format:%d\n",
+	rdp_debug_verbose(b, "rdp_rail_set_window_icon: converted icon width:%d height:%d format:%d\n",
 			width, height, format);
 
 	/* color bitmap is 32 bits */
@@ -3742,6 +3854,7 @@ struct weston_rdprail_api rdprail_api = {
 	.notify_app_list = NULL,
 #endif // HAVE_FREERDP_RDPAPPLIST_H
 	.get_primary_output = rdp_rail_get_primary_output,
+	.notify_window_zorder_change = rdp_rail_notify_window_zorder_change,
 };
 
 int
@@ -3866,6 +3979,14 @@ rdp_rail_backend_create(struct rdp_backend *b)
 		}
 	}
 	rdp_debug(b, "RDP backend: debug_desktop_scaling_factor = %d\n", b->debug_desktop_scaling_factor);
+
+	b->enable_window_zorder_sync = true;
+	s = getenv("WESTON_RDP_DISABLE_WINDOW_ZORDER_SYNC");
+	if (s) {
+		if (strcmp(s, "true") == 0)
+			b->enable_window_zorder_sync = false;
+	}
+	rdp_debug(b, "RDP backend: enable_window_zorder_sync = %d\n", b->enable_window_zorder_sync);
 
 	b->rdprail_shell_name = NULL;
 

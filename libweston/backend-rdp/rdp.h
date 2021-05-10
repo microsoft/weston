@@ -181,6 +181,8 @@ struct rdp_backend {
 
 	struct wl_listener create_window_listener;
 
+	bool enable_window_zorder_sync;
+
 	bool enable_hi_dpi_support;
 	bool enable_fractional_hi_dpi_support;
 	uint32_t debug_desktop_scaling_factor; /* must be between 100 to 500 */
@@ -308,6 +310,9 @@ struct rdp_peer_context {
 	struct wl_list loop_event_source_list;
 	struct wl_listener idle_listener;
 	struct wl_listener wake_listener;
+
+	bool is_window_zorder_dirty;
+	struct weston_surface *active_surface;
 
 	// Multiple monitor support (monitor topology)
 	pixman_region32_t regionClientHeads;

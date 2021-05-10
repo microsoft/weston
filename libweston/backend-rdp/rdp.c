@@ -1453,7 +1453,7 @@ rdp_validate_button_state(RdpPeerContext *peerContext, bool pressed, uint32_t* b
 	uint32_t index = *button - BTN_LEFT;
 	assert(index < ARRAY_LENGTH(peerContext->button_state));
 	if (pressed == peerContext->button_state[index]) {
-		rdp_debug(b, "%s: inconsistent button state button:%d (index:%d) pressed:%d\n",
+		rdp_debug_verbose(b, "%s: inconsistent button state button:%d (index:%d) pressed:%d\n",
 			__func__, *button, index, pressed);
 		/* ignore button input */
 		*button = 0;
@@ -1634,7 +1634,7 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 	uint32_t scan_code, vk_code, full_code;
 	enum wl_keyboard_key_state keyState;
 	RdpPeerContext *peerContext = (RdpPeerContext *)input->context;
-	/*struct rdp_backend *b = peerContext->rdpBackend;*/
+	struct rdp_backend *b = peerContext->rdpBackend;
 
 	int notify = 0;
 	struct timespec time;
@@ -1659,8 +1659,11 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 		assert(vk_code <= 0xFF);
 		if (keyState == WL_KEYBOARD_KEY_STATE_RELEASED) {
 			/* Ignore release if key is not previously pressed. */
-			if ((peerContext->key_state[vk_code>>3] & (1<<(vk_code&0x7))) == 0)
+			if ((peerContext->key_state[vk_code>>3] & (1<<(vk_code&0x7))) == 0) {
+				rdp_debug_verbose(b, "%s: inconsistent key state vk_code:%x\n",
+					__func__, vk_code);
 				goto exit;
+			}
 			peerContext->key_state[vk_code>>3] &= ~(1<<(vk_code&0x7));
 		} else {
 			peerContext->key_state[vk_code>>3] |= (1<<(vk_code&0x7));

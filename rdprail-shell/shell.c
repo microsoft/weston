@@ -3357,6 +3357,9 @@ activate(struct desktop_shell *shell, struct weston_view *view,
 	/* Update the surface’s layer. This brings it to the top of the stacking
 	 * order as appropriate. */
 	shell_surface_update_layer(shsurf);
+
+	if (shell->rdprail_api->notify_window_zorder_change)
+		shsurf->shell->rdprail_api->notify_window_zorder_change(shell->compositor, es);
 }
 
 /* no-op func for checking black surface */
@@ -3430,11 +3433,23 @@ touch_to_activate_binding(struct weston_touch *touch,
 }
 
 static void
-shell_backend_request_window_activate(struct weston_surface *surface, struct weston_seat *seat)
+shell_backend_request_window_activate(void *shell_context, struct weston_seat *seat, struct weston_surface *surface)
 {
+	struct desktop_shell *shell = (struct desktop_shell *)shell_context;
 	struct weston_view *view;
 	struct shell_surface *shsurf;
-	struct desktop_shell *shell;
+
+	if (!surface) {
+		/* Here, focus is moving to a window in client side, thus none of Linux app has focus. */
+		/* TODO: move focus to dummy marker window, thus Linux app can correctly show as
+		   'not focused' state (such as title bar) while client application has focus. */
+		if (shell->rdprail_api->notify_window_zorder_change) {
+			shell->rdprail_api->notify_window_zorder_change(shell->compositor, NULL);
+			/* schedule repaint to force send z order */
+			weston_compositor_schedule_repaint(shell->compositor);
+		}
+		return;
+	}
 
 	view = NULL;
 	wl_list_for_each(view, &surface->views, surface_link)
@@ -3444,10 +3459,6 @@ shell_backend_request_window_activate(struct weston_surface *surface, struct wes
 
 	shsurf = get_shell_surface(surface);
 	if (!shsurf)
-		return;
-
-	shell = shell_surface_get_shell(shsurf);
-	if (!shell)
 		return;
 
 	activate_binding(seat, shell, view, 
