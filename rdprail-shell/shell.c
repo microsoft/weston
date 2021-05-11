@@ -2427,14 +2427,20 @@ desktop_surface_set_parent(struct weston_desktop_surface *desktop_surface,
 
 	if (parent) {
 		shsurf_parent = weston_desktop_surface_get_user_data(parent);
-		wl_list_insert(shsurf_parent->children_list.prev,
-			       &shsurf->children_link);
-		/* libweston-desktop doesn't establish parent/child relationship
-		   with weston_desktop_api shell_desktop_api.set_parent call,
-		   thus calling weston_desktop_surface_get_parent won't work,
-		   so shell need to track by itself. This also means child's
-		   geometry won't be adjusted to relative to parent. */
-		shsurf->parent = shsurf_parent;
+		if (shsurf_parent) {
+			wl_list_insert(shsurf_parent->children_list.prev,
+				       &shsurf->children_link);
+			/* libweston-desktop doesn't establish parent/child relationship
+			   with weston_desktop_api shell_desktop_api.set_parent call,
+			   thus calling weston_desktop_surface_get_parent won't work,
+			   so shell need to track by itself. This also means child's
+			   geometry won't be adjusted to relative to parent. */
+			shsurf->parent = shsurf_parent;
+		} else {
+			weston_log("RDP shell: parent is not toplevel surface\n");
+			wl_list_init(&shsurf->children_link);
+			shsurf->parent = NULL;
+		}
 	} else {
 		wl_list_init(&shsurf->children_link);
 		shsurf->parent = NULL;

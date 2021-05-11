@@ -2780,8 +2780,11 @@ desktop_surface_set_parent(struct weston_desktop_surface *desktop_surface,
 
 	if (parent) {
 		shsurf_parent = weston_desktop_surface_get_user_data(parent);
-		wl_list_insert(shsurf_parent->children_list.prev,
-			       &shsurf->children_link);
+		if (shsurf_parent)
+			wl_list_insert(shsurf_parent->children_list.prev,
+				       &shsurf->children_link);
+		else
+			wl_list_init(&shsurf->children_link);
 	} else {
 		wl_list_init(&shsurf->children_link);
 	}
