@@ -217,6 +217,7 @@ struct weston_surface_rail_state {
 	bool forceUpdateWindowState;
 	bool error;
 	bool isUpdatePending;
+	bool isFirstUpdateDone;
 	void *get_label;
 	int taskbarButton;
 

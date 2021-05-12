@@ -2357,6 +2357,16 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 			}
 
 			pixman_region32_clear(&rail_state->damage);
+
+			/* TODO: this is temporary workaround, some window is not visible to shell
+			   (such as subsurfaces, override_redirect), so z order update is 
+			   not done by activate callback, thus trigger it at first update.
+			   solution would make those surface visible to shell or hook signal on
+			   when view_list is changed on libweston/compositor.c */
+			if (!rail_state->isFirstUpdateDone) {
+				peerCtx->is_window_zorder_dirty = true;
+				rail_state->isFirstUpdateDone = true;
+			}
 		}
 
 #ifdef HAVE_FREERDP_GFXREDIR_H
@@ -2420,6 +2430,49 @@ rdp_rail_update_window_iter(void *element, void *data)
 	}
 }
 
+static UINT32
+rdp_insert_window_zorder_array(struct weston_view *view, UINT32 *windowIdArray, UINT32 WindowIdArraySize, UINT32 iCurrent)
+{
+	struct weston_surface *surface = view->surface;
+	struct weston_compositor *compositor = surface->compositor;
+	struct rdp_backend *b = (struct rdp_backend*)compositor->backend;
+	struct weston_surface_rail_state *rail_state =
+		(struct weston_surface_rail_state *)surface->backend_state;
+
+	/* insert subsurface first to zorder list */
+	struct weston_subsurface *sub;
+	wl_list_for_each(sub, &surface->subsurface_list, parent_link) {
+		struct weston_view *sub_view;
+		wl_list_for_each(sub_view, &sub->surface->views, surface_link) {
+			if (sub_view->parent_view != view)
+				continue;
+
+			iCurrent = rdp_insert_window_zorder_array(sub_view, windowIdArray, WindowIdArraySize, iCurrent);
+			if (iCurrent == UINT_MAX)
+				return iCurrent;
+		}
+	}
+
+	/* insert itself as parent (which is below sub-surfaces in z order) */
+	if (rail_state->isWindowCreated &&
+	    !rail_state->is_minimized &&
+	    !rail_state->is_minimized_requested) {
+		if (iCurrent >= WindowIdArraySize) {
+			weston_log("%s: more windows in tree than ID manager tracking (%d vs %d)\n",
+					__func__, iCurrent, WindowIdArraySize);
+			return UINT_MAX;
+		}
+		if (b->debugLevel >= RDP_DEBUG_LEVEL_VERBOSE) {
+			char label[256];
+			rdp_rail_dump_window_label(surface, label, sizeof(label));
+			rdp_debug_verbose(b, "    window[%d]: %x: %s\n", iCurrent, rail_state->window_id, label);
+		}
+		windowIdArray[iCurrent++] = rail_state->window_id;
+	}
+
+	return iCurrent;
+}
+
 static void
 rdp_rail_sync_window_zorder(struct weston_compositor *compositor)
 {
@@ -2430,8 +2483,7 @@ rdp_rail_sync_window_zorder(struct weston_compositor *compositor)
 	UINT32 *windowIdArray = NULL;
 	WINDOW_ORDER_INFO window_order_info = {};
 	MONITORED_DESKTOP_ORDER monitored_desktop_order = {};
-	char label[256];
-	UINT32 i = 0;
+	UINT32 iCurrent = 0;
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
@@ -2448,47 +2500,34 @@ rdp_rail_sync_window_zorder(struct weston_compositor *compositor)
 	rdp_debug_verbose(b, "Dump Window Z order\n");
 	if (!peerCtx->active_surface) {
 		/* if no active window, put marker window top as client window has focus. */
-		rdp_debug_verbose(b, "    window[%d]: %x: %s\n", i, RDP_RAIL_MARKER_WINDOW_ID, "marker window");
-		windowIdArray[i++] = RDP_RAIL_MARKER_WINDOW_ID;
+		rdp_debug_verbose(b, "    window[%d]: %x: %s\n", iCurrent, RDP_RAIL_MARKER_WINDOW_ID, "marker window");
+		windowIdArray[iCurrent++] = RDP_RAIL_MARKER_WINDOW_ID;
 	}
 	/* walk windows in z-order */
 	struct weston_layer *layer;
 	wl_list_for_each(layer, &compositor->layer_list, link) {
 		struct weston_view *view;
 		wl_list_for_each(view, &layer->view_list.link, layer_link.link) {
-			struct weston_surface_rail_state *rail_state =
-				(struct weston_surface_rail_state *)view->surface->backend_state;
-			if (rail_state->isWindowCreated &&
-			    !rail_state->is_minimized &&
-			    !rail_state->is_minimized_requested) {
-				if (i >= numWindowId) {
-					weston_log("%s: more windows in tree than ID manager tracking (%d vs %d)\n",
-							__func__, i, numWindowId);
-					goto Exit;
-				}
-				if (b->debugLevel >= RDP_DEBUG_LEVEL_VERBOSE) {
-					rdp_rail_dump_window_label(view->surface, label, sizeof(label));
-					rdp_debug_verbose(b, "    window[%d]: %x: %s\n", i, rail_state->window_id, label);
-				}
-				windowIdArray[i++] = rail_state->window_id;
-			}
+			iCurrent = rdp_insert_window_zorder_array(view, windowIdArray, numWindowId, iCurrent);
+			if (iCurrent == UINT_MAX)
+				goto Exit;
 		}
 	}
 	if (peerCtx->active_surface) {
 		/* TODO: marker window better be placed correct place relative to client window, not always bottom */
 		/*       In order to do that, dummpy window to be created to track where is the highest client window. */
-		rdp_debug_verbose(b, "    window[%d]: %x: %s\n", i, RDP_RAIL_MARKER_WINDOW_ID, "marker window");
-		windowIdArray[i++] = RDP_RAIL_MARKER_WINDOW_ID;
+		rdp_debug_verbose(b, "    window[%d]: %x: %s\n", iCurrent, RDP_RAIL_MARKER_WINDOW_ID, "marker window");
+		windowIdArray[iCurrent++] = RDP_RAIL_MARKER_WINDOW_ID;
 	}
-	assert(i <= numWindowId);
-	assert(i > 0);
-	rdp_debug_verbose(b, "    send Window Z order: numWindowIds:%d\n", i);
+	assert(iCurrent <= numWindowId);
+	assert(iCurrent > 0);
+	rdp_debug_verbose(b, "    send Window Z order: numWindowIds:%d\n", iCurrent);
 
 	window_order_info.fieldFlags = WINDOW_ORDER_TYPE_DESKTOP |
 					WINDOW_ORDER_FIELD_DESKTOP_ZORDER |
 					WINDOW_ORDER_FIELD_DESKTOP_ACTIVE_WND; 
 	monitored_desktop_order.activeWindowId = windowIdArray[0];
-	monitored_desktop_order.numWindowIds = i;
+	monitored_desktop_order.numWindowIds = iCurrent;
 	monitored_desktop_order.windowIds = windowIdArray;
 
 	client->update->window->MonitoredDesktop(client->context, &window_order_info, &monitored_desktop_order);
@@ -3403,8 +3442,8 @@ rdp_rail_dump_window_iter(void *element, void *data)
 		rail_state->is_maximized, rail_state->is_maximized_requested);
 	fprintf(fp,"    forceRecreateSurface:%d, error:%d\n",
 		rail_state->forceRecreateSurface, rail_state->error);
-	fprintf(fp,"    isUdatePending:%d\n",
-		rail_state->isUpdatePending);
+	fprintf(fp,"    isUdatePending:%d, isFirstUpdateDone:%d\n",
+		rail_state->isUpdatePending, rail_state->isFirstUpdateDone);
 	fprintf(fp,"    surface:0x%p\n", surface);
 	wl_list_for_each(view, &surface->views, surface_link) {
 		fprintf(fp,"    view: %p\n", view);
