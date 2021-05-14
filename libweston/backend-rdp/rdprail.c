@@ -2454,7 +2454,12 @@ rdp_insert_window_zorder_array(struct weston_view *view, UINT32 *windowIdArray, 
 	}
 
 	/* insert itself as parent (which is below sub-surfaces in z order) */
-	if (rail_state->isWindowCreated &&
+	/* because z order is taken from compositor's scene-graph, it's possible
+	   there is surface hasn't been associated with rail_state, so check it.
+	   and if window is not remoted to client side, or minimized (or going to be
+	   minimized), those won't included in z order list. */
+	if (rail_state &&
+	    rail_state->isWindowCreated &&
 	    !rail_state->is_minimized &&
 	    !rail_state->is_minimized_requested) {
 		if (iCurrent >= WindowIdArraySize) {
