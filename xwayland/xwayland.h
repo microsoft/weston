@@ -129,6 +129,7 @@ struct weston_wm {
 		xcb_atom_t		 net_wm_window_type_combo;
 		xcb_atom_t		 net_wm_window_type_dnd;
 		xcb_atom_t		 net_wm_window_type_normal;
+		xcb_atom_t		 kde_net_wm_window_type_override;
 		xcb_atom_t		 net_wm_moveresize;
 		xcb_atom_t		 net_supporting_wm_check;
 		xcb_atom_t		 net_supported;
