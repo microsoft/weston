@@ -72,12 +72,12 @@ struct rdp_dispatch_data {
 
 #define RDP_DISPATCH_TO_DISPLAY_LOOP(context, arg_type, arg, callback) \
 	{ \
+		freerdp_peer *client = (freerdp_peer*)(context)->custom; \
+		RdpPeerContext *peerCtx = (RdpPeerContext *)client->context; \
+		struct rdp_backend *b = peerCtx->rdpBackend; \
 		struct rdp_dispatch_data *dispatch_data; \
 		dispatch_data = (struct rdp_dispatch_data *)malloc(sizeof(*dispatch_data)); \
 		if (dispatch_data) { \
-			freerdp_peer *client = (freerdp_peer*)(context)->custom; \
-			RdpPeerContext *peerCtx = (RdpPeerContext *)client->context; \
-			struct rdp_backend *b = peerCtx->rdpBackend; \
 			ASSERT_NOT_COMPOSITOR_THREAD(b); \
 			dispatch_data->client = client; \
 			dispatch_data->u_##arg_type = *(arg); \
@@ -87,14 +87,14 @@ struct rdp_dispatch_data {
 			dispatch_data->_base.event_source = \
 				rdp_defer_rdp_task_to_display_loop(peerCtx, callback, dispatch_data); \
 			if (!dispatch_data->_base.event_source) { \
-				weston_log("%s: rdp_queue_deferred_task failed\n", __func__); \
+				rdp_debug_error(b, "%s: rdp_queue_deferred_task failed\n", __func__); \
 				pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex); \
 				wl_list_remove(&dispatch_data->_base.link); \
 				pthread_mutex_unlock(&peerCtx->loop_event_source_list_mutex); \
 				free(dispatch_data); \
 			} \
 		} else { \
-			weston_log("%s: malloc failed\n", __func__); \
+			rdp_debug_error(b, "%s: malloc failed\n", __func__); \
 		} \
 	}
 
@@ -225,7 +225,7 @@ rail_client_Exec_callback(void *arg)
 				&peerCtx->clientExec_destroy_listener);
 			result = RAIL_EXEC_S_OK;
 		} else {
-			weston_log("%s: fail to launch shell process %s\n",
+			rdp_debug_error(b, "%s: fail to launch shell process %s\n",
 				__func__, remoteProgramAndArgs);
 		}
 	}
@@ -306,7 +306,7 @@ rail_client_Activate_callback(void *arg)
 		if (activate->windowId && activate->enabled) {
 			surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, activate->windowId);
 			if (!surface)
-				weston_log("Client: ClientActivate: WindowId:0x%x is not found.\n", activate->windowId);
+				rdp_debug_error(b, "Client: ClientActivate: WindowId:0x%x is not found.\n", activate->windowId);
 		}
 		b->rdprail_shell_api->request_window_activate(b->rdprail_shell_context, peerCtx->item.seat, surface);
 	}
@@ -424,7 +424,7 @@ rail_client_Syscommand_callback(void *arg)
 
 	surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, syscommand->windowId);
 	if (!surface) {
-		weston_log("Client: ClientSyscommand: WindowId:0x%x is not found.\n", syscommand->windowId);
+		rdp_debug_error(b, "Client: ClientSyscommand: WindowId:0x%x is not found.\n", syscommand->windowId);
 		goto Exit;
 	}
 
@@ -588,7 +588,7 @@ rail_client_ClientSysparam_callback(void *arg)
 					to_rdp_head(base_head_iter)->workareaClient = workareaRectClient;
 				}
 			} else {
-				weston_log("Client: ClientSysparam: workArea isn't belonging to an output\n");
+				rdp_debug_error(b, "Client: ClientSysparam: workArea isn't belonging to an output\n");
 			}
 		}
 	}
@@ -627,14 +627,14 @@ rail_client_ClientGetAppidReq_callback(void *arg)
 
 		surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, getAppidReq->windowId);
 		if (!surface) {
-			weston_log("Client: ClientGetAppidReq: WindowId:0x%x is not found.\n", getAppidReq->windowId);
+			rdp_debug_error(b, "Client: ClientGetAppidReq: WindowId:0x%x is not found.\n", getAppidReq->windowId);
 			goto Exit;
 		}
 
 		pid = b->rdprail_shell_api->get_window_app_id(
 					surface, &appId[0], sizeof(appId)-1, &imageName[0], sizeof(imageName)-1);
 		if (appId[0] == '\0') {
-			weston_log("Client: ClientGetAppidReq: WindowId:0x%x does not have appId, or not top level window.\n", getAppidReq->windowId);
+			rdp_debug_error(b, "Client: ClientGetAppidReq: WindowId:0x%x does not have appId, or not top level window.\n", getAppidReq->windowId);
 			goto Exit;
 		}
 
@@ -934,7 +934,7 @@ rail_grfx_client_caps_advertise(RdpgfxServerContext* context, const RDPGFX_CAPS_
 			break;
 		}
 		default:
-			weston_log("	Version : UNKNOWN(%d)\n", capsSet->version);
+			rdp_debug_error(b, "	Version : UNKNOWN(%d)\n", capsSet->version);
 		}
 	}
 
@@ -982,12 +982,12 @@ gfxredir_client_graphics_redirection_legacy_caps(GfxRedirServerContext* context,
 	rdp_debug(b, "Client: gfxredir_caps: version:%d\n", redirectionCaps->version);
 	/* This is legacy caps callback, version must be 1 */
 	if (redirectionCaps->version != GFXREDIR_CHANNEL_VERSION_LEGACY) {
-		weston_log("Client: gfxredir_caps: invalid version:%d\n", redirectionCaps->version);
+		rdp_debug_error(b, "Client: gfxredir_caps: invalid version:%d\n", redirectionCaps->version);
 		return ERROR_INTERNAL_ERROR;  
 	}
 
 	/* Legacy version 1 client is not supported, so don't set 'activationGraphicsRedirectionCompleted'. */
-	weston_log("Client: gfxredir_caps: version 1 is not supported.\n");
+	rdp_debug_error(b, "Client: gfxredir_caps: version 1 is not supported.\n");
 
 	return CHANNEL_RC_OK;
 }
@@ -1074,7 +1074,7 @@ gfxredir_client_present_buffer_ack(GfxRedirServerContext* context, const GFXREDI
 		rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 		rail_state->isUpdatePending = FALSE;
 	} else {
-		weston_log("Client: PresentBufferAck: WindowId:0x%lx is not found.\n", presentAck->windowId);
+		rdp_debug_error(b, "Client: PresentBufferAck: WindowId:0x%lx is not found.\n", presentAck->windowId);
 	}
 
 	return CHANNEL_RC_OK;
@@ -1091,7 +1091,7 @@ rdp_rail_create_cursor(struct weston_surface *surface)
 	ASSERT_COMPOSITOR_THREAD(b);
 
 	if (peerCtx->cursorSurface)
-		weston_log("cursor surface already exists old %p vs new %p\n", peerCtx->cursorSurface, surface);
+		rdp_debug_error(b, "cursor surface already exists old %p vs new %p\n", peerCtx->cursorSurface, surface);
 	peerCtx->cursorSurface = surface;
 	return 0;
 }
@@ -1169,7 +1169,7 @@ rdp_rail_update_cursor(struct weston_surface *surface)
 		int pointerBitsSize = newClientPos.width*cursorBpp*newClientPos.height;
 		BYTE *pointerBits = malloc(pointerBitsSize);
 		if (!pointerBits) {
-			weston_log("malloc failed for cursor shape\n");
+			rdp_debug_error(b, "malloc failed for cursor shape\n");
 			return -1;
 		}
 
@@ -1179,7 +1179,7 @@ rdp_rail_update_cursor(struct weston_surface *surface)
 			newClientPos.width, newClientPos.height,
 			0, 0, contentBufferWidth, contentBufferHeight,
 			true /* y-flip */, true /* is_argb */) < 0) {
-			weston_log("weston_surface_copy_content failed for cursor shape\n");
+			rdp_debug_error(b, "weston_surface_copy_content failed for cursor shape\n");
 			free(pointerBits);
 			return -1;
 		}
@@ -1226,12 +1226,12 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 
 	/* negative width/height is not allowed, allow window to be created with zeros */
 	if (surface->width < 0 || surface->height < 0) {
-		weston_log("surface width and height are negative\n");
+		rdp_debug_error(b, "surface width and height are negative\n");
 		return;
 	}
 
 	if (!b || !b->rdp_peer) {
-		weston_log("CreateWndow(): rdp_peer is not initalized\n");
+		rdp_debug_error(b, "CreateWndow(): rdp_peer is not initalized\n");
 		return;
 	}
 
@@ -1272,7 +1272,7 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 	/* windowId can be assigned only after activation completed */
 	if (!rdp_id_manager_allocate_id(&peerCtx->windowId, (void*)surface, &window_id)) {
 		rail_state->error = true;
-		weston_log("CreateWindow(): fail to insert windowId.hash_table (windowId:%d surface:%p.\n",
+		rdp_debug_error(b, "CreateWindow(): fail to insert windowId.hash_table (windowId:%d surface:%p.\n",
 				 window_id, surface);
 		return;
 	}
@@ -1536,7 +1536,7 @@ rdp_rail_destroy_window(struct wl_listener *listener, void *data)
 						(peerCtx->currentFrameId != peerCtx->acknowledgedFrameId &&
 						 !peerCtx->isAcknowledgedSuspended)) {
 					if (++waitRetry > 1000) { // timeout after 10 sec.
-						weston_log("%s: update is still pending in client side (windowId:0x%x)\n",
+						rdp_debug_error(b, "%s: update is still pending in client side (windowId:0x%x)\n",
 								__func__, window_id);
 						break;
 					}
@@ -1624,7 +1624,7 @@ rdp_rail_schedule_update_window(struct wl_listener *listener, void *data)
 
 	/* negative width/height is not allowed */
 	if (surface->width < 0 || surface->height < 0) {
-		weston_log("surface width and height are negative\n");
+		rdp_debug_error(b, "surface width and height are negative\n");
 		return;
 	}
 
@@ -1693,7 +1693,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 		}
 		if (!rail_state->isCursor) {
 			if (strncmp(surface->role_name, "wl_pointer-cursor", sizeof("wl_pointer-cursor")) == 0) {
-				weston_log("!!!cursor role is added after creation - WindowId:0x%x\n", window_id);
+				rdp_debug_error(b, "!!!cursor role is added after creation - WindowId:0x%x\n", window_id);
 
 				/* convert to RDP cursor */
 				rdp_rail_destroy_window(NULL, (void *)surface);
@@ -1702,7 +1702,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 				rdp_rail_create_window(NULL, (void *)surface);
 				rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 				if (!rail_state || rail_state->window_id == 0) {
-					weston_log("Fail to convert to RDP cursor - surface:0x%p\n", surface);
+					rdp_debug_error(b, "Fail to convert to RDP cursor - surface:0x%p\n", surface);
 					return 0;
 				}
 				assert(rail_state->isCursor);
@@ -2196,7 +2196,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 					copyDamageWidth, copyDamageHeight,
 					damageBox.x1, damageBox.y1, damageWidth, damageHeight,
 					false /* y-flip */, true /* is_argb */) < 0) {
-					weston_log("weston_surface_copy_content failed for windowId:0x%x\n",window_id);
+					rdp_debug_error(b, "weston_surface_copy_content failed for windowId:0x%x\n",window_id);
 					return -1;
 				}
 
@@ -2234,7 +2234,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 					rail_state->isUpdatePending = TRUE;
 					iter_data->isUpdatePending = TRUE;
 				} else {
-					weston_log("PresentBuffer failed for windowId:0x%x\n",window_id);
+					rdp_debug_error(b, "PresentBuffer failed for windowId:0x%x\n",window_id);
 				}
 			} else
 #endif // HAVE_FREERDP_GFXREDIR_H
@@ -2251,7 +2251,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 				data = malloc(damageSize);
 				if (!data) {
 					// need better handling to avoid leaking surface on host.
-					weston_log("Couldn't allocate memory for bitmap update.\n");
+					rdp_debug_error(b, "Couldn't allocate memory for bitmap update.\n");
 					return -1;
 				}
 
@@ -2264,7 +2264,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 				if (!alpha) {
 					free(data);
 					// need better handling to avoid leaking surface on host.
-					weston_log("Couldn't allocate memory for alpha update.\n");
+					rdp_debug_error(b, "Couldn't allocate memory for alpha update.\n");
 					return -1;
 				}
 
@@ -2272,7 +2272,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 					data, damageSize, 0, 0, 0,
 					damageBox.x1, damageBox.y1, damageWidth, damageHeight,
 					false /* y-flip */, true /* is_argb */) < 0) {
-					weston_log("weston_surface_copy_content failed for cursor shape\n");
+					rdp_debug_error(b, "weston_surface_copy_content failed for cursor shape\n");
 					free(data);
 					free(alpha);
 					return -1;
@@ -2463,7 +2463,7 @@ rdp_insert_window_zorder_array(struct weston_view *view, UINT32 *windowIdArray, 
 	    !rail_state->is_minimized &&
 	    !rail_state->is_minimized_requested) {
 		if (iCurrent >= WindowIdArraySize) {
-			weston_log("%s: more windows in tree than ID manager tracking (%d vs %d)\n",
+			rdp_debug_error(b, "%s: more windows in tree than ID manager tracking (%d vs %d)\n",
 					__func__, iCurrent, WindowIdArraySize);
 			return UINT_MAX;
 		}
@@ -2498,7 +2498,7 @@ rdp_rail_sync_window_zorder(struct weston_compositor *compositor)
 	numWindowId = peerCtx->windowId.id_used + 1; // +1 for marker window.
 	windowIdArray = zalloc(numWindowId * sizeof(UINT32));
 	if (!windowIdArray) {
-		weston_log("%s: zalloc(%ld bytes) failed\n", __func__, numWindowId * sizeof(UINT32)); 
+		rdp_debug_error(b, "%s: zalloc(%ld bytes) failed\n", __func__, numWindowId * sizeof(UINT32)); 
 		return;
 	}
 
@@ -2611,7 +2611,7 @@ rdp_rail_peer_activate(freerdp_peer* client)
 	/* HiDef requires graphics pipeline to be supported */
 	if (settings->SupportGraphicsPipeline == FALSE) {
 		if (settings->HiDefRemoteApp) {
-			weston_log("HiDef remoting is going to be disabled because client doesn't support graphics pipeline\n");
+			rdp_debug_error(b, "HiDef remoting is going to be disabled because client doesn't support graphics pipeline\n");
 			settings->HiDefRemoteApp = FALSE;
 		}
 	}
@@ -3227,25 +3227,27 @@ rdp_drdynvc_destroy(RdpPeerContext* context)
 BOOL
 rdp_rail_peer_init(freerdp_peer *client, RdpPeerContext *peerCtx)
 {
+	struct rdp_backend *b = peerCtx->rdpBackend;
+
 	/* RDP window ID must be within 31 bits range. MSB is reserved and exclude 0. */
-	if (!rdp_id_manager_init(&peerCtx->windowId, 0x1, 0x7FFFFFFF)) {
-		weston_log("unable to create windowId.\n");
+	if (!rdp_id_manager_init(b, &peerCtx->windowId, 0x1, 0x7FFFFFFF)) {
+		rdp_debug_error(b, "unable to create windowId.\n");
 		goto error_return;
 	}
 	/* RDP surface ID must be within 16 bits range, exclude 0. */
-	if (!rdp_id_manager_init(&peerCtx->surfaceId, 0x1, 0xFFFF)) {
-		weston_log("unable to create windowId.\n");
+	if (!rdp_id_manager_init(b, &peerCtx->surfaceId, 0x1, 0xFFFF)) {
+		rdp_debug_error(b, "unable to create windowId.\n");
 		goto error_return;
 	}
 #ifdef HAVE_FREERDP_GFXREDIR_H
 	/* RDP pool ID must be within 32 bits range, exclude 0. */
-	if (!rdp_id_manager_init(&peerCtx->poolId, 0x1, 0xFFFFFFFF)) {
-		weston_log("unable to create windowId.\n");
+	if (!rdp_id_manager_init(b, &peerCtx->poolId, 0x1, 0xFFFFFFFF)) {
+		rdp_debug_error(b, "unable to create windowId.\n");
 		goto error_return;
 	}
 	/* RDP buffer ID must be within 32 bits range, exclude 0. */
-	if (!rdp_id_manager_init(&peerCtx->bufferId, 0x1, 0xFFFFFFFF)) {
-		weston_log("unable to create windowId.\n");
+	if (!rdp_id_manager_init(b, &peerCtx->bufferId, 0x1, 0xFFFFFFFF)) {
+		rdp_debug_error(b, "unable to create windowId.\n");
 		goto error_return;
 	}
 #endif // HAVE_FREERDP_GFXREDIR_H
@@ -3371,7 +3373,7 @@ rdp_rail_dump_monitor_binding(struct weston_keyboard *keyboard,
 		}
 		err = fclose(fp);
 		assert(err == 0);
-		weston_log("%s", str);
+		rdp_debug_error(b, "%s", str);
 		free(str);
 	}
 }
@@ -3520,12 +3522,12 @@ rdp_rail_dump_window_binding(struct weston_keyboard *keyboard,
 		hash_table_for_each(peerCtx->windowId.hash_table, rdp_rail_dump_window_iter, (void*)&context);
 		err = fclose(fp);
 		assert(err == 0);
-		weston_log("%s", str);
+		rdp_debug_error(b, "%s", str);
 		free(str);
 
 		/* print out compositor's scene graph */
 		str = weston_compositor_print_scene_graph(b->compositor);
-		weston_log("%s", str);
+		rdp_debug_error(b, "%s", str);
 		free(str);
 	}
 }
@@ -3572,7 +3574,7 @@ rdp_rail_set_window_icon(struct weston_surface *surface, pixman_image_t *icon)
 	int targetIconHeight;
 
 	if (!b || !b->rdp_peer) {
-		weston_log("set_window_icon(): rdp_peer is not initalized\n");
+		rdp_debug_error(b, "set_window_icon(): rdp_peer is not initalized\n");
 		return;
 	}
 
@@ -3744,7 +3746,7 @@ rdp_rail_notify_app_list(void *rdp_backend, struct weston_rdprail_app_list_data 
 	RdpPeerContext *peerCtx;
 
 	if (!b || !b->rdp_peer) {
-		weston_log("rdp_rail_notify_app_list(): rdp_peer is not initalized\n");
+		rdp_debug_error(b, "rdp_rail_notify_app_list(): rdp_peer is not initalized\n");
 		return false; // return false only when peer is not ready for possible re-send.
 	}
 
@@ -3908,7 +3910,7 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	int ret = weston_plugin_api_register(b->compositor, WESTON_RDPRAIL_API_NAME,
 					&rdprail_api, sizeof(rdprail_api));
 	if (ret < 0) {
-		weston_log("Failed to register rdprail API.\n");
+		rdp_debug_error(b, "Failed to register rdprail API.\n");
 		return -1;
 	}
 
@@ -3916,7 +3918,7 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	dlerror(); /* clear error */
 	b->libFreeRDPServer = dlopen("libfreerdp-server2.so", RTLD_NOW);
 	if (!b->libFreeRDPServer)
-		weston_log("dlopen(libfreerdp-server2.so) failed with %s\n", dlerror());
+		rdp_debug_error(b, "dlopen(libfreerdp-server2.so) failed with %s\n", dlerror());
 #endif // defined(HAVE_FREERDP_RDPAPPLIST_H) || defined(HAVE_FREERDP_GFXREDIR_H)o
 
 #ifdef HAVE_FREERDP_RDPAPPLIST_H

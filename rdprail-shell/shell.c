@@ -371,7 +371,7 @@ shell_surface_set_window_icon(struct weston_desktop_surface *desktop_surface,
 					format = PIXMAN_a8r8g8b8;
 					break;
 				default:
-					weston_log("shell_surface_set_window_icon(): unsupported bpp: %d\n", bpp);
+					shell_rdp_debug_error(shsurf->shell, "shell_surface_set_window_icon(): unsupported bpp: %d\n", bpp);
 					return;
 			}
 			image = pixman_image_create_bits_no_clear(format,
@@ -634,7 +634,7 @@ static enum weston_keyboard_modifier
 get_modifier(char *modifier)
 {
 	if (!modifier)
-		return MODIFIER_SUPER;
+		return 0; // default to no binding-modifier.
 
 	if (!strcmp("ctrl", modifier))
 		return MODIFIER_CTRL;
@@ -645,7 +645,7 @@ get_modifier(char *modifier)
 	else if (!strcmp("none", modifier))
 		return 0;
 	else
-		return MODIFIER_SUPER;
+		return 0; // default to no binding-modifier.
 }
 
 static void
@@ -659,12 +659,14 @@ shell_configuration(struct desktop_shell *shell)
 	section = weston_config_get_section(wet_get_config(shell->compositor),
 					    "shell", NULL, NULL);
 
+	/* default to not allow zap */
 	weston_config_section_get_bool(section,
-				       "allow-zap", &allow_zap, true);
+				       "allow-zap", &allow_zap, false);
 	shell->allow_zap = allow_zap;
 
+	/* set "none" to default to disable optional key-bindings */
 	weston_config_section_get_string(section,
-					 "binding-modifier", &s, "super");
+					 "binding-modifier", &s, "none");
 	shell->binding_modifier = get_modifier(s);
 	free(s);
 
@@ -2014,7 +2016,8 @@ desktop_surface_added(struct weston_desktop_surface *desktop_surface,
 		if (wl_client)
 			wl_client_post_no_memory(wl_client);
 		else
-			weston_log("%s: no memory to allocate shell surface\n", __func__);
+			shell_rdp_debug(((struct desktop_shell *)shell),
+				"%s: no memory to allocate shell surface\n", __func__);
 		return;
 	}
 
@@ -2437,7 +2440,7 @@ desktop_surface_set_parent(struct weston_desktop_surface *desktop_surface,
 			   geometry won't be adjusted to relative to parent. */
 			shsurf->parent = shsurf_parent;
 		} else {
-			weston_log("RDP shell: parent is not toplevel surface\n");
+			shell_rdp_debug_error(shsurf->shell, "RDP shell: parent is not toplevel surface\n");
 			wl_list_init(&shsurf->children_link);
 			shsurf->parent = NULL;
 		}
@@ -2863,6 +2866,7 @@ move_binding(struct weston_pointer *pointer, const struct timespec *time,
 	    weston_desktop_surface_get_maximized(shsurf->desktop_surface))
 		return;
 
+	shell_rdp_debug_verbose(shsurf->shell, "%s\n", __func__);
 	surface_move(shsurf, pointer, false);
 }
 
@@ -2882,6 +2886,7 @@ maximize_binding(struct weston_keyboard *keyboard, const struct timespec *time,
 	if (shsurf == NULL)
 		return;
 
+	shell_rdp_debug_verbose(shsurf->shell, "%s\n", __func__);
 	set_maximized(shsurf, !weston_desktop_surface_get_maximized(shsurf->desktop_surface));
 }
 
@@ -2905,6 +2910,7 @@ fullscreen_binding(struct weston_keyboard *keyboard,
 	fullscreen =
 		weston_desktop_surface_get_fullscreen(shsurf->desktop_surface);
 
+	shell_rdp_debug_verbose(shsurf->shell, "%s: fullscreen:%d\n", __func__, !fullscreen);
 	set_fullscreen(shsurf, !fullscreen, NULL);
 }
 
@@ -2976,6 +2982,7 @@ resize_binding(struct weston_pointer *pointer, const struct timespec *time,
 	else
 		edges |= WL_SHELL_SURFACE_RESIZE_BOTTOM;
 
+	shell_rdp_debug_verbose(shsurf->shell, "%s edges:%x\n", __func__, edges);
 	surface_resize(shsurf, pointer, edges);
 }
 
@@ -3005,74 +3012,10 @@ surface_opacity_binding(struct weston_pointer *pointer,
 		shsurf->view->alpha = 1.0;
 	if (shsurf->view->alpha < step)
 		shsurf->view->alpha = step;
+	shell_rdp_debug_verbose(shsurf->shell, "%s alpha:%f\n", __func__, shsurf->view->alpha);
 
 	weston_view_geometry_dirty(shsurf->view);
 	weston_surface_damage(surface);
-}
-
-static void
-do_zoom(struct weston_seat *seat, const struct timespec *time, uint32_t key,
-	uint32_t axis, double value)
-{
-	struct weston_compositor *compositor = seat->compositor;
-	struct weston_pointer *pointer = weston_seat_get_pointer(seat);
-	struct weston_output *output;
-	float increment;
-
-	if (!pointer) {
-		weston_log("Zoom hotkey pressed but seat '%s' contains no pointer.\n", seat->seat_name);
-		return;
-	}
-
-	wl_list_for_each(output, &compositor->output_list, link) {
-		if (pixman_region32_contains_point(&output->region,
-						   wl_fixed_to_double(pointer->x),
-						   wl_fixed_to_double(pointer->y),
-						   NULL)) {
-			if (key == KEY_PAGEUP)
-				increment = output->zoom.increment;
-			else if (key == KEY_PAGEDOWN)
-				increment = -output->zoom.increment;
-			else if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
-				/* For every pixel zoom 20th of a step */
-				increment = output->zoom.increment *
-					    -value / 20.0;
-			else
-				increment = 0;
-
-			output->zoom.level += increment;
-
-			if (output->zoom.level < 0.0)
-				output->zoom.level = 0.0;
-			else if (output->zoom.level > output->zoom.max_level)
-				output->zoom.level = output->zoom.max_level;
-
-			if (!output->zoom.active) {
-				if (output->zoom.level <= 0.0)
-					continue;
-				weston_output_activate_zoom(output, seat);
-			}
-
-			output->zoom.spring_z.target = output->zoom.level;
-
-			weston_output_update_zoom(output);
-		}
-	}
-}
-
-static void
-zoom_axis_binding(struct weston_pointer *pointer, const struct timespec *time,
-		  struct weston_pointer_axis_event *event,
-		  void *data)
-{
-	do_zoom(pointer->seat, time, 0, event->axis, event->value);
-}
-
-static void
-zoom_key_binding(struct weston_keyboard *keyboard, const struct timespec *time,
-		 uint32_t key, void *data)
-{
-	do_zoom(keyboard->seat, time, key, 0, 0);
 }
 
 static void
@@ -3233,6 +3176,9 @@ surface_rotate(struct shell_surface *shsurf, struct weston_pointer *pointer)
 			 pointer, WESTON_DESKTOP_SHELL_CURSOR_ARROW);
 }
 
+/*
+//TODO: while RAIL can't do arbirary rotation, but can do 0,90,180,270 degree rotation
+//      maybe it can have a new cap for that ?
 static void
 rotate_binding(struct weston_pointer *pointer, const struct timespec *time,
 	       uint32_t button, void *data)
@@ -3256,8 +3202,10 @@ rotate_binding(struct weston_pointer *pointer, const struct timespec *time,
 	    weston_desktop_surface_get_maximized(surface->desktop_surface))
 		return;
 
+	shell_rdp_debug(surface->shell, "%s\n", __func__);
 	surface_rotate(surface, pointer);
 }
+*/
 
 /* Move all fullscreen layers down to the current workspace and hide their
  * black views. The surfaces' state is set to both fullscreen and lowered,
@@ -3886,20 +3834,10 @@ shell_add_bindings(struct weston_compositor *ec, struct desktop_shell *shell)
 	if (!mod)
 		return;
 
-	/* This binding is not configurable, but is only enabled if there is a
-	 * valid binding modifier. */
 	weston_compositor_add_axis_binding(ec, WL_POINTER_AXIS_VERTICAL_SCROLL,
-				           MODIFIER_SUPER | MODIFIER_ALT,
+				           mod | MODIFIER_ALT,
 				           surface_opacity_binding, NULL);
 
-	weston_compositor_add_axis_binding(ec, WL_POINTER_AXIS_VERTICAL_SCROLL,
-					   mod, zoom_axis_binding,
-					   NULL);
-
-	weston_compositor_add_key_binding(ec, KEY_PAGEUP, mod,
-					  zoom_key_binding, NULL);
-	weston_compositor_add_key_binding(ec, KEY_PAGEDOWN, mod,
-					  zoom_key_binding, NULL);
 	weston_compositor_add_key_binding(ec, KEY_M, mod | MODIFIER_SHIFT,
 					  maximize_binding, NULL);
 	weston_compositor_add_key_binding(ec, KEY_F, mod | MODIFIER_SHIFT,
@@ -3913,12 +3851,14 @@ shell_add_bindings(struct weston_compositor *ec, struct desktop_shell *shell)
 					     mod | MODIFIER_SHIFT,
 					     resize_binding, shell);
 
-	if (ec->capabilities & WESTON_CAP_ROTATION_ANY)
-		weston_compositor_add_button_binding(ec, BTN_MIDDLE, mod,
-						     rotate_binding, NULL);
+	//TODO: while RAIL can't do arbirary rotation, but can do 0,90,180,270 degree rotation
+	//      maybe it can have a new cap for that ?
+	//if (ec->capabilities & WESTON_CAP_ROTATION_ANY)
+	//	weston_compositor_add_button_binding(ec, BTN_MIDDLE, mod,
+	//					     rotate_binding, NULL);
 
 	weston_compositor_add_key_binding(ec, KEY_K, mod,
-				          force_kill_binding, shell);
+					  force_kill_binding, shell);
 
 	weston_install_debug_key_binding(ec, mod);
 }
@@ -4158,34 +4098,34 @@ wet_shell_init(struct weston_compositor *ec,
 
 	shell->compositor = ec;
 
-	shell->debug = weston_log_ctx_add_log_scope(ec->weston_log_ctx,
-							"rdprail-shell",
-							"Debug messages from RDP-RAIL shell\n",
-							 NULL, NULL, NULL);
-	debug_level = getenv("WESTON_RDPRAIL_SHELL_DEBUG_LEVEL");
-	if (debug_level) {
-		shell->debugLevel = atoi(debug_level);
-		if (shell->debugLevel > RDPRAIL_SHELL_DEBUG_LEVEL_VERBOSE)
-			shell->debugLevel = RDPRAIL_SHELL_DEBUG_LEVEL_VERBOSE;
-	} else {
-		shell->debugLevel = RDPRAIL_SHELL_DEBUG_LEVEL_DEFAULT;
-	}
-	weston_log("RDPRAIL-shell: WESTON_RDPRAIL_SHELL_DEBUG_LEVEL: %d.\n", shell->debugLevel);
-
-
-	/* this make sure rdprail-shell to be used with only backend-rdp */
-	shell->rdprail_api = weston_rdprail_get_api(ec);
-	if (!shell->rdprail_api) {
-		weston_log("Failed to obrain rdprail API.\n");
-		free(shell);
-		return 0;
-	}
-
 	if (!weston_compositor_add_destroy_listener_once(ec,
 							 &shell->destroy_listener,
 							 shell_destroy)) {
 		free(shell);
 		return 0;
+	}
+
+	shell->debug = weston_log_ctx_add_log_scope(ec->weston_log_ctx,
+							"rdprail-shell",
+							"Debug messages from RDP-RAIL shell\n",
+							 NULL, NULL, NULL);
+	if (shell->debug) {
+		debug_level = getenv("WESTON_RDPRAIL_SHELL_DEBUG_LEVEL");
+		if (debug_level) {
+			shell->debugLevel = atoi(debug_level);
+			if (shell->debugLevel > RDPRAIL_SHELL_DEBUG_LEVEL_VERBOSE)
+				shell->debugLevel = RDPRAIL_SHELL_DEBUG_LEVEL_VERBOSE;
+		} else {
+			shell->debugLevel = RDPRAIL_SHELL_DEBUG_LEVEL_DEFAULT;
+		}
+	}
+	weston_log("RDPRAIL-shell: WESTON_RDPRAIL_SHELL_DEBUG_LEVEL: %d.\n", shell->debugLevel);
+
+	/* this make sure rdprail-shell to be used with only backend-rdp */
+	shell->rdprail_api = weston_rdprail_get_api(ec);
+	if (!shell->rdprail_api) {
+		shell_rdp_debug_error(shell, "Failed to obrain rdprail API.\n");
+		return -1;
 	}
 
 	shell_configuration(shell);
@@ -4251,24 +4191,32 @@ wet_shell_init(struct weston_compositor *ec,
 		shell->is_appid_with_distro_name = false;
 	else
 		shell->is_appid_with_distro_name = true;
+	shell_rdp_debug(shell, "WESTON_RDPRAIL_SHELL_DISABLE_APPEND_DISTRONAME_STARTMEN:%d\n",
+		shell->is_appid_with_distro_name);
 
 	icon_path = getenv("WSL2_DEFAULT_APP_ICON");
 	if (icon_path && (strcmp(icon_path, "disabled") != 0))
 		shell->image_default_app_icon = load_image(icon_path);
+	shell_rdp_debug(shell, "WSL2_DEFAULT_APP_ICON:%s\n", icon_path);
 
 	icon_path = getenv("WSL2_DEFAULT_APP_OVERLAY_ICON");
 	if (icon_path && (strcmp(icon_path, "disabled") != 0))
 		shell->image_default_app_overlay_icon = load_image(icon_path);
+	shell_rdp_debug(shell, "WSL2_DEFAULT_APP_OVERLAY_ICON:%s\n", icon_path);
 
 	if (getenv("WESTON_RDPRAIL_SHELL_DISABLE_BLEND_OVERLAY_ICON_TASKBAR"))
 		shell->is_blend_overlay_icon_taskbar = false;
 	else
 		shell->is_blend_overlay_icon_taskbar = true;
+	shell_rdp_debug(shell, "WESTON_RDPRAIL_SHELL_DISABLE_BLEND_OVERLAY_ICON_TASKBAR:%d\n",
+		shell->is_blend_overlay_icon_taskbar);
 
 	if (getenv("WESTON_RDPRAIL_SHELL_DISABLE_BLEND_OVERLAY_ICON_APPLIST"))
 		shell->is_blend_overlay_icon_app_list = false;
 	else
 		shell->is_blend_overlay_icon_app_list = true;
+	shell_rdp_debug(shell, "WESTON_RDPRAIL_SHELL_DISABLE_BLEND_OVERLAY_ICON_APPLIST:%d\n",
+		shell->is_blend_overlay_icon_app_list);
 
 	if (shell->rdprail_api->shell_initialize_notify)
 		shell->rdp_backend = shell->rdprail_api->shell_initialize_notify(ec, &rdprail_shell_api, (void*)shell, shell->distroName);

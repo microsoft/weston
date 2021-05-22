@@ -180,10 +180,11 @@ attach_app_list_namespace(struct desktop_shell *shell)
 	assert(false == context->isAppListNamespaceAttached);
 	if (context && context->app_list_pidfd > 0) {
 		assert(context->weston_pidfd > 0);
-		if (setns(context->app_list_pidfd, 0) == -1)
-			weston_log("attach_app_list_namespace failed %s\n", strerror(errno));
-		else
+		if (setns(context->app_list_pidfd, 0) == -1) {
+			shell_rdp_debug_error(shell, "attach_app_list_namespace failed %s\n", strerror(errno));
+		} else {
 			context->isAppListNamespaceAttached = true;
+		}
 	}
 }
 
@@ -194,7 +195,7 @@ detach_app_list_namespace(struct desktop_shell *shell)
 	if (context && context->weston_pidfd > 0 && context->isAppListNamespaceAttached) { 
 		if (setns(context->weston_pidfd, 0) == -1) {
 			/* TODO: when failed to go back, this is fatal, should terminate weston and restart? */
-			weston_log("detach_app_list_namespace failed %s\n", strerror(errno));
+			shell_rdp_debug_error(shell, "detach_app_list_namespace failed %s\n", strerror(errno));
 		} else {
 			context->isAppListNamespaceAttached = false;
 		}
@@ -696,14 +697,14 @@ app_list_monitor_thread(LPVOID arg)
 		shell_rdp_debug(shell, "app_list_monitor_thread: running in system-distro with user-distro: %s\n", shell->distroName);
 
 		if (unshare(CLONE_FS) < 0)
-			weston_log("app_list_monitor_thread: unshare(CLONE_FS) failed %s\n", strerror(errno));
+			shell_rdp_debug_error(shell, "app_list_monitor_thread: unshare(CLONE_FS) failed %s\n", strerror(errno));
 
 		/* obtain pidfd for current process */
 		pidfd_path = "/proc/self/ns/mnt";
 		shell_rdp_debug(shell, "app_list_monitor_thread: open(%s)\n", pidfd_path);
 		context->weston_pidfd = open(pidfd_path, O_RDONLY | O_CLOEXEC);
 		if (context->weston_pidfd < 0) {
-			weston_log("app_list_monitor_thread: open(%s) failed %s\n", pidfd_path, strerror(errno));
+			shell_rdp_debug_error(shell, "app_list_monitor_thread: open(%s) failed %s\n", pidfd_path, strerror(errno));
 			goto Exit;
 		}
 
@@ -712,7 +713,7 @@ app_list_monitor_thread(LPVOID arg)
 		shell_rdp_debug(shell, "app_list_monitor_thread: open(%s)\n", pidfd_path);
 		context->app_list_pidfd = open(pidfd_path, O_RDONLY | O_CLOEXEC);
 		if (context->app_list_pidfd < 0) {
-			weston_log("app_list_monitor_thread: open(%s) failed %s\n", pidfd_path, strerror(errno));
+			shell_rdp_debug_error(shell, "app_list_monitor_thread: open(%s) failed %s\n", pidfd_path, strerror(errno));
 			goto Exit;
 		}
 	} else {
@@ -730,7 +731,7 @@ app_list_monitor_thread(LPVOID arg)
 		for (int i = 0; i < (int)ARRAY_LENGTH(app_list_folder); i++) {
 			fd[num_watch] = inotify_init();
 			if (fd[num_watch] < 0) {
-				weston_log("app_list_monitor_thread: inotify_init[%d] failed %s\n", i, strerror(errno));
+				shell_rdp_debug_error(shell, "app_list_monitor_thread: inotify_init[%d] failed %s\n", i, strerror(errno));
 				continue;
 			}
 
@@ -760,7 +761,7 @@ app_list_monitor_thread(LPVOID arg)
 			shell_rdp_debug(shell, "app_list_monitor_thread: inotify_add_watch(%s)\n", folder);
 			wd[num_watch] = inotify_add_watch(fd[num_watch], folder, IN_CREATE|IN_DELETE|IN_MODIFY|IN_MOVED_TO|IN_MOVED_FROM);
 			if (wd[num_watch] < 0) {
-				weston_log("app_list_monitor_thread: inotify_add_watch failed: %s\n", strerror(errno));
+				shell_rdp_debug_error(shell, "app_list_monitor_thread: inotify_add_watch failed: %s\n", strerror(errno));
 				detach_app_list_namespace(shell);
 				close(fd[num_watch]);
 				fd[num_watch] = 0;
@@ -770,7 +771,7 @@ app_list_monitor_thread(LPVOID arg)
 
 			events[num_events] = GetFileHandleForFileDescriptor(fd[num_watch]);
 			if (!events[num_events]) {
-				weston_log("app_list_monitor_thread: GetFileHandleForFileDescriptor failed\n");
+				shell_rdp_debug_error(shell, "app_list_monitor_thread: GetFileHandleForFileDescriptor failed\n");
 				inotify_rm_watch(fd[num_watch], wd[num_watch]);
 				wd[num_watch] = 0;
 				close(fd[num_watch]);

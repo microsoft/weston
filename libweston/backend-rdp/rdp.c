@@ -400,7 +400,7 @@ rdp_switch_mode(struct weston_output *output, struct weston_mode *target_mode)
 
 	local_mode = ensure_matching_mode(output, target_mode);
 	if (!local_mode) {
-		weston_log("mode %dx%d not available\n", target_mode->width, target_mode->height);
+		rdp_debug_error(rdpBackend, "mode %dx%d not available\n", target_mode->width, target_mode->height);
 		return -ENOENT;
 	}
 
@@ -444,7 +444,7 @@ rdp_switch_mode(struct weston_output *output, struct weston_mode *target_mode)
 
 			if (!settings->DesktopResize) {
 				/* too bad this peer does not support desktop resize */
-				weston_log("%s: desktop resize is not allowed\n", __func__);
+				rdp_debug_error(rdpBackend, "%s: desktop resize is not allowed\n", __func__);
 				rdpPeer->peer->Close(rdpPeer->peer);
 			} else {
 				settings->DesktopWidth = target_mode->width;
@@ -595,7 +595,7 @@ rdp_output_enable(struct weston_output *base)
 								  NULL,
 								  output->base.current_mode->width * 4);
 		if (output->shadow_surface == NULL) {
-			weston_log("Failed to create surface for frame buffer.\n");
+			rdp_debug_error(b, "Failed to create surface for frame buffer.\n");
 			return -1;
 		}
 
@@ -653,7 +653,7 @@ rdp_output_attach_head(struct weston_output *output_base,
 	rdp_debug(b, "Head attaching: %s, index:%d, is_primary: %d\n",
 		head_base->name, h->index, h->monitorMode.monitorDef.is_primary);
 	if (!wl_list_empty(&output_base->head_list)) {
-		weston_log("attaching more than 1 head to single output (= clone) is not supported\n");
+		rdp_debug_error(b, "attaching more than 1 head to single output (= clone) is not supported\n");
 		return -1;
 	}
 	o->index = h->index;
@@ -952,16 +952,17 @@ rdp_client_activity(int fd, uint32_t mask, void *data)
 {
 	freerdp_peer* client = (freerdp_peer *)data;
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
+	struct rdp_backend *rdpBackend = peerCtx->rdpBackend;
 
 	if (!client->CheckFileDescriptor(client)) {
-		weston_log("unable to checkDescriptor for %p\n", client);
+		rdp_debug_error(rdpBackend, "unable to checkDescriptor for %p\n", client);
 		goto out_clean;
 	}
 
 	if (peerCtx && peerCtx->vcm)
 	{
 		if (!WTSVirtualChannelManagerCheckFileDescriptor(peerCtx->vcm)) {
-			weston_log("failed to check FreeRDP WTS VC file descriptor for %p\n", client);
+			rdp_debug_error(rdpBackend, "failed to check FreeRDP WTS VC file descriptor for %p\n", client);
 			goto out_clean;
         	}
 	}
@@ -1159,31 +1160,31 @@ xf_peer_activate(freerdp_peer* client)
 	settings = client->settings;
 
 	if (!settings->SurfaceCommandsEnabled) {
-		weston_log("client doesn't support required SurfaceCommands\n");
+		rdp_debug_error(b, "client doesn't support required SurfaceCommands\n");
 		return FALSE;
 	}
 
 	if (b->force_no_compression && settings->CompressionEnabled) {
-		weston_log("Forcing compression off\n");
+		rdp_debug_error(b, "Forcing compression off\n");
 		settings->CompressionEnabled = FALSE;
 	}
 
 	/* in RAIL mode, only one peer per backend can be activated */
 	if (settings->RemoteApplicationMode) {
 		if (b->rdp_peer != client) {
-			weston_log("Another RAIL connection active, only one connection is allowed.\n");
+			rdp_debug_error(b, "Another RAIL connection active, only one connection is allowed.\n");
 			return FALSE;
 		}
 
 		if (!settings->HiDefRemoteApp) {
 			/* HiDef is required for RAIL mode. Cookie-cutter window remoting is not supported. */
-			weston_log("HiDef-RAIL is required for RAIL.\n");
+			rdp_debug_error(b, "HiDef-RAIL is required for RAIL.\n");
 			return FALSE;
 		}
 
 		/* in HiDef RAIL mode, RAIL-shell must be used */
 		if (b->rdprail_shell_api == NULL) {
-			weston_log("HiDef-RAIL is requested from client, but RAIL-shell is not used\n");
+			rdp_debug_error(b, "HiDef-RAIL is requested from client, but RAIL-shell is not used\n");
 			return FALSE;
 		}
 	}
@@ -1213,7 +1214,7 @@ xf_peer_activate(freerdp_peer* client)
 		settings->AudioCapture) {
 
 		if (!peerCtx->vcm) {
-			weston_log("Virtual channel is required for RAIL, clipboard, audio playback/capture\n");
+			rdp_debug_error(b, "Virtual channel is required for RAIL, clipboard, audio playback/capture\n");
 			goto error_exit;
 		}
 
@@ -1243,7 +1244,7 @@ xf_peer_activate(freerdp_peer* client)
 		/* multiple monitor is not supported in non-HiDef */
 		assert(b->output_default);
 		output = b->output_default;
-		weston_log("%s: DesktopWidth:%d, DesktopHeigh:%d, DesktopScaleFactor:%d\n", __FUNCTION__,
+		rdp_debug_error(b, "%s: DesktopWidth:%d, DesktopHeigh:%d, DesktopScaleFactor:%d\n", __FUNCTION__,
 			settings->DesktopWidth, settings->DesktopHeight, settings->DesktopScaleFactor);
 		if (output->base.width != (int)settings->DesktopWidth ||
 			output->base.height != (int)settings->DesktopHeight) {
@@ -1251,7 +1252,7 @@ xf_peer_activate(freerdp_peer* client)
 				/* RDP peers don't dictate their resolution to weston */
 				if (!settings->DesktopResize) {
 					/* peer does not support desktop resize */
-					weston_log("%s: client doesn't support resizing, closing connection\n", __FUNCTION__);
+					rdp_debug_error(b, "%s: client doesn't support resizing, closing connection\n", __FUNCTION__);
 					goto error_exit;
 				} else {
 					settings->DesktopWidth = output->base.width;
@@ -1266,7 +1267,7 @@ xf_peer_activate(freerdp_peer* client)
 				new_mode.height = (int)settings->DesktopHeight;
 				target_mode = ensure_matching_mode(&output->base, &new_mode);
 				if (!target_mode) {
-					weston_log("client mode not found\n");
+					rdp_debug_error(b, "client mode not found\n");
 					goto error_exit;
 				}
 				weston_output_mode_set_native(&output->base, target_mode,
@@ -1286,7 +1287,7 @@ xf_peer_activate(freerdp_peer* client)
 
 		weston_output = &output->base;
 
-		weston_log("%s: OutputWidth:%d, OutputHeight:%d, OutputScaleFactor:%d\n", __FUNCTION__,
+		rdp_debug(b, "%s: OutputWidth:%d, OutputHeight:%d, OutputScaleFactor:%d\n", __FUNCTION__,
 			weston_output->width, weston_output->height, weston_output->scale);
 
 		pixman_region32_clear(&peerCtx->regionWestonHeads);
@@ -1330,7 +1331,7 @@ xf_peer_activate(freerdp_peer* client)
 	peersItem->seat = zalloc(sizeof(*peersItem->seat));
 	if (!peersItem->seat) {
 		xkb_keymap_unref(keymap);
-		weston_log("unable to create a weston_seat\n");
+		rdp_debug_error(b, "unable to create a weston_seat\n");
 		goto error_exit;
 	}
 
@@ -1707,7 +1708,11 @@ exit:
 static FREERDP_CB_RET_TYPE
 xf_input_unicode_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 {
-	weston_log("Client sent a unicode keyboard event (flags:0x%X code:0x%X)\n", flags, code);
+	RdpPeerContext *peerContext = (RdpPeerContext *)input->context;
+	struct rdp_backend *b = peerContext->rdpBackend;
+
+	rdp_debug_error(b, "Client sent a unicode keyboard event (flags:0x%X code:0x%X)\n", flags, code);
+
 	FREERDP_CB_RETURN(TRUE);
 }
 
@@ -1774,7 +1779,7 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 	settings->NlaSecurity = FALSE;
 
 	if (!client->Initialize(client)) {
-		weston_log("peer initialization failed\n");
+		rdp_debug_error(b, "peer initialization failed\n");
 		goto error_initialize;
 	}
 
@@ -1813,7 +1818,7 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 	input->UnicodeKeyboardEvent = xf_input_unicode_keyboard_event;
 
 	if (!client->GetFileDescriptor(client, rfds, &rcount)) {
-		weston_log("unable to retrieve client fds\n");
+		rdp_debug_error(b, "unable to retrieve client fds\n");
 		goto error_initialize;
 	}
 
@@ -1826,7 +1831,7 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 		/* event must be valid when server is successfully opened */
 		assert(peerCtx->eventVcm);
 	} else {
-		weston_log("WTSOpenServer is failed! continue without virtual channel.\n");
+		rdp_debug_error(b, "WTSOpenServer is failed! continue without virtual channel.\n");
 	}
 
 	loop = wl_display_get_event_loop(b->compositor->wl_display);
@@ -1878,7 +1883,7 @@ rdp_incoming_peer(freerdp_listener *instance, freerdp_peer *client)
 {
 	struct rdp_backend *b = (struct rdp_backend *)instance->param4;
 	if (rdp_peer_init(client, b) < 0) {
-		weston_log("error when treating incoming peer\n");
+		rdp_debug_error(b, "error when treating incoming peer\n");
 		FREERDP_CB_RETURN(FALSE);
 	}
 
@@ -1968,22 +1973,19 @@ static int create_vsock_fd(int port)
 
 	int socket_fd = socket(AF_VSOCK, SOCK_STREAM | SOCK_CLOEXEC, 0);
 
-	if (socket_fd < 0)
-	{
+	if (socket_fd < 0) {
 		weston_log("Fail to create vsocket");
 		return -1;
 	}
 
 	const int bufferSize = 65536;
 
-	if (setsockopt(socket_fd, SOL_SOCKET, SO_SNDBUF, &bufferSize, sizeof(bufferSize)) < 0)
-	{
+	if (setsockopt(socket_fd, SOL_SOCKET, SO_SNDBUF, &bufferSize, sizeof(bufferSize)) < 0) {
 		weston_log("Fail to setsockopt SO_SNDBUF");
 		return -1;
 	}
 
-	if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVBUF, &bufferSize, sizeof(bufferSize)) < 0)
-	{
+	if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVBUF, &bufferSize, sizeof(bufferSize)) < 0) {
 		weston_log("Fail to setsockopt SO_RCVBUF");
 		return -1;
 	}
@@ -1996,8 +1998,7 @@ static int create_vsock_fd(int port)
 
 	socklen_t socket_addr_size = sizeof(socket_address);
 
-	if (bind(socket_fd, (const struct sockaddr *)&socket_address, socket_addr_size) < 0)
-	{
+	if (bind(socket_fd, (const struct sockaddr *)&socket_address, socket_addr_size) < 0) {
 		weston_log("Fail to bind socket to address socket");
 		close(socket_fd);
 		return -2;
@@ -2005,8 +2006,7 @@ static int create_vsock_fd(int port)
 
 	int status = listen(socket_fd, 1);
 
-	if (status != 0)
-	{
+	if (status != 0) {
 		weston_log("Fail to listen on socket");
 		close(socket_fd);
 		return -4;
@@ -2084,7 +2084,7 @@ rdp_backend_create(struct weston_compositor *compositor,
 			b->debugLevel = RDP_DEBUG_LEVEL_DEFAULT;
 		}
 	}
-	weston_log("RDP backend: WESTON_RDP_DEBUG_LEVEL: %d\n", b->debugLevel);
+	rdp_debug(b, "RDP backend: WESTON_RDP_DEBUG_LEVEL: %d\n", b->debugLevel);
 	/* After here, rdp_debug() is ready to be used */
 
 	s = getenv("WESTON_RDP_MONITOR_REFRESH_RATE");
@@ -2122,7 +2122,7 @@ rdp_backend_create(struct weston_compositor *compositor,
 	#if HAVE_OPENSSL
 			rdp_generate_session_tls(b);
 	#else
-			weston_log("the RDP compositor requires keys and an optional certificate for RDP or TLS security ("
+			rdp_debug_error(b, "the RDP compositor requires keys and an optional certificate for RDP or TLS security ("
 					"--rdp4-key or --rdp-tls-cert/--rdp-tls-key)\n");
 			goto err_free_strings;
 	#endif
@@ -2130,7 +2130,7 @@ rdp_backend_create(struct weston_compositor *compositor,
 
 		/* activate TLS only if certificate/key are available */
 		if (is_tls_enabled(b)) {
-			weston_log("TLS support activated\n");
+			rdp_debug_error(b, "TLS support activated\n");
 		} else if (!b->rdp_key) {
 			goto err_free_strings;
 		}
@@ -2155,15 +2155,15 @@ rdp_backend_create(struct weston_compositor *compositor,
 		b->listener->PeerAccepted = rdp_incoming_peer;
 		b->listener->param4 = b;
 		if (fd > 0) {
-			weston_log("Using VSOCK for incoming connections: %d\n", fd);
+			rdp_debug_error(b, "Using VSOCK for incoming connections: %d\n", fd);
 
 			if (!b->listener->OpenFromSocket(b->listener, fd)) {
-				weston_log("unable opem from socket fd: %d\n", fd);
+				rdp_debug_error(b, "unable opem from socket fd: %d\n", fd);
 				goto err_listener;
 			}
 		} else {
 			if (!b->listener->Open(b->listener, config->bind_address, config->port)) {
-				weston_log("unable to bind rdp socket\n");
+				rdp_debug_error(b, "unable to bind rdp socket\n");
 				goto err_listener;
 			}
 		}
@@ -2174,7 +2174,7 @@ rdp_backend_create(struct weston_compositor *compositor,
 		/* get the socket from RDP_FD var */
 		fd_str = getenv("RDP_FD");
 		if (!fd_str) {
-			weston_log("RDP_FD env variable not set\n");
+			rdp_debug_error(b, "RDP_FD env variable not set\n");
 			goto err_output;
 		}
 
@@ -2188,7 +2188,7 @@ rdp_backend_create(struct weston_compositor *compositor,
 					 &api, sizeof(api));
 
 	if (ret < 0) {
-		weston_log("Failed to register output API.\n");
+		rdp_debug_error(b, "Failed to register output API.\n");
 		goto err_output;
 	}
 

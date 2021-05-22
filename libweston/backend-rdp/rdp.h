@@ -125,8 +125,10 @@
 
 struct rdp_output;
 struct rdp_clipboard_data_source;
+struct rdp_backend;
 
 struct rdp_id_manager {
+	struct rdp_backend *rdp_backend;
 	UINT32 id;
 	UINT32 id_low_limit;
 	UINT32 id_high_limit;
@@ -384,9 +386,9 @@ typedef struct rdp_peer_context RdpPeerContext;
 #define RDP_DEBUG_LEVEL_DEBUG   4
 #define RDP_DEBUG_LEVEL_VERBOSE 5
 
+/* To enable rdp_debug message, add "--logger-scopes=rdp-backend". */
 #define RDP_DEBUG_LEVEL_DEFAULT RDP_DEBUG_LEVEL_INFO
 
-/* To enable rdp_debug message, add "--logger-scopes=rdp-backend". */
 #define rdp_debug_verbose(b, ...) \
 	if (b->debugLevel >= RDP_DEBUG_LEVEL_VERBOSE) \
 		rdp_debug_print(b->debug, false, __VA_ARGS__)
@@ -399,8 +401,13 @@ typedef struct rdp_peer_context RdpPeerContext;
 #define rdp_debug_continue(b, ...) \
 	if (b->debugLevel >= RDP_DEBUG_LEVEL_INFO) \
 		rdp_debug_print(b->debug, true,  __VA_ARGS__)
+#define rdp_debug_error(b, ...) \
+	if (b->debugLevel >= RDP_DEBUG_LEVEL_ERR) \
+		rdp_debug_print(b->debug, false, __VA_ARGS__)
 
 /* To enable rdp_debug_clipboard message, add "--logger-scopes=rdp-backend-clipboard". */
+#define RDP_DEBUG_CLIPBOARD_LEVEL_DEFAULT RDP_DEBUG_LEVEL_ERR
+
 #define rdp_debug_clipboard_verbose(b, ...) \
 	if (b->debugClipboardLevel >= RDP_DEBUG_LEVEL_VERBOSE) \
 		rdp_debug_print(b->debugClipboard, false, __VA_ARGS__)
@@ -413,6 +420,9 @@ typedef struct rdp_peer_context RdpPeerContext;
 #define rdp_debug_clipboard_continue(b, ...) \
 	if (b->debugClipboardLevel >= RDP_DEBUG_LEVEL_INFO) \
 		rdp_debug_print(b->debugClipboard, true,  __VA_ARGS__)
+#define rdp_debug_clipboard_error(b, ...) \
+	if (b->debugClipboardLevel >= RDP_DEBUG_LEVEL_ERR) \
+		rdp_debug_print(b->debugClipboard, false, __VA_ARGS__)
 
 /* To enable rdp_debug message, add "--logger-scopes=rdp-backend". */
 
@@ -430,7 +440,7 @@ void assert_not_compositor_thread(struct rdp_backend *b);
 #endif // ENABLE_RDP_THREAD_CHECK
 BOOL rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *shared_memory);
 void rdp_free_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *shared_memory);
-BOOL rdp_id_manager_init(struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 high_limit);
+BOOL rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 high_limit);
 void rdp_id_manager_free(struct rdp_id_manager *id_manager);
 BOOL rdp_id_manager_allocate_id(struct rdp_id_manager *id_manager, void *object, UINT32 *new_id);
 void rdp_id_manager_free_id(struct rdp_id_manager *id_manager, UINT32 id);
@@ -475,10 +485,11 @@ rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_idle_f
 		ASSERT_NOT_COMPOSITOR_THREAD(b);
 		struct wl_event_loop *loop = wl_display_get_event_loop(b->compositor->wl_display);
 		struct wl_event_source *event_source = wl_event_loop_add_idle(loop, func, data);
-		if (event_source)
+		if (event_source) {
 			SetEvent(peerCtx->eventVcm);
-		else
-			weston_log("%s: wl_event_loop_add_idle failed\n", __func__);
+		} else {
+			rdp_debug_error(b, "%s: wl_event_loop_add_idle failed\n", __func__);
+		}
 		return event_source;
 	} else {
 		/* RDP server is not opened, this must not be used */

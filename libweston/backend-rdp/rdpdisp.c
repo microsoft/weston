@@ -377,12 +377,12 @@ disp_monitor_validate_and_compute_layout(RdpPeerContext *peerCtx, struct rdp_mon
 		if (monitorMode[i].monitorDef.is_primary) {
 			/* count number of primary */
 			if (++primaryCount > 1) {
-				weston_log("%s: RDP client reported unexpected primary count (%d)\n",__func__, primaryCount);
+				rdp_debug_error(b, "%s: RDP client reported unexpected primary count (%d)\n",__func__, primaryCount);
 				return FALSE;
 			}
 			/* primary must be at (0,0) in client space */
 			if (monitorMode[i].monitorDef.x != 0 || monitorMode[i].monitorDef.y != 0) {
-				weston_log("%s: RDP client reported primary is not at (0,0) but (%d,%d).\n",
+				rdp_debug_error(b, "%s: RDP client reported primary is not at (0,0) but (%d,%d).\n",
 					__func__, monitorMode[i].monitorDef.x, monitorMode[i].monitorDef.y);
 				return FALSE;
 			}
@@ -463,7 +463,7 @@ disp_monitor_validate_and_compute_layout(RdpPeerContext *peerCtx, struct rdp_mon
 
 	if (isScalingUsed && (!isConnected_H && !isConnected_V)) {
 		/* scaling can't be supported in complex monitor placement */
-		weston_log("\nWARNING\nWARNING\nWARNING: Scaling is used, but can't be supported in complex monitor placement\nWARNING\nWARNING\n");
+		rdp_debug_error(b, "\nWARNING\nWARNING\nWARNING: Scaling is used, but can't be supported in complex monitor placement\nWARNING\nWARNING\n");
 		isScalingSupported = false;
 	}
 
@@ -537,7 +537,7 @@ disp_monitor_layout_change(DispServerContext* context, const DISPLAY_CONTROL_MON
 	assert(settings->HiDefRemoteApp);
 
 	if (displayControl->NumMonitors > RDP_MAX_MONITOR) {
-		weston_log("\nWARNING\nWARNING\nWARNING: client reports more monitors then expected:(%d)\nWARNING\nWARNING\n",
+		rdp_debug_error(b, "\nWARNING\nWARNING\nWARNING: client reports more monitors then expected:(%d)\nWARNING\nWARNING\n",
 			displayControl->NumMonitors);
 		return;
 	}
@@ -677,12 +677,12 @@ xf_peer_adjust_monitor_layout(freerdp_peer* client)
 	/* If not in RAIL mode, or RAIL-shell is not used, only signle mon is allowed */
 	if (!settings->HiDefRemoteApp || b->rdprail_shell_api == NULL) {
 	 	if (settings->MonitorCount > 1) {
-			weston_log("\nWARNING\nWARNING\nWARNING: multiple monitor is not supported in non HiDef RAIL mode\nWARNING\nWARNING\n");
+			rdp_debug_error(b, "\nWARNING\nWARNING\nWARNING: multiple monitor is not supported in non HiDef RAIL mode\nWARNING\nWARNING\n");
 			return FALSE;
 		}
 	}
 	if (settings->MonitorCount > RDP_MAX_MONITOR) {
-		weston_log("\nWARNING\nWARNING\nWARNING: client reports more monitors then expected:(%d)\nWARNING\nWARNING\n",
+		rdp_debug_error(b, "\nWARNING\nWARNING\nWARNING: client reports more monitors then expected:(%d)\nWARNING\nWARNING\n",
 			settings->MonitorCount);
 		return FALSE;
 	}

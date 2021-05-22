@@ -277,14 +277,14 @@ rdp_audioin_setup_listener(RdpPeerContext *peerCtx)
 
 	fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd < 0) {
-		weston_log("Couldn't create audioin listener socket.\n");
+		rdp_debug_error(b, "Couldn't create audioin listener socket.\n");
 		return -1;
 	}
 
 	source_socket_path = getenv("PULSE_AUDIO_RDP_SOURCE");
 	if (source_socket_path == NULL || source_socket_path[0] == '\0') {
 		close(fd);
-		weston_log("Environment variable PULSE_AUDIO_RDP_SOURCE not set.\n");
+		rdp_debug_error(b, "Environment variable PULSE_AUDIO_RDP_SOURCE not set.\n");
 		return -1;
 	}
 
@@ -299,7 +299,7 @@ rdp_audioin_setup_listener(RdpPeerContext *peerCtx)
 	error = bind(fd, (struct sockaddr *)&s, sizeof(struct sockaddr_un));
 	if (error != 0) {
 		close(fd);
-		weston_log("Failed to bind to listener socket for audioin (%d).\n", error);
+		rdp_debug_error(b, "Failed to bind to listener socket for audioin (%d).\n", error);
 		return -1;
 	}
     
@@ -338,7 +338,7 @@ rdp_audioin_client_opening(audin_server_context* context)
 	}
 
 	if (format == -1) {
-		weston_log("RDPAudioIn - No agreeded format.\n");
+		rdp_debug_error(b, "RDPAudioIn - No agreeded format.\n");
 		return ERROR_INVALID_DATA;
 	}
 
@@ -371,7 +371,7 @@ rdp_audioin_client_receive_samples(
 	struct rdp_backend *b = peerCtx->rdpBackend;
 
 	if (!peerCtx->isAudioInStreamOpened || peerCtx->pulseAudioSourceFd == -1) {
-		weston_log("RDPAudioIn - audio stream is not opened.\n");
+		rdp_debug_error(b, "RDPAudioIn - audio stream is not opened.\n");
 		return 0;
 	}
 
@@ -391,7 +391,7 @@ rdp_audioin_client_receive_samples(
 			/* Unblock worker thread to close pipe to pulseaudio */
 			uint64_t one=1;
 			if (write(peerCtx->closeAudioSourceFd, &one, sizeof(one)) != sizeof(uint64_t)) {
-				weston_log("RDP AudioIn error at receive_samples while writing to closeAudioSourceFd (%s)\n", strerror(errno));
+				rdp_debug_error(b, "RDP AudioIn error at receive_samples while writing to closeAudioSourceFd (%s)\n", strerror(errno));
 				return ERROR_INTERNAL_ERROR;
 			}
 
@@ -420,18 +420,18 @@ rdp_audioin_source_thread(void *context)
 
 	sigemptyset(&set);
 	if (sigaddset(&set, SIGUSR2) == -1) {
-		weston_log("AudioIn source thread: sigaddset(SIGUSR2) failed.\n");
+		rdp_debug_error(b, "AudioIn source thread: sigaddset(SIGUSR2) failed.\n");
 		return NULL;
 	}
 	if (pthread_sigmask(SIG_UNBLOCK, &set, NULL) != 0) {
-		weston_log("AudioIn source thread: pthread_sigmask(SIG_UNBLOCK,SIGUSR2) failed.\n");
+		rdp_debug_error(b, "AudioIn source thread: pthread_sigmask(SIG_UNBLOCK,SIGUSR2) failed.\n");
 		return NULL;
 	}
 	act.sa_flags = 0;
 	act.sa_mask = set;
 	act.sa_handler = &signalhandler;
 	if (sigaction(SIGUSR2, &act, NULL) == -1) {
-		weston_log("AudioIn source thread: sigaction(SIGUSR2) failed.\n");
+		rdp_debug_error(b, "AudioIn source thread: sigaction(SIGUSR2) failed.\n");
 		return NULL;
 	}
  
@@ -451,7 +451,7 @@ rdp_audioin_source_thread(void *context)
 		 */   
 		peerCtx->pulseAudioSourceFd = accept(peerCtx->pulseAudioSourceListenerFd, NULL, NULL);
 		if (peerCtx->pulseAudioSourceFd < 0) {
-			weston_log("AudioIn source thread: Listener connection error (%s)\n", strerror(errno));
+			rdp_debug_error(b, "AudioIn source thread: Listener connection error (%s)\n", strerror(errno));
 			continue;
 		} else {
 			rdp_debug(b, "AudioIn connection successful on socket (%d).\n", peerCtx->pulseAudioSourceFd);
@@ -462,13 +462,13 @@ rdp_audioin_source_thread(void *context)
 				 */
 				uint64_t dummy;
 				if (read(peerCtx->closeAudioSourceFd, &dummy, sizeof(dummy)) != sizeof(uint64_t)) {
-					weston_log("RDP AudioIn wait on eventfd failed. thread exiting. %s\n", strerror(errno));
+					rdp_debug_error(b, "RDP AudioIn wait on eventfd failed. thread exiting. %s\n", strerror(errno));
 					break;
 				}
 				peerCtx->audin_server_context->Close(peerCtx->audin_server_context);
 				rdp_debug(b, "RDP AudioIn closed.\n");
 			} else {
-				weston_log("Failed to open audio in connection with RDP client.\n");
+				rdp_debug_error(b, "Failed to open audio in connection with RDP client.\n");
 			}
 
 			close(peerCtx->pulseAudioSourceFd);
@@ -490,9 +490,11 @@ rdp_audioin_source_thread(void *context)
 int 
 rdp_audioin_init(RdpPeerContext *peerCtx)
 {
+	struct rdp_backend *b = peerCtx->rdpBackend;
+
 	peerCtx->audin_server_context = audin_server_context_new(peerCtx->vcm);
 	if (!peerCtx->audin_server_context) {
-		weston_log("RDPAudioIn - Couldn't initialize audio virtual channel.\n");
+		rdp_debug_error(b, "RDPAudioIn - Couldn't initialize audio virtual channel.\n");
 		return 0; // Continue without audio
 	}
 
@@ -505,7 +507,7 @@ rdp_audioin_init(RdpPeerContext *peerCtx)
 	// this will be freed by FreeRDP at audin_server_context_free.
 	AUDIO_FORMAT *audio_formats = malloc(sizeof rdp_audioin_supported_audio_formats);
 	if (!audio_formats) {
-		weston_log("RDPAudioIn - Couldn't allocate memory for audio formats.\n");
+		rdp_debug_error(b, "RDPAudioIn - Couldn't allocate memory for audio formats.\n");
 		goto Error_Exit;
 	}
 	memcpy(audio_formats, rdp_audioin_supported_audio_formats, sizeof rdp_audioin_supported_audio_formats);
@@ -521,18 +523,18 @@ rdp_audioin_init(RdpPeerContext *peerCtx)
 
 	peerCtx->closeAudioSourceFd = eventfd(0, EFD_CLOEXEC);
 	if (peerCtx->closeAudioSourceFd < 0) {
-		weston_log("RDPAudioIn - Couldn't initialize eventfd.\n");
+		rdp_debug_error(b, "RDPAudioIn - Couldn't initialize eventfd.\n");
 		goto Error_Exit;
 	}
 
 	peerCtx->pulseAudioSourceListenerFd = rdp_audioin_setup_listener(peerCtx);
 	if (peerCtx->pulseAudioSourceListenerFd < 0) {
-		weston_log("RDPAudioIn - rdp_audioin_setup_listener failed.\n");
+		rdp_debug_error(b, "RDPAudioIn - rdp_audioin_setup_listener failed.\n");
 		goto Error_Exit;
 	}
 
 	if (pthread_create(&peerCtx->pulseAudioSourceThread, NULL, rdp_audioin_source_thread, (void*)peerCtx) < 0) {
-		weston_log("RDPAudioIn - Failed to start Pulse Audio Source Thread. No audio in will be available.\n");
+		rdp_debug_error(b, "RDPAudioIn - Failed to start Pulse Audio Source Thread. No audio in will be available.\n");
 		goto Error_Exit;
 	}
 

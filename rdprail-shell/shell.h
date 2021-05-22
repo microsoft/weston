@@ -49,6 +49,9 @@
 #define shell_rdp_debug(b, ...) \
 	if (b->debugLevel >= RDPRAIL_SHELL_DEBUG_LEVEL_INFO) \
 		shell_rdp_debug_print(b->debug, false, __VA_ARGS__)
+#define shell_rdp_debug_error(b, ...) \
+	if (b->debugLevel >= RDPRAIL_SHELL_DEBUG_LEVEL_ERR) \
+		shell_rdp_debug_print(b->debug, false, __VA_ARGS__)
 
 #define is_system_distro() (getenv("WSL2_VM_ID") != NULL)
 

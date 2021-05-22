@@ -128,7 +128,7 @@ rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memor
 	char path[b->shared_memory_mount_path_size + 1 + RDP_SHARED_MEMORY_NAME_SIZE + 1];
 
 	if (shared_memory->size <= 0) {
-		weston_log("%s: invalid size %ld\n",
+		rdp_debug_error(b, "%s: invalid size %ld\n",
 			__func__, shared_memory->size);
 		goto error_exit;
 	}
@@ -139,12 +139,12 @@ rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memor
 	if (shared_memory->name[0] == '\0') {
 		int fd_uuid = open("/proc/sys/kernel/random/uuid", O_RDONLY);
 		if (fd_uuid < 0) {
-			weston_log("%s: open uuid failed with error %s\n",
+			rdp_debug_error(b, "%s: open uuid failed with error %s\n",
 				__func__, strerror(errno));
 			goto error_exit;
 		}
 		if (read(fd_uuid, &shared_memory->name[1], 32 + 4) < 0) {
-			weston_log("%s: read uuid failed with error %s\n",
+			rdp_debug_error(b, "%s: read uuid failed with error %s\n",
 				__func__, strerror(errno));
 			goto error_exit;
 		}
@@ -156,7 +156,7 @@ rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memor
 		(shared_memory->name[0] != '{') ||
 		(shared_memory->name[RDP_SHARED_MEMORY_NAME_SIZE - 1] != '}') ||
 		(shared_memory->name[RDP_SHARED_MEMORY_NAME_SIZE] != '\0')) {
-		weston_log("%s: name is not in GUID form \"%s\"\n",
+		rdp_debug_error(b, "%s: name is not in GUID form \"%s\"\n",
 			__func__, shared_memory->name);
 		goto error_exit;
 	}
@@ -167,20 +167,20 @@ rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memor
 
 	fd = open(path, O_CREAT | O_RDWR, 00600);
 	if (fd < 0) {
-		weston_log("%s: Failed to open \"%s\" with error: %s\n",
+		rdp_debug_error(b, "%s: Failed to open \"%s\" with error: %s\n",
 			__func__, path, strerror(errno));
 		goto error_exit;
 	}
 
 	if (fallocate(fd, 0, 0, shared_memory->size) < 0) {
-		weston_log("%s: Failed to allocate %d: \"%s\" %ld bytes with error: %s\n",
+		rdp_debug_error(b, "%s: Failed to allocate %d: \"%s\" %ld bytes with error: %s\n",
 			__func__, fd, path, shared_memory->size, strerror(errno));
 		goto error_exit;
 	}
 
 	addr = mmap(NULL, shared_memory->size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	if (addr == MAP_FAILED) {
-		weston_log("%s: Failed to mmmap %d: \"%s\" %ld bytes with error: %s\n",
+		rdp_debug_error(b, "%s: Failed to mmmap %d: \"%s\" %ld bytes with error: %s\n",
 			__func__, fd, path, shared_memory->size, strerror(errno));
 		goto error_exit;
 	}
@@ -222,9 +222,10 @@ rdp_free_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *s
 }
 
 BOOL
-rdp_id_manager_init(struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 high_limit)
+rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 high_limit)
 {
 	assert(low_limit < high_limit);
+	id_manager->rdp_backend = rdp_backend;
 	id_manager->id_total = high_limit - low_limit;
 	id_manager->id_used = 0;
 	id_manager->id_low_limit = low_limit;
@@ -232,7 +233,7 @@ rdp_id_manager_init(struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 
 	id_manager->id = low_limit;
 	id_manager->hash_table = hash_table_create();
 	if (!id_manager->hash_table)
-		weston_log("%s: unable to create hash_table.\n", __func__);
+		rdp_debug_error(rdp_backend, "%s: unable to create hash_table.\n", __func__);
 	return id_manager->hash_table != NULL;
 }
 
@@ -240,7 +241,7 @@ void
 rdp_id_manager_free(struct rdp_id_manager *id_manager)
 {
 	if (id_manager->id_used != 0)
-		weston_log("%s: possible id leak: %d\n", __func__, id_manager->id_used);
+		rdp_debug_error(id_manager->rdp_backend, "%s: possible id leak: %d\n", __func__, id_manager->id_used);
 	if (id_manager->hash_table) {
 		hash_table_destroy(id_manager->hash_table);
 		id_manager->hash_table = NULL;
@@ -250,6 +251,7 @@ rdp_id_manager_free(struct rdp_id_manager *id_manager)
 	id_manager->id_high_limit = 0;
 	id_manager->id_total = 0;
 	id_manager->id_used = 0;
+	id_manager->rdp_backend = NULL;
 }
 
 BOOL

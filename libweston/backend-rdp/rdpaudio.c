@@ -298,14 +298,14 @@ rdp_audio_setup_listener(RdpPeerContext *peerCtx)
 
 	fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd < 0) {
-		weston_log("Couldn't create listener socket.\n");
+		rdp_debug_error(b, "Couldn't create listener socket.\n");
 		return -1;
 	}
 
 	sink_socket_path = getenv("PULSE_AUDIO_RDP_SINK");
 	if (sink_socket_path == NULL || sink_socket_path[0] == '\0') {
 		close(fd);
-		weston_log("Environment variable PULSE_AUDIO_RDP_SINK not set.\n");
+		rdp_debug_error(b, "Environment variable PULSE_AUDIO_RDP_SINK not set.\n");
 		return -1;
 	}
 
@@ -320,7 +320,7 @@ rdp_audio_setup_listener(RdpPeerContext *peerCtx)
 	error = bind(fd, (struct sockaddr *)&s, sizeof(struct sockaddr_un));
 	if (error != 0) {
 		close(fd);
-		weston_log("Failed to bind to listener socket (%d).\n", error);
+		rdp_debug_error(b, "Failed to bind to listener socket (%d).\n", error);
 		return -1;
 	}
     
@@ -343,6 +343,7 @@ rdp_audio_client_confirm_block(
 	UINT16 wtimestamp)
 {
 	RdpPeerContext *peerCtx = (RdpPeerContext*)context->data;
+	struct rdp_backend *b = peerCtx->rdpBackend;
 
 	if (peerCtx->blockInfo[confirmBlockNum].ackReceivedTime != 0) {
 		assert(peerCtx->blockInfo[confirmBlockNum].ackPlayedTime == 0);
@@ -363,7 +364,7 @@ rdp_audio_client_confirm_block(
 
 		uint64_t one = 1;
 		if (write(peerCtx->audioInSem, &one, sizeof(one)) != sizeof(uint64_t)) {
-			weston_log("RDP Audio error at confirm_block while writing to audioInSem (%s)\n", strerror(errno));
+			rdp_debug_error(b, "RDP Audio error at confirm_block while writing to audioInSem (%s)\n", strerror(errno));
 			return ERROR_INTERNAL_ERROR;
 		}
 
@@ -395,7 +396,7 @@ rdp_audio_handle_version(
 	sizeSent = send(peerCtx->pulseAudioSinkFd, &version, 
 			sizeof(version), MSG_DONTWAIT);
 	if (sizeSent != sizeof(version)) {
-		weston_log("RDP audio error responding to version request sent:%ld. %s\n",
+		rdp_debug_error(b, "RDP audio error responding to version request sent:%ld. %s\n",
 			sizeSent, strerror(errno));
 		return -1;
 	}
@@ -409,6 +410,7 @@ rdp_audio_handle_transfer(
 	UINT bytesLeft,
 	UINT64 timestamp)
 {
+	struct rdp_backend *b = peerCtx->rdpBackend;
 	int nbFrames = bytesLeft / peerCtx->bytesPerFrame;
 	UINT bytesRead = 0;
 	ssize_t sizeRead = 0;
@@ -419,7 +421,7 @@ rdp_audio_handle_transfer(
 
 		peerCtx->audioBuffer = zalloc(bytesLeft);
 		if (!peerCtx->audioBuffer) {
-			weston_log("RDP Audio error zalloc(%d) failed.\n", bytesLeft);
+			rdp_debug_error(b, "RDP Audio error zalloc(%d) failed.\n", bytesLeft);
 			return -1;
 		}
 		peerCtx->audioBufferSize = bytesLeft;
@@ -434,7 +436,7 @@ rdp_audio_handle_transfer(
 		sizeRead = read(peerCtx->pulseAudioSinkFd, 
 				peerCtx->audioBuffer + bytesRead, bytesLeft);
 		if (sizeRead <= 0) {
-			weston_log("RDP Audio error while reading data from sink socket sizeRead:%ld. %s\n", sizeRead, strerror(errno));
+			rdp_debug_error(b, "RDP Audio error while reading data from sink socket sizeRead:%ld. %s\n", sizeRead, strerror(errno));
 			return -1;
 		}
 		bytesRead += sizeRead;
@@ -453,7 +455,7 @@ rdp_audio_handle_transfer(
 		 */
 		uint64_t dummy;
 		if (read(peerCtx->audioInSem, &dummy, sizeof(dummy)) != sizeof(uint64_t)) {
-			weston_log("RDP Audio error at handle_transfer while reading from audioInSem (%s)\n", strerror(errno));
+			rdp_debug_error(b, "RDP Audio error at handle_transfer while reading from audioInSem (%s)\n", strerror(errno));
 			return -1;
 		}
 
@@ -471,7 +473,7 @@ rdp_audio_handle_transfer(
 							    audioBuffer,
 							    MIN(nbFrames, AUDIO_FRAMES_PER_RDP_PACKET),
 							    0) != 0) {
-			weston_log("RDP Audio error while SendSamples\n");
+			rdp_debug_error(b, "RDP Audio error while SendSamples\n");
 			return -1;
 		}
 
@@ -481,7 +483,7 @@ rdp_audio_handle_transfer(
 			 */
 			uint64_t one = 1;
 			if (write(peerCtx->audioInSem, &one, sizeof(one)) != sizeof(uint64_t)) {
-				weston_log("RDP Audio error at handle_transfer while writing to audioInSem (%s)\n", strerror(errno));
+				rdp_debug_error(b, "RDP Audio error at handle_transfer while writing to audioInSem (%s)\n", strerror(errno));
 				return -1;
 			}
 		} else {
@@ -503,6 +505,7 @@ static int
 rdp_audio_handle_get_latency(
 	RdpPeerContext *peerCtx)
 {
+	struct rdp_backend *b = peerCtx->rdpBackend;
 	UINT networkLatency;
 	UINT renderedLatency;
 	ssize_t sizeSent;
@@ -531,7 +534,7 @@ rdp_audio_handle_get_latency(
 	sizeSent = send(peerCtx->pulseAudioSinkFd, &renderedLatency,
 				sizeof(renderedLatency), MSG_DONTWAIT);
 	if (sizeSent != sizeof(renderedLatency)) {
-		weston_log("RDP audio error responding to latency request sent:%ld. %s\n",
+		rdp_debug_error(b, "RDP audio error responding to latency request sent:%ld. %s\n",
 			sizeSent, strerror(errno));
 		return -1;
 	}
@@ -554,18 +557,18 @@ rdp_audio_pulse_audio_sink_thread(void *context)
 
 	sigemptyset(&set);
 	if (sigaddset(&set, SIGUSR2) == -1) {
-		weston_log("Audio sink thread: sigaddset(SIGUSR2) failed.\n");
+		rdp_debug_error(b, "Audio sink thread: sigaddset(SIGUSR2) failed.\n");
 		return NULL;
 	}
 	if (pthread_sigmask(SIG_UNBLOCK, &set, NULL) != 0) {
-		weston_log("Audio sink thread: pthread_sigmask(SIG_UNBLOCK,SIGUSR2) failed.\n");
+		rdp_debug_error(b, "Audio sink thread: pthread_sigmask(SIG_UNBLOCK,SIGUSR2) failed.\n");
 		return NULL;
 	}
 	act.sa_flags = 0;
 	act.sa_mask = set;
 	act.sa_handler = &signalhandler;
 	if (sigaction(SIGUSR2, &act, NULL) == -1) {
-		weston_log("Audio sink thread: sigaction(SIGUSR2) failed.\n");
+		rdp_debug_error(b, "Audio sink thread: sigaction(SIGUSR2) failed.\n");
 		return NULL;
 	}
 
@@ -586,7 +589,7 @@ rdp_audio_pulse_audio_sink_thread(void *context)
 		peerCtx->pulseAudioSinkFd = accept(peerCtx->pulseAudioSinkListenerFd, 
 							NULL, NULL);
 		if (peerCtx->pulseAudioSinkFd < 0) {
-			weston_log("Audio sink thread: Listener connection error (%s)\n", strerror(errno));
+			rdp_debug_error(b, "Audio sink thread: Listener connection error (%s)\n", strerror(errno));
 			continue;
 		} else {
 			rdp_debug(b, "Audio sink thread: connection successful on socket (%d).\n", 
@@ -603,7 +606,7 @@ rdp_audio_pulse_audio_sink_thread(void *context)
 			sizeRead = read(peerCtx->pulseAudioSinkFd, &header, sizeof(header));
 			/* pulseaudio RDP sink always send sizeof(header) regardless command type. */
 			if (sizeRead != sizeof(header)) {
-				weston_log("Audio sink thread: error while reading from sink socket sizeRead:%ld. %s\n",
+				rdp_debug_error(b, "Audio sink thread: error while reading from sink socket sizeRead:%ld. %s\n",
 					sizeRead, strerror(errno));
 				break;
 			} else if (header.cmd == RDP_AUDIO_CMD_VERSION) {
@@ -628,7 +631,7 @@ rdp_audio_pulse_audio_sink_thread(void *context)
 				peerCtx->accumulatedRenderedLatency = 0;
 				peerCtx->accumulatedRenderedLatencyCount = 0;
 			} else {
-				weston_log("Audio sink thread: unknown command from sink.\n");
+				rdp_debug_error(b, "Audio sink thread: unknown command from sink.\n");
 				break;
 			}
 		}
@@ -684,23 +687,25 @@ rdp_audio_client_activated(RdpsndServerContext* context)
 		context->SetVolume(context, 0x7FFF, 0x7FFF);
 
 		peerCtx->pulseAudioSinkListenerFd = rdp_audio_setup_listener(peerCtx);
-		if (peerCtx->pulseAudioSinkListenerFd < 0)
-			weston_log("RDPAudio - Failed to create listener socket\n");
-		else if (pthread_create(&peerCtx->pulseAudioSinkThread, NULL, rdp_audio_pulse_audio_sink_thread, (void*)peerCtx) < 0)
-			weston_log("RDPAudio - Failed to start Pulse Audio Sink Thread. No audio will be available.\n");
+		if (peerCtx->pulseAudioSinkListenerFd < 0) {
+			rdp_debug_error(b, "RDPAudio - Failed to create listener socket\n");
+		} else if (pthread_create(&peerCtx->pulseAudioSinkThread, NULL, rdp_audio_pulse_audio_sink_thread, (void*)peerCtx) < 0) {
+			rdp_debug_error(b, "RDPAudio - Failed to start Pulse Audio Sink Thread. No audio will be available.\n");
+		}
 	} else {
-		weston_log("RDPAudio - No agreeded format.\n");
+		rdp_debug_error(b, "RDPAudio - No agreeded format.\n");
 	}
 }
 
 int 
 rdp_audio_init(RdpPeerContext *peerCtx)
 {
+	struct rdp_backend *b = peerCtx->rdpBackend;
 	char *s;
 
 	peerCtx->rdpsnd_server_context = rdpsnd_server_context_new(peerCtx->vcm);
 	if (!peerCtx->rdpsnd_server_context) {
-		weston_log("RDPAudio - Couldn't initialize audio virtual channel.\n");
+		rdp_debug_error(b, "RDPAudio - Couldn't initialize audio virtual channel.\n");
 		return 0; // Continue without audio
 	}
 
@@ -712,14 +717,14 @@ rdp_audio_init(RdpPeerContext *peerCtx)
 
 	peerCtx->audioInSem = eventfd(256, EFD_SEMAPHORE | EFD_CLOEXEC);
 	if (!peerCtx->audioInSem) {
-		weston_log("RDPAudio - Couldn't initialize event semaphore.\n");
+		rdp_debug_error(b, "RDPAudio - Couldn't initialize event semaphore.\n");
 		goto Error_Exit;
 	}
 
 	/* this will be freed by FreeRDP at rdpsnd_server_context_free. */
 	AUDIO_FORMAT *audio_formats = malloc(sizeof rdp_audio_supported_audio_formats);
 	if (!audio_formats) {
-		weston_log("RDPAudio - Couldn't allocate memory for audio formats.\n");
+		rdp_debug_error(b, "RDPAudio - Couldn't allocate memory for audio formats.\n");
 		goto Error_Exit;
 	}
 	memcpy(audio_formats, rdp_audio_supported_audio_formats, sizeof rdp_audio_supported_audio_formats);
@@ -736,7 +741,7 @@ rdp_audio_init(RdpPeerContext *peerCtx)
 	if (s) {
 		if (strcmp(s, "true") == 0) {
 			peerCtx->rdpsnd_server_context->use_dynamic_virtual_channel = FALSE;
-			weston_log("RDPAudio - force static channel.\n");
+			rdp_debug_error(b, "RDPAudio - force static channel.\n");
 		}
 	}
 #endif // HAVE_RDPAUDIO_DYNAMIC_VIRTUAL_CHANNEL
