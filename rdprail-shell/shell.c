@@ -2138,8 +2138,8 @@ set_position_from_xwayland(struct shell_surface *shsurf)
 		/* Use xwayland position as this is the X app's origin of client area */
 		if (shsurf->xwayland.x >= area.x &&
 		    shsurf->xwayland.y >= area.y &&
-		    shsurf->xwayland.x <= (int32_t)(area.x + area.width - (area.width / 10)) &&
-		    shsurf->xwayland.y <= (int32_t)(area.y + area.width - (area.width / 10))) {
+		    shsurf->xwayland.x < (int32_t)(area.x + area.width - (area.width / 10)) &&
+		    shsurf->xwayland.y < (int32_t)(area.y + area.height - (area.height / 10))) {
 
 			weston_view_set_position(shsurf->view, x, y);
 
@@ -2808,6 +2808,41 @@ desktop_surface_set_xwayland_position(struct weston_desktop_surface *surface,
 	shsurf->xwayland.is_set = true;
 }
 
+static void
+desktop_surface_move_xwayland_position(struct weston_desktop_surface *desktop_surface,
+				       int32_t x, int32_t y, void *shell_)
+{
+	struct weston_surface *surface =
+		weston_desktop_surface_get_surface(desktop_surface);
+	struct shell_surface *shsurf =
+		weston_desktop_surface_get_user_data(desktop_surface);
+	struct desktop_shell *shell = shsurf->shell;
+	const struct weston_xwayland_surface_api *api;
+
+	assert(shell == shell_);
+
+	api = shell->xwayland_surface_api;
+	if (!api) {
+		api = weston_xwayland_surface_get_api(shell->compositor);
+		shell->xwayland_surface_api = api;
+	}
+	if (api && api->is_xwayland_surface(surface)) {
+		/* TODO: Make sure the position given from xwayland is a part of workarea,
+		         But this is not simple, for example, app can have accompanying
+		         window which move along with other main window, in such case,
+		         often, it's totally fine the accompanying goes out of workarea. */
+
+		weston_view_set_position(shsurf->view, x, y);
+		weston_compositor_schedule_repaint(shell->compositor);
+
+		shell_rdp_debug_verbose(shell, "%s: surface:%p, position (%d,%d)\n",
+			__func__, surface, x, y);
+	} else {
+		shell_rdp_debug_error(shell, "%s: surface:%p is not from xwayland\n",
+			__func__, surface);
+	}
+}
+
 static const struct weston_desktop_api shell_desktop_api = {
 	.struct_size = sizeof(struct weston_desktop_api),
 	.surface_added = desktop_surface_added,
@@ -2822,6 +2857,7 @@ static const struct weston_desktop_api shell_desktop_api = {
 	.ping_timeout = desktop_surface_ping_timeout,
 	.pong = desktop_surface_pong,
 	.set_xwayland_position = desktop_surface_set_xwayland_position,
+	.move_xwayland_position = desktop_surface_move_xwayland_position,
 	.set_window_icon = desktop_surface_set_window_icon,
 };
 

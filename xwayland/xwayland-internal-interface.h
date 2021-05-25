@@ -48,8 +48,8 @@ struct weston_desktop_xwayland_interface {
 			       struct weston_output *output);
 	void (*set_xwayland)(struct weston_desktop_xwayland_surface *shsurf,
 			     int x, int y);
-	void (*set_position)(struct weston_desktop_xwayland_surface *shsurf,
-			     int x, int y, int width, int height);
+	void (*move_position)(struct weston_desktop_xwayland_surface *shsurf,
+			     int x, int y);
 	int (*move)(struct weston_desktop_xwayland_surface *shsurf,
 		    struct weston_pointer *pointer);
 	int (*resize)(struct weston_desktop_xwayland_surface *shsurf,

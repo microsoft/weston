@@ -157,6 +157,8 @@ struct weston_wm_window {
 	int x;
 	int y;
 	bool pos_dirty;
+	int frame_x;
+	int frame_y;
 	int map_request_x;
 	int map_request_y;
 	struct weston_output_weak_ref legacy_fullscreen_output;
@@ -757,6 +759,7 @@ weston_wm_window_send_configure_notify(struct weston_wm_window *window)
 {
 	xcb_configure_notify_event_t configure_notify;
 	struct weston_wm *wm = window->wm;
+	bool is_our_resource = our_resource(wm, window->id);
 	int x, y;
 
 	weston_wm_window_get_child_position(window, &x, &y);
@@ -776,13 +779,18 @@ weston_wm_window_send_configure_notify(struct weston_wm_window *window)
 	xcb_send_event(wm->conn, 0, window->id,
 		       XCB_EVENT_MASK_STRUCTURE_NOTIFY,
 		       (char *) &configure_notify);
+
+	wm_printf(wm, "XWM: send_configure_notify (window %d) %d,%d @ %dx%d%s\n",
+		window->id, x, y, window->width, window->height,
+		is_our_resource ? ", ours" : "");
 }
 
 static void
-weston_wm_window_send_event_configure_notify_window_position(struct weston_wm_window *window, int x, int y)
+weston_wm_window_send_event_configure_notify_with_position(struct weston_wm_window *window, int x, int y)
 {
 	xcb_configure_notify_event_t configure_notify;
 	struct weston_wm *wm = window->wm;
+	bool is_our_resource = our_resource(wm, window->id);
 
 	configure_notify.response_type = XCB_CONFIGURE_NOTIFY;
 	configure_notify.pad0 = 0;
@@ -800,6 +808,10 @@ weston_wm_window_send_event_configure_notify_window_position(struct weston_wm_wi
 	xcb_send_event(wm->conn, 0, window->id,
 		       XCB_EVENT_MASK_STRUCTURE_NOTIFY,
 		       (char *) &configure_notify);
+
+	wm_printf(wm, "XWM: send_event_configure_notify_window_position (window %d) %d,%d @ %dx%d%s\n",
+		window->id, x, y, window->width, window->height,
+		is_our_resource ? ", ours" : "");
 }
 
 static void
@@ -1018,8 +1030,16 @@ weston_wm_handle_configure_notify(struct weston_wm *wm, xcb_generic_event_t *eve
 	if (!wm_lookup_window(wm, configure_notify->window, &window))
 		return;
 
-	window->x = configure_notify->x;
-	window->y = configure_notify->y;
+	if (window->override_redirect || is_our_resource) {
+		/* override or frame */
+		window->frame_x = configure_notify->x;
+		window->frame_y = configure_notify->y;
+	}
+	if (window->override_redirect || !is_our_resource) {
+		/* override or not frame */
+		window->x = configure_notify->x;
+		window->y = configure_notify->y;
+	}
 	window->pos_dirty = false;
 
 	if (window->override_redirect) {
@@ -1037,9 +1057,8 @@ weston_wm_handle_configure_notify(struct weston_wm *wm, xcb_generic_event_t *eve
 						   window->x, window->y);
 	} else if (is_our_resource) {
 		if (window->shsurf)
-			xwayland_api->set_position(window->shsurf,
-						   window->x, window->y,
-						   window->width, window->height);
+			xwayland_api->move_position(window->shsurf,
+						    window->frame_x, window->frame_y);
 	}
 }
 
@@ -1755,6 +1774,8 @@ weston_wm_window_create(struct weston_wm *wm,
 	window->x = x;
 	window->y = y;
 	window->pos_dirty = false;
+	window->frame_x = INT_MIN;
+	window->frame_y = INT_MIN;
 	window->map_request_x = INT_MIN; /* out of range for valid positions */
 	window->map_request_y = INT_MIN; /* out of range for valid positions */
 	weston_output_weak_ref_init(&window->legacy_fullscreen_output);
@@ -3068,24 +3089,26 @@ send_position(struct weston_surface *surface, int32_t x, int32_t y)
 {
 	struct weston_wm_window *window = get_wm_window(surface);
 	struct weston_wm *wm;
-	uint32_t values[2];
-	uint16_t mask;
 	int dx, dy;
 
 	if (!window || !window->wm)
 		return;
 
 	wm = window->wm;
+
+	wm_printf(wm, "XWM: send_position (window %d) input %d,%d frame %d,%d window %d,%d%s\n",
+		window->id, x, y,
+		window->frame_x, window->frame_y,
+		window->x, window->y,
+		window->override_redirect ? ", override" : "");
+
 	/* We use pos_dirty to tell whether a configure message is in flight.
 	 * This is needed in case we send two configure events in a very
 	 * short time, since window->x/y is set in after a roundtrip, hence
 	 * we cannot just check if the current x and y are different. */
-	if (window->x != x || window->y != y || window->pos_dirty) {
+	if (window->frame_x != x || window->frame_y != y || window->pos_dirty) {
 		window->pos_dirty = true;
-		values[0] = x;
-		values[1] = y;
-		mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
-		weston_wm_configure_window(wm, window->frame_id, mask, values);
+		weston_wm_window_configure_frame_with_position(window, x, y);
 
 		// !!! need further investigation !!!
 		/* Xwayland reparents app's window with our own frame window 
@@ -3097,7 +3120,7 @@ send_position(struct weston_surface *surface, int32_t x, int32_t y)
 		   event to let application knows actual app's window position (rather
 		   than offset from parent/frame window */
 		weston_wm_window_get_child_position(window, &dx, &dy);
-		weston_wm_window_send_event_configure_notify_window_position(window, x + dx, y + dy);
+		weston_wm_window_send_event_configure_notify_with_position(window, x + dx, y + dy);
 
 		xcb_flush(wm->conn);
 	}

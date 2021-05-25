@@ -328,6 +328,29 @@ set_xwayland(struct weston_desktop_xwayland_surface *surface, int x, int y)
 	weston_view_set_position(surface->view, x, y);
 }
 
+static void
+move_position(struct weston_desktop_xwayland_surface *surface, int x, int y)
+{
+	if (surface->state == XWAYLAND) {
+		/* For XWAYLAND surface, here directly set view position,
+		   just like set_xwayland() when view is associated. */
+		if (surface->view)
+			weston_view_set_position(surface->view, x, y);
+	} else if (surface->state == TOPLEVEL) {
+		weston_desktop_api_move_xwayland_position(surface->desktop,
+							  surface->surface, x, y);
+	}
+#ifdef WM_DEBUG
+	weston_log("%s: %s window (%p) move to (%d,%d)\n",
+		   __func__, 
+		   (surface->state == XWAYLAND) ? "XWAYLAND" : \
+		       (surface->state == TOPLEVEL) ? "TOPLEVEL" : \
+		       (surface->state == MAXIMIZED) ? "MAXIMIZED" : \
+		       (surface->state == FULLSCREEN) ? "FULLSCREEN" : "UNKNOWN",
+		   surface, x, y);
+#endif
+}
+
 static int
 move(struct weston_desktop_xwayland_surface *surface,
      struct weston_pointer *pointer)
@@ -376,29 +399,6 @@ set_window_geometry(struct weston_desktop_xwayland_surface *surface,
 }
 
 static void
-set_position(struct weston_desktop_xwayland_surface *surface,
-	     int x, int y, int width, int height)
-{
-	if (surface->state == XWAYLAND) {
-		/* For XWAYLAND surface, here directly set view position,
-		   just like set_xwayland() when view is associated. */
-		if (surface->view)
-			weston_view_set_position(surface->view, x, y);
-	} else {
-		/* TODO what to do these? need a way to move shell surface! */
-	}
-#ifdef WM_DEBUG
-	weston_log("%s: %s window (%p) move to (%d,%d)\n",
-		   __func__, 
-		   (surface->state == XWAYLAND) ? "XWAYLAND" : \
-		       (surface->state == TOPLEVEL) ? "TOPLEVEL" : \
-		       (surface->state == MAXIMIZED) ? "MAXIMIZED" : \
-		       (surface->state == FULLSCREEN) ? "FULLSCREEN" : "UNKNOWN",
-		   surface, x, y);
-#endif
-}
-
-static void
 set_maximized(struct weston_desktop_xwayland_surface *surface)
 {
 	weston_desktop_xwayland_surface_change_state(surface, MAXIMIZED, NULL,
@@ -436,7 +436,7 @@ static const struct weston_desktop_xwayland_interface weston_desktop_xwayland_in
 	.set_transient = set_transient,
 	.set_fullscreen = set_fullscreen,
 	.set_xwayland = set_xwayland,
-	.set_position = set_position,
+	.move_position = move_position,
 	.move = move,
 	.resize = resize,
 	.set_title = set_title,
