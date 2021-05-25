@@ -483,14 +483,18 @@ disp_monitor_validate_and_compute_layout(RdpPeerContext *peerCtx, struct rdp_mon
 				monitorMode[i].rectWeston.y = offsetFromOriginWeston;
 				offsetFromOriginWeston += monitorMode[i].rectWeston.height;
 			}
+			assert(monitorMode[i].rectWeston.x >= 0);
+			assert(monitorMode[i].rectWeston.y >= 0);
 		}
 	} else {
 		/* no scaling is used or monitor placement is too complex to scale in weston space, fallback to 1.0f */
 		for (i = 0; i < monitorCount; i++) {
 			monitorMode[i].rectWeston.width = monitorMode[i].monitorDef.width;
 			monitorMode[i].rectWeston.height = monitorMode[i].monitorDef.height;
-			monitorMode[i].rectWeston.x = monitorMode[i].monitorDef.x + abs(monitorMode[0].monitorDef.x);
-			monitorMode[i].rectWeston.y = monitorMode[i].monitorDef.y + abs(monitorMode[0].monitorDef.y);
+			monitorMode[i].rectWeston.x = monitorMode[i].monitorDef.x + abs(upperLeftX);
+			monitorMode[i].rectWeston.y = monitorMode[i].monitorDef.y + abs(upperLeftY);
+			assert(monitorMode[i].rectWeston.x >= 0);
+			assert(monitorMode[i].rectWeston.y >= 0);
 			monitorMode[i].scale = 1;
 			monitorMode[i].clientScale = 1.0f;
 		}
