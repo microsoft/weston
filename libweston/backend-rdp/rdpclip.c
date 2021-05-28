@@ -79,7 +79,7 @@ static void *clipboard_process_bmp(struct rdp_clipboard_data_source *, BOOL);
 static void *clipboard_process_html(struct rdp_clipboard_data_source *, BOOL);
 
 struct rdp_clipboard_supported_format clipboard_supported_formats[] = {
-	{ 0, CF_TEXT,         NULL,               "text/plain;charset=utf-8", clipboard_process_text },
+	{ 0, CF_UNICODETEXT,  NULL,               "text/plain;charset=utf-8", clipboard_process_text },
 	{ 1, CF_DIB,          NULL,               "image/bmp",                clipboard_process_bmp  },
 	{ 2, CF_PRIVATE_RTF,  "Rich Text Format", "text/rtf",                 clipboard_process_text }, // same as text
 	{ 3, CF_PRIVATE_HTML, "HTML Format",      "text/html",                clipboard_process_html },
@@ -152,24 +152,74 @@ clipboard_process_text(struct rdp_clipboard_data_source *source, BOOL is_send)
 	freerdp_peer *client = (freerdp_peer*)source->context;
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = peerCtx->rdpBackend;
+	struct wl_array data_contents;
+
+	wl_array_init(&data_contents);
 
 	if (!source->is_data_processed) {
 		if (is_send) {
-			/* Linux to Windows */
-			assert(source->data_contents.size <= source->data_contents.alloc);
-			assert(((char*)source->data_contents.data)[source->data_contents.size] == '\0');
+			/* Linux to Windows (convert utf-8 to UNICODE) */
 			/* Include terminating NULL in size */
+			assert((source->data_contents.size + 1) <= source->data_contents.alloc);
+			assert(((char*)source->data_contents.data)[source->data_contents.size] == '\0');
 			source->data_contents.size++;
+
+			/* obtain size in UNICODE */
+			size_t data_size = MultiByteToWideChar(CP_UTF8, 0,
+				(char*)source->data_contents.data,
+				source->data_contents.size,
+				NULL, 0);
+			if (data_size < 1)
+				goto error_return;
+
+			data_size *= 2; // convert to size in bytes.
+			if (!wl_array_add(&data_contents, data_size))
+				goto error_return;
+
+			/* convert to UNICODE */
+			size_t data_size_in_char = MultiByteToWideChar(CP_UTF8, 0,
+				(char*)source->data_contents.data,
+				source->data_contents.size,
+				(LPWSTR)data_contents.data,
+				data_size);
+			assert(data_contents.size == (data_size_in_char * 2));
 		} else {
-			/* Windows to Linux */
-			char *data = (char*)source->data_contents.data;
-			size_t data_size = source->data_contents.size;
+			/* Windows to Linux (UNICODE to utf-8) */
+			LPWSTR data = (LPWSTR)source->data_contents.data;
+			size_t data_size_in_char = source->data_contents.size / 2;
 
 			/* Windows's data has trailing chars, which Linux doesn't expect. */
-			while(data_size && ((data[data_size-1] == '\0') || (data[data_size-1] == '\n')))
-				data_size -= 1;
-			source->data_contents.size = data_size;
+			while(data_size_in_char &&
+				((data[data_size_in_char-1] == L'\0') || (data[data_size_in_char-1] == L'\n')))
+				data_size_in_char -= 1;
+			if (!data_size_in_char)
+				goto error_return;
+
+			/* obtain size in utf-8 */
+			size_t data_size = WideCharToMultiByte(CP_UTF8, 0,
+				(LPCWSTR)source->data_contents.data,
+				data_size_in_char,
+				NULL, 0,
+				NULL, NULL);
+			if (data_size < 1)
+				goto error_return;
+
+			if (!wl_array_add(&data_contents, data_size))
+				goto error_return;
+
+			/* convert to utf-8 */
+			data_size = WideCharToMultiByte(CP_UTF8, 0,
+				(LPCWSTR)source->data_contents.data,
+				data_size_in_char,
+				(char*)data_contents.data,
+				data_size,
+				NULL, NULL);
+			assert(data_contents.size == data_size);
 		}
+
+		/* swap the data_contents with new one */
+		wl_array_release(&source->data_contents);
+		source->data_contents = data_contents;
 		source->is_data_processed = TRUE;
 	}
 
@@ -178,6 +228,21 @@ clipboard_process_text(struct rdp_clipboard_data_source *source, BOOL is_send)
 		is_send ? "send" : "receive", (UINT32)source->data_contents.size);
 
 	return source->data_contents.data;
+
+error_return:
+
+	source->state = RDP_CLIPBOARD_SOURCE_FAILED;
+	rdp_debug_clipboard_error(b, "RDP %s FAILED (%p:%s): %s (%d bytes)\n",
+		__func__, source, clipboard_data_source_state_to_string(source->state),
+		is_send ? "send" : "receive", (UINT32)source->data_contents.size);
+	//rdp_debug_clipboard_verbose(b, "RDP clipboard_process_html FAILED (%p): %s \n\"%s\"\n (%d bytes)\n",
+	//	source, is_send ? "send" : "receive",
+	//	(char *)source->data_contents.data,
+	//	(UINT32)source->data_contents.size);
+
+	wl_array_release(&data_contents);
+
+	return NULL;
 }
 
 /* based off sample code at https://docs.microsoft.com/en-us/troubleshoot/cpp/add-html-code-clipboard
