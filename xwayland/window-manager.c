@@ -903,7 +903,7 @@ weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *ev
 		(xcb_configure_request_event_t *) event;
 	struct weston_wm_window *window;
 	uint32_t values[16];
-	uint16_t mask;
+	uint16_t mask = 0;
 	int x, y, configure_x, configure_y;
 	int i = 0;
 	bool is_our_resource = our_resource(wm, configure_request->window);
@@ -953,34 +953,21 @@ weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *ev
 	/* don't send x/y when frame (parent window) is not created yet,
 	   unless this is frame itself. Since only after frame is created,
 	   the app's window position will become relative to parent (frame). */
-	if (is_our_resource || window->frame || window->override_redirect) {
-		if (is_our_resource || (window->frame == NULL)) {
-			/* window is frame window or no frame */
-			values[i++] = configure_x;
-			values[i++] = configure_y;
-		} else {
-			/* window is app's window with frame as parent or override */
-			values[i++] = x; // relative from frame.
-			values[i++] = y; // relative from frame.
-			/* and configure has differnt position than current position,
-			   move frame, so app contents will move, too */
-			if ((configure_x != window->x) || (configure_y != window->y))
-				configure_frame_position = true;
-		}
-		values[i++] = window->width;
-		values[i++] = window->height;
-		values[i++] = 0;
-		mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y |
-			XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
-			XCB_CONFIG_WINDOW_BORDER_WIDTH;
-	} else {
-		/* app's window hasn't been reparented to frame yet */
-		values[i++] = window->width;
-		values[i++] = window->height;
-		values[i++] = 0;
-		mask = XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
-			XCB_CONFIG_WINDOW_BORDER_WIDTH;
+	if (window->frame || window->override_redirect) {
+		/* window is app's window has frame as parent, or override. */
+		values[i++] = x; // relative from frame.
+		values[i++] = y; // relative from frame.
+		mask |= XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
+		/* and if configure has differnt position than current position,
+		   move its frame (if it has frame), so app contents will move, too */
+		if (window->frame && ((configure_x != window->x) || (configure_y != window->y)))
+			configure_frame_position = true;
 	}
+	values[i++] = window->width;
+	values[i++] = window->height;
+	values[i++] = 0;
+	mask |= XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT |
+		XCB_CONFIG_WINDOW_BORDER_WIDTH;
 	if (configure_request->value_mask & XCB_CONFIG_WINDOW_SIBLING) {
 		values[i++] = configure_request->sibling;
 		mask |= XCB_CONFIG_WINDOW_SIBLING;
@@ -1026,6 +1013,24 @@ weston_wm_handle_configure_notify(struct weston_wm *wm, xcb_generic_event_t *eve
 		  configure_notify->width, configure_notify->height,
 		  configure_notify->override_redirect ? ", override" : "",
 		  is_our_resource ? ", ours" : "");
+
+	/* Certain application (such as nedit) sends configure_notify with the
+	   window position where window is created (see weston_wm_window_create_frame).
+	   But there is race condition between initial position set by shell,
+	   the initial position set by shell is over-writen by with position
+	   from xcb_create_window (for frame).
+	   Previously, toplevel window was not movable by configure_notify, but
+	   with move_position API, it can be moved. Thus, xcb_create_window is
+	   for frame is now called with SHRT_MIN (previously it was 0, now changed to
+	   something explicit, SHRT_SHORT), and configure with that value for frame
+	   is ignored here. */
+	if (is_our_resource &&
+		configure_notify->x == SHRT_MIN &&
+		configure_notify->y == SHRT_MIN) {
+		wm_printf(wm, "XCB_CONFIGURE_NOTIFY (window %d) is ignored\n",
+			  configure_notify->window);
+		return;
+	}
 
 	if (!wm_lookup_window(wm, configure_notify->window, &window))
 		return;
@@ -1300,7 +1305,7 @@ weston_wm_window_create_frame(struct weston_wm_window *window)
 			  32,
 			  window->frame_id,
 			  wm->screen->root,
-			  0, 0,
+			  SHRT_MIN, SHRT_MIN, /* see XCB_CONFIGURE_NOTIFY */
 			  width, height,
 			  0,
 			  XCB_WINDOW_CLASS_INPUT_OUTPUT,
