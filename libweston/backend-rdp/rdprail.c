@@ -582,6 +582,12 @@ rail_client_ClientSysparam_callback(void *arg)
 				&workareaRect.x, &workareaRect.y,
 				&workareaRect.width, &workareaRect.height);
 			if (base_output) {
+				rdp_debug(b, "Translated workarea:(%d,%d)-(%d,%d) at %s:(%d,%d)-(%d,%d)\n",
+					workareaRect.x, workareaRect.y,
+					workareaRect.x + workareaRect.width, workareaRect.y + workareaRect.height,
+					base_output->name,
+					base_output->x, base_output->y,
+					base_output->x + base_output->width, base_output->y + base_output->height);
 				b->rdprail_shell_api->set_desktop_workarea(base_output, b->rdprail_shell_context, &workareaRect);
 				wl_list_for_each(base_head_iter, &base_output->head_list, output_link) {
 					to_rdp_head(base_head_iter)->workarea = workareaRect;

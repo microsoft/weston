@@ -978,12 +978,23 @@ weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *ev
 	}
 
 	weston_wm_configure_window(wm, window->id, mask, values);
-	if (configure_frame_position)
+	if (window->frame == NULL && !window->override_redirect) {
+		/* must not mapped yet */
+		assert(!window->shsurf);
+		/* if frame is not created yet, or not override window,
+		   save window position, so it's captured at map,
+		   weston_wm_handle_map_request() for map_request_x/y.
+		   This over-writes the position given at create_notify. */
+		window->x = configure_x;
+		window->y = configure_y;
+	} else if (configure_frame_position) {
 		weston_wm_window_configure_frame_with_position(window,
 							       configure_x - x,
 							       configure_y - y);
-	else
+	} else {
 		weston_wm_window_configure_frame(window);
+	}
+
 	weston_wm_window_schedule_repaint(window);
 }
 
@@ -1022,7 +1033,7 @@ weston_wm_handle_configure_notify(struct weston_wm *wm, xcb_generic_event_t *eve
 	   Previously, toplevel window was not movable by configure_notify, but
 	   with move_position API, it can be moved. Thus, xcb_create_window is
 	   for frame is now called with SHRT_MIN (previously it was 0, now changed to
-	   something explicit, SHRT_SHORT), and configure with that value for frame
+	   something explicit, SHRT_MIN), and configure with that value for frame
 	   is ignored here. */
 	if (is_our_resource &&
 		configure_notify->x == SHRT_MIN &&
