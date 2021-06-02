@@ -2720,8 +2720,7 @@ rdp_rail_peer_activate(freerdp_peer* client)
 	/* open Application List channel. */
 	if (b->rdprail_shell_api &&
 		b->rdprail_shell_name &&
-		b->rdpapplist_server_context_new &&
-		b->rdpapplist_server_context_free) {
+		b->use_rdpapplist) {
 		peerCtx->applist_server_context = b->rdpapplist_server_context_new(peerCtx->vcm);
 		if (!peerCtx->applist_server_context)
 			goto error_exit;
@@ -3920,20 +3919,46 @@ rdp_rail_backend_create(struct rdp_backend *b)
 		return -1;
 	}
 
-#if defined(HAVE_FREERDP_RDPAPPLIST_H) || defined(HAVE_FREERDP_GFXREDIR_H)
-	dlerror(); /* clear error */
-	b->libFreeRDPServer = dlopen("libfreerdp-server2.so", RTLD_NOW);
-	if (!b->libFreeRDPServer)
-		rdp_debug_error(b, "dlopen(libfreerdp-server2.so) failed with %s\n", dlerror());
-#endif // defined(HAVE_FREERDP_RDPAPPLIST_H) || defined(HAVE_FREERDP_GFXREDIR_H)o
-
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
-	if (b->libFreeRDPServer) {
-		*(void **)(&b->rdpapplist_server_context_new) = dlsym(b->libFreeRDPServer, "rdpapplist_server_context_new");
-		*(void **)(&b->rdpapplist_server_context_free) = dlsym(b->libFreeRDPServer, "rdpapplist_server_context_free");
-		if (!b->rdpapplist_server_context_new || !b->rdpapplist_server_context_free)
-			rdp_debug(b, "libfreerdp-server2.so doesn't support applist API.\n");
+	bool use_rdpapplist = true;
+
+	s = getenv("WESTON_RDP_DISABLE_APPLIST");
+	if (s) {
+		rdp_debug(b, "WESTON_RDP_DISABLE_APPLIST is set to %s.\n", s);
+		if (strcmp(s, "true") == 0)
+			use_rdpapplist = false;
 	}
+
+	if (use_rdpapplist) {
+		use_rdpapplist = false;
+
+		rdp_debug(b, "RDPAPPLIST_MODULEDIR is set to %s\n", RDPAPPLIST_MODULEDIR);
+
+		dlerror(); /* clear error */
+		b->libRDPApplistServer = dlopen(RDPAPPLIST_MODULEDIR "/" "librdpapplist-server.so", RTLD_NOW);
+		if (!b->libRDPApplistServer) {
+			rdp_debug_error(b, "dlopen(%s/librdpapplist-server.so) failed with %s\n", RDPAPPLIST_MODULEDIR, dlerror());
+			b->libRDPApplistServer = dlopen("librdpapplist-server.so", RTLD_NOW);
+			if (!b->libRDPApplistServer) {
+				rdp_debug_error(b, "dlopen(librdpapplist-server.so) failed with %s\n", dlerror());
+			}
+		}
+
+		if (b->libRDPApplistServer) {
+			*(void **)(&b->rdpapplist_server_context_new) = dlsym(b->libRDPApplistServer, "rdpapplist_server_context_new");
+			*(void **)(&b->rdpapplist_server_context_free) = dlsym(b->libRDPApplistServer, "rdpapplist_server_context_free");
+			if (b->rdpapplist_server_context_new && b->rdpapplist_server_context_free) {
+				use_rdpapplist = true;
+			} else {
+				rdp_debug(b, "librdpapplist-server.so doesn't have required applist entry.\n");
+				dlclose(b->libRDPApplistServer);
+				b->libRDPApplistServer = NULL;
+			}
+		}
+	}
+
+	b->use_rdpapplist = use_rdpapplist;
+	rdp_debug(b, "RDP backend: use_rdpapplist = %d\n", b->use_rdpapplist);
 #endif // HAVE_FREERDP_RDPAPPLIST_H
 
 #ifdef HAVE_FREERDP_GFXREDIR_H
@@ -3962,13 +3987,21 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	/* check if FreeRDP server lib supports graphics redirection channel API */
 	if (use_gfxredir) {
 		use_gfxredir = false;
-		if (b->libFreeRDPServer) {
+
+		dlerror(); /* clear error */
+		b->libFreeRDPServer = dlopen("libfreerdp-server2.so", RTLD_NOW);
+		if (!b->libFreeRDPServer) {
+			rdp_debug_error(b, "dlopen(libfreerdp-server2.so) failed with %s\n", dlerror());
+		} else {
 			*(void **)(&b->gfxredir_server_context_new) = dlsym(b->libFreeRDPServer, "gfxredir_server_context_new");
 			*(void **)(&b->gfxredir_server_context_free) = dlsym(b->libFreeRDPServer, "gfxredir_server_context_free");
-			if (b->gfxredir_server_context_new && b->gfxredir_server_context_new)
+			if (b->gfxredir_server_context_new && b->gfxredir_server_context_new) {
 				use_gfxredir = true;
-			else
+			} else {
 				rdp_debug(b, "libfreerdp-server2.so doesn't support graphics redirection API.\n");
+				dlclose(b->libFreeRDPServer);
+				b->libFreeRDPServer = NULL;
+			}
 		}
 	}
 
@@ -4095,8 +4128,13 @@ rdp_rail_destroy(struct rdp_backend *b)
 	if (b->debug_binding_W)
 		weston_binding_destroy(b->debug_binding_W);
 
-#if defined(HAVE_FREERDP_RDPAPPLIST_H) || defined(HAVE_FREERDP_GFXREDIR_H)
+#if defined(HAVE_FREERDP_RDPAPPLIST_H)
+	if (b->libRDPApplistServer)
+		dlclose(b->libRDPApplistServer);
+#endif // defined(HAVE_FREERDP_RDPAPPLIST_H)
+
+#if defined(HAVE_FREERDP_GFXREDIR_H)
 	if (b->libFreeRDPServer)
 		dlclose(b->libFreeRDPServer);
-#endif // defined(HAVE_FREERDP_RDPAPPLIST_H) || defined(HAVE_FREERDP_GFXREDIR_H)
+#endif // defined(HAVE_FREERDP_GFXREDIR_H)
 }

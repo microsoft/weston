@@ -95,7 +95,9 @@
 #include <freerdp/server/gfxredir.h>
 #endif // HAVE_FREERDP_GFXREDIR_H
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
-#include <freerdp/server/rdpapplist.h>
+#include <rdpapplist/rdpapplist_config.h>
+#include <rdpapplist/rdpapplist_protocol.h>
+#include <rdpapplist/rdpapplist_server.h>
 #endif // HAVE_FREERDP_RDPAPPLIST_H
 
 #include <libweston/libweston.h>
@@ -190,14 +192,13 @@ struct rdp_backend {
 
 	int rdp_monitor_refresh_rate;
 
-#if defined(HAVE_FREERDP_RDPAPPLIST_H) || defined(HAVE_FREERDP_GFXREDIR_H)
-	void *libFreeRDPServer;
-#endif // defined(HAVE_FREERDP_RDPAPPLIST_H) || defined(HAVE_FREERDP_GFXREDIR_H)
-
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
 	/* import from libfreerdp-server2.so */
 	RdpAppListServerContext* (*rdpapplist_server_context_new)(HANDLE vcm);
 	void (*rdpapplist_server_context_free)(RdpAppListServerContext* context);
+
+	void *libRDPApplistServer;
+	bool use_rdpapplist;
 #endif // HAVE_FREERDP_RDPAPPLIST_H
 
 #ifdef HAVE_FREERDP_GFXREDIR_H
@@ -205,6 +206,7 @@ struct rdp_backend {
 	GfxRedirServerContext* (*gfxredir_server_context_new)(HANDLE vcm);
 	void (*gfxredir_server_context_free)(GfxRedirServerContext* context);
 
+	void *libFreeRDPServer;
 	bool use_gfxredir;
 	char *shared_memory_mount_path;
 	size_t shared_memory_mount_path_size;

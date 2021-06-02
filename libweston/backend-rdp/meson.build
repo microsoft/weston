@@ -19,16 +19,17 @@ if not dep_wpr.found()
 	error('RDP-backend requires winpr2 which was not found. Or, you can use \'-Dbackend-rdp=false\'.')
 endif
 
+dep_rdpapplist = dependency('rdpapplist', version: '>= 1.0.0', required: false)
+if dep_rdpapplist.found()
+	config_h.set('HAVE_FREERDP_RDPAPPLIST_H', '1')
+endif
+
 if cc.has_header('freerdp/version.h', dependencies: dep_frdp)
 	config_h.set('HAVE_FREERDP_VERSION_H', '1')
 endif
 
 if cc.has_header('freerdp/channels/gfxredir.h', dependencies: dep_frdp)
 	config_h.set('HAVE_FREERDP_GFXREDIR_H', '1')
-endif
-
-if cc.has_header('freerdp/channels/rdpapplist.h', dependencies: dep_frdp)
-	config_h.set('HAVE_FREERDP_RDPAPPLIST_H', '1')
 endif
 
 if cc.has_member(
@@ -70,6 +71,7 @@ deps_rdp = [
 	dep_frdp,
 	dep_frdp_server,
 	dep_wpr,
+	dep_rdpapplist,
 ]
 
 dep_openssl = dependency('openssl', version: '>= 1.1.1', required: false)
