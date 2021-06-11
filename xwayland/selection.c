@@ -726,6 +726,18 @@ weston_wm_set_selection(struct wl_listener *listener, void *data)
 				XCB_TIME_CURRENT_TIME);
 }
 
+static void
+weston_wm_seat_created(struct wl_listener *listener, void *data)
+{
+	struct weston_seat *seat = data;
+	struct weston_wm *wm =
+		container_of(listener, struct weston_wm, seat_create_listener);
+
+	wl_signal_add(&seat->selection_signal, &wm->selection_listener);
+
+	weston_wm_set_selection(&wm->selection_listener, seat);
+}
+
 void
 weston_wm_selection_init(struct weston_wm *wm)
 {
@@ -761,11 +773,13 @@ weston_wm_selection_init(struct weston_wm *wm)
 	xcb_xfixes_select_selection_input(wm->conn, wm->selection_window,
 					  wm->atom.clipboard, mask);
 
-	seat = weston_wm_pick_seat(wm);
-	if (seat == NULL)
-		return;
 	wm->selection_listener.notify = weston_wm_set_selection;
-	wl_signal_add(&seat->selection_signal, &wm->selection_listener);
 
-	weston_wm_set_selection(&wm->selection_listener, seat);
+	wm->seat_create_listener.notify = weston_wm_seat_created;
+	wl_signal_add(&wm->server->compositor->seat_created_signal,
+		      &wm->seat_create_listener);
+
+	seat = weston_wm_pick_seat(wm);
+	if (seat)
+		weston_wm_seat_created(&wm->seat_create_listener, seat);
 }

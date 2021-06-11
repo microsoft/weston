@@ -90,6 +90,7 @@ struct weston_wm {
 	int selection_property_set;
 	int flush_property_on_delete;
 	struct wl_listener selection_listener;
+	struct wl_listener seat_create_listener;
 
 	xcb_window_t dnd_window;
 	xcb_window_t dnd_owner;
