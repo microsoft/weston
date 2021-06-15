@@ -53,7 +53,7 @@ static void rdp_rail_schedule_update_window(struct wl_listener *listener, void *
 static void rdp_rail_dump_window_label(struct weston_surface *surface, char *label, uint32_t label_size);
 
 struct rdp_dispatch_data {
-	struct rdp_loop_event_source _base;
+	struct rdp_loop_event_source _base_event_source;
 	freerdp_peer *client;
 	union {
 		RAIL_SYSPARAM_ORDER u_sysParam;
@@ -82,14 +82,14 @@ struct rdp_dispatch_data {
 			dispatch_data->client = client; \
 			dispatch_data->u_##arg_type = *(arg); \
 			pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex); \
-			wl_list_insert(&peerCtx->loop_event_source_list, &dispatch_data->_base.link); \
+			wl_list_insert(&peerCtx->loop_event_source_list, &dispatch_data->_base_event_source.link); \
 			pthread_mutex_unlock(&peerCtx->loop_event_source_list_mutex); \
-			dispatch_data->_base.event_source = \
+			dispatch_data->_base_event_source.event_source = \
 				rdp_defer_rdp_task_to_display_loop(peerCtx, callback, dispatch_data); \
-			if (!dispatch_data->_base.event_source) { \
+			if (!dispatch_data->_base_event_source.event_source) { \
 				rdp_debug_error(b, "%s: rdp_queue_deferred_task failed\n", __func__); \
 				pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex); \
-				wl_list_remove(&dispatch_data->_base.link); \
+				wl_list_remove(&dispatch_data->_base_event_source.link); \
 				pthread_mutex_unlock(&peerCtx->loop_event_source_list_mutex); \
 				free(dispatch_data); \
 			} \
@@ -101,15 +101,19 @@ struct rdp_dispatch_data {
 #define RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, dispatch_data) \
 	{ \
 		ASSERT_COMPOSITOR_THREAD(peerCtx->rdpBackend); \
+		rdp_defer_rdp_task_done(peerCtx); \
+		assert(dispatch_data->_base_event_source.event_source); \
+		wl_event_source_remove(dispatch_data->_base_event_source.event_source); \
 		pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex); \
-		wl_list_remove(&dispatch_data->_base.link); \
+		wl_list_remove(&dispatch_data->_base_event_source.link); \
 		pthread_mutex_unlock(&peerCtx->loop_event_source_list_mutex); \
 		free(dispatch_data); \
+		return 0; \
 	}
 
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
-static void
-applist_client_Caps_callback(void *arg)
+static int
+applist_client_Caps_callback(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_dispatch_data* data = (struct rdp_dispatch_data*)arg; 
 	const RDPAPPLIST_CLIENT_CAPS_PDU* caps = &data->u_appListCaps;
@@ -172,8 +176,8 @@ rail_ClientExec_destroy(struct wl_listener *listener, void *data)
 	peerCtx->clientExec = NULL;
 }
 
-static void
-rail_client_Exec_callback(void *arg)
+static int
+rail_client_Exec_callback(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_dispatch_data* data = (struct rdp_dispatch_data*)arg; 
 	const RAIL_EXEC_ORDER* exec = &data->u_exec;
@@ -286,8 +290,8 @@ Exit_Error:
 	return CHANNEL_RC_NO_BUFFER;
 }
 
-static void
-rail_client_Activate_callback(void *arg)
+static int
+rail_client_Activate_callback(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_dispatch_data* data = (struct rdp_dispatch_data*)arg; 
 	const RAIL_ACTIVATE_ORDER* activate = &data->u_activate;
@@ -321,8 +325,8 @@ rail_client_Activate(RailServerContext* context, const RAIL_ACTIVATE_ORDER* arg)
 	return CHANNEL_RC_OK;
 }
 
-static void
-rail_client_SnapArrange_callback(void *arg)
+static int
+rail_client_SnapArrange_callback(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_dispatch_data* data = (struct rdp_dispatch_data*)arg; 
 	const RAIL_SNAP_ARRANGE* snap = &data->u_snapArrange;
@@ -368,8 +372,8 @@ rail_client_SnapArrange(RailServerContext* context, const RAIL_SNAP_ARRANGE* arg
 	return CHANNEL_RC_OK;
 }
 
-static void
-rail_client_WindowMove_callback(void *arg)
+static int
+rail_client_WindowMove_callback(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_dispatch_data* data = (struct rdp_dispatch_data*)arg; 
 	const RAIL_WINDOW_MOVE_ORDER* windowMove = &data->u_windowMove;
@@ -410,8 +414,8 @@ rail_client_WindowMove(RailServerContext* context, const RAIL_WINDOW_MOVE_ORDER*
 	return CHANNEL_RC_OK;
 }
 
-static void
-rail_client_Syscommand_callback(void *arg)
+static int
+rail_client_Syscommand_callback(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_dispatch_data* data = (struct rdp_dispatch_data*)arg; 
 	const RAIL_SYSCOMMAND_ORDER* syscommand = &data->u_sysCommand;
@@ -485,8 +489,8 @@ rail_client_Syscommand(RailServerContext* context, const RAIL_SYSCOMMAND_ORDER* 
 	return CHANNEL_RC_OK;
 }
 
-static void
-rail_client_ClientSysparam_callback(void *arg)
+static int
+rail_client_ClientSysparam_callback(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_dispatch_data* data = (struct rdp_dispatch_data*)arg; 
 	const RAIL_SYSPARAM_ORDER* sysparam = &data->u_sysParam;
@@ -609,8 +613,8 @@ rail_client_ClientSysparam(RailServerContext* context, const RAIL_SYSPARAM_ORDER
 	return CHANNEL_RC_OK;
 }
 
-static void
-rail_client_ClientGetAppidReq_callback(void *arg)
+static int
+rail_client_ClientGetAppidReq_callback(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_dispatch_data* data = (struct rdp_dispatch_data*)arg; 
 	const RAIL_GET_APPID_REQ_ORDER* getAppidReq = &data->u_getAppidReq;
@@ -787,8 +791,8 @@ languageGuid_to_string(const GUID *guid)
 		return "Unknown GUID";
 }
 
-static void
-rail_client_LanguageImeInfo_callback(void *arg)
+static int
+rail_client_LanguageImeInfo_callback(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_dispatch_data* data = (struct rdp_dispatch_data*)arg; 
 	const RAIL_LANGUAGEIME_INFO_ORDER* languageImeInfo = &data->u_languageImeInfo;

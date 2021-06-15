@@ -36,6 +36,7 @@
 #include <sys/syscall.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/eventfd.h>
 #include <netdb.h>
 #include <linux/vm_sockets.h>
 #include <netinet/in.h>
@@ -856,6 +857,8 @@ rdp_peer_context_new(freerdp_peer* client, RdpPeerContext* context)
 	context->item.peer = client;
 	context->item.flags = RDP_PEER_OUTPUT_ENABLED;
 
+	context->loop_event_source_fd = -1;
+
 #if FREERDP_VERSION_MAJOR == 1 && FREERDP_VERSION_MINOR == 1
 	context->rfx_context = rfx_context_new();
 #else
@@ -900,6 +903,9 @@ rdp_peer_context_free(freerdp_peer* client, RdpPeerContext* context)
 		return;
 
 	wl_list_remove(&context->item.link);
+
+	if (context->loop_event_source_fd != -1)
+		close(context->loop_event_source_fd);
 
 	for (i = 0; i < ARRAY_LENGTH(context->events); i++) {
 		if (context->events[i])
@@ -1827,9 +1833,6 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 	peerCtx->vcm = WTSOpenServerA((LPSTR)peerCtx);
 	if (peerCtx->vcm) {
 		WTSVirtualChannelManagerGetFileDescriptor(peerCtx->vcm, rfds, &rcount);
-		peerCtx->eventVcm = WTSVirtualChannelManagerGetEventHandle(peerCtx->vcm);
-		/* event must be valid when server is successfully opened */
-		assert(peerCtx->eventVcm);
 	} else {
 		rdp_debug_error(b, "WTSOpenServer is failed! continue without virtual channel.\n");
 	}
@@ -1843,6 +1846,10 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 	}
 	for ( ; i < ARRAY_LENGTH(peerCtx->events); i++)
 		peerCtx->events[i] = 0;
+
+	peerCtx->loop_event_source_fd = eventfd(0, EFD_SEMAPHORE | EFD_CLOEXEC);
+	if (peerCtx->loop_event_source_fd == -1)
+		goto error_peer_initialize;
 
 	if (!rdp_rail_peer_init(client, peerCtx))
 		goto error_peer_initialize;
@@ -1860,6 +1867,10 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 	return 0;
 
 error_peer_initialize:
+	if (peerCtx->loop_event_source_fd != -1) {
+		close(peerCtx->loop_event_source_fd);
+		peerCtx->loop_event_source_fd = -1;
+	}
 	for (i = 0; i < ARRAY_LENGTH(peerCtx->events); i++) {
 		if (peerCtx->events[i]) {
 			wl_event_source_remove(peerCtx->events[i]);
@@ -1868,7 +1879,6 @@ error_peer_initialize:
 	}
 	if (peerCtx->vcm) {
 		WTSCloseServer(peerCtx->vcm);
-		peerCtx->eventVcm = NULL;
 		peerCtx->vcm = NULL;
 	}
 

@@ -281,7 +281,6 @@ struct rdp_peer_context {
 
 	// RAIL support
 	HANDLE vcm;
-	HANDLE eventVcm;
 	RailServerContext* rail_server_context;
 	DrdynvcServerContext* drdynvc_server_context;
 	DispServerContext* disp_server_context;
@@ -310,8 +309,10 @@ struct rdp_peer_context {
 	struct wl_listener clientExec_destroy_listener;
 	struct weston_surface *cursorSurface;
 	// list of outstanding event_source sent from FreeRDP thread to display loop.
+	int loop_event_source_fd;
 	pthread_mutex_t loop_event_source_list_mutex;
 	struct wl_list loop_event_source_list;
+	// RAIL power management.
 	struct wl_listener idle_listener;
 	struct wl_listener wake_listener;
 
@@ -447,6 +448,8 @@ void rdp_id_manager_free(struct rdp_id_manager *id_manager);
 BOOL rdp_id_manager_allocate_id(struct rdp_id_manager *id_manager, void *object, UINT32 *new_id);
 void rdp_id_manager_free_id(struct rdp_id_manager *id_manager, UINT32 id);
 void dump_id_manager_state(FILE *fp, struct rdp_id_manager *id_manager, char* title);
+struct wl_event_source *rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, void *data);
+void rdp_defer_rdp_task_done(RdpPeerContext *peerCtx);
 
 // rdprail.c
 int rdp_rail_backend_create(struct rdp_backend *b);
@@ -476,29 +479,6 @@ void rdp_audioin_destroy(RdpPeerContext *peerCtx);
 // rdpclip.c
 int rdp_clipboard_init(freerdp_peer* client);
 void rdp_clipboard_destroy(RdpPeerContext *peerCtx);
-
-/* this function is ONLY used to defer the task from RDP thread,
-   to be performed at wayland display loop thread */
-static inline struct wl_event_source *
-rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_idle_func_t func, void *data)
-{
-	if (peerCtx->vcm) {
-		struct rdp_backend *b = peerCtx->rdpBackend;
-		ASSERT_NOT_COMPOSITOR_THREAD(b);
-		struct wl_event_loop *loop = wl_display_get_event_loop(b->compositor->wl_display);
-		struct wl_event_source *event_source = wl_event_loop_add_idle(loop, func, data);
-		if (event_source) {
-			SetEvent(peerCtx->eventVcm);
-		} else {
-			rdp_debug_error(b, "%s: wl_event_loop_add_idle failed\n", __func__);
-		}
-		return event_source;
-	} else {
-		/* RDP server is not opened, this must not be used */
-		assert(false);
-		return NULL;
-	}
-}
 
 static inline struct rdp_head *
 to_rdp_head(struct weston_head *base)

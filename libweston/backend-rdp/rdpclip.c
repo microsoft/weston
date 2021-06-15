@@ -101,7 +101,8 @@ enum rdp_clipboard_data_source_state {
 
 struct rdp_clipboard_data_source {
 	struct weston_data_source base;
-	struct wl_event_source *event_source;
+	struct wl_event_source *transfer_event_source; /* used for read/write with pipe */
+	struct wl_event_source *defer_event_source; /* used for defer task to display loop */
 	struct wl_array data_contents;
 	void *context;
 	int refcount;
@@ -656,8 +657,13 @@ clipboard_data_source_unref(struct rdp_clipboard_data_source *source)
 	if (source->refcount > 0)
 		return;
 
-	if (source->event_source)
-		wl_event_source_remove(source->event_source);
+	if (source->transfer_event_source)
+		wl_event_source_remove(source->transfer_event_source);
+
+	if (source->defer_event_source) {
+		rdp_defer_rdp_task_done(peerCtx);
+		wl_event_source_remove(source->defer_event_source);
+	}
 
 	if (source->data_source_fd != -1)
 		close(source->data_source_fd);
@@ -698,6 +704,7 @@ clipboard_client_send_format_data_response(RdpPeerContext *peerCtx, struct rdp_c
 	/* if here failed to send response, what can we do ? */
 
 	/* now client can send new data request */
+	assert(peerCtx->clipboard_data_request_event_source == RDP_INVALID_EVENT_SOURCE);
 	peerCtx->clipboard_data_request_event_source = NULL;
 
 	return 0;
@@ -726,6 +733,7 @@ clipboard_client_send_format_data_response_fail(RdpPeerContext *peerCtx, struct 
 	/* if here failed to send response, what can we do ? */
 
 	/* now client can send new data request */
+	assert(peerCtx->clipboard_data_request_event_source == RDP_INVALID_EVENT_SOURCE);
 	peerCtx->clipboard_data_request_event_source = NULL;
 
 	return 0;
@@ -757,7 +765,7 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 	/* event source is not removed here, but it will be removed when read is completed,
 	   until it's completed this function will be called whenever next chunk of data is
 	   available for read in pipe. */
-	assert(source->event_source);
+	assert(source->transfer_event_source);
 
 	/* if buffer is less than 1024 bytes remaining, request another 1024 bytes minimum */
 	/* but actual reallocated buffer size will be increased by ^2 */
@@ -836,13 +844,13 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 	assert(source == peerCtx->clipboard_inflight_client_data_source);
 
 	/* remove event source now, and if write is failed with EAGAIN, queue back to display loop. */ 
-	wl_event_source_remove(source->event_source);
-	source->event_source = NULL;
+	wl_event_source_remove(source->transfer_event_source);
+	source->transfer_event_source = NULL;
 
 	if (source->is_canceled == FALSE && source->data_contents.data && source->data_contents.size) {
 		if (source->inflight_data_to_write) {
 			assert(source->inflight_data_size);
-			rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) retry write retry count:%d\n",
+			rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) transfer in chunck, count:%d\n",
 				__func__, source, clipboard_data_source_state_to_string(source), source->inflight_write_count);
 			data_to_write = source->inflight_data_to_write;
 			data_size = source->inflight_data_size;
@@ -864,13 +872,14 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 						__func__, source, clipboard_data_source_state_to_string(source), strerror(errno));
 					break;
 				}
+				/* buffer is full, schedule write for next chunk. */
 				source->inflight_data_to_write = data_to_write;
 				source->inflight_data_size = data_size;
 				source->inflight_write_count++;
-				source->event_source =
+				source->transfer_event_source =
 					wl_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
 							clipboard_data_source_write, source);
-				if (!source->event_source) {
+				if (!source->transfer_event_source) {
 					source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 					rdp_debug_clipboard_error(b, "RDP %s (%p:%s) wl_event_loop_add_fd failed\n",
 						__func__, source, clipboard_data_source_state_to_string(source));
@@ -951,6 +960,7 @@ clipboard_data_source_send(struct weston_data_source *base,
 			__func__, source, clipboard_data_source_state_to_string(source),
 			peerCtx->clipboard_inflight_client_data_source,
 			clipboard_data_source_state_to_string(peerCtx->clipboard_inflight_client_data_source));
+		/* Here set error state after logging error, so log can show previous state. */
 		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 		goto error_return_close_fd;
 	}
@@ -973,12 +983,12 @@ clipboard_data_source_send(struct weston_data_source *base,
 		assert(source->inflight_data_size == 0);
 		if (index == source->format_index) {
 			/* data is already in data_contents, no need to pull from client */
-			assert(source->event_source == NULL);
+			assert(source->transfer_event_source == NULL);
 			source->state = RDP_CLIPBOARD_SOURCE_RECEIVED_DATA;
-			source->event_source =
+			source->transfer_event_source =
 				wl_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
 						clipboard_data_source_write, source);
-			if (!source->event_source) {
+			if (!source->transfer_event_source) {
 				source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 				rdp_debug_clipboard_error(b, "RDP %s (%p:%s) wl_event_loop_add_fd failed\n",
 					__func__, source, clipboard_data_source_state_to_string(source));
@@ -1053,7 +1063,7 @@ clipboard_data_source_cancel(struct weston_data_source *base)
 		source->state = RDP_CLIPBOARD_SOURCE_CANCELED;
 		rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s)\n",
 			__func__, source, clipboard_data_source_state_to_string(source));
-		assert(source->event_source == NULL);
+		assert(source->transfer_event_source == NULL);
 		wl_array_release(&source->data_contents);
 		wl_array_init(&source->data_contents);
 		source->is_data_processed = FALSE;
@@ -1074,8 +1084,8 @@ clipboard_data_source_cancel(struct weston_data_source *base)
 \**********************************/
 
 /* Publish client's available clipboard formats to compositor (make them visible to applications in server) */
-static void
-clipboard_data_source_publish(void *arg)
+static int
+clipboard_data_source_publish(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_clipboard_data_source *source = (struct rdp_clipboard_data_source *)arg;
 	freerdp_peer *client = (freerdp_peer*)source->context;
@@ -1088,12 +1098,17 @@ clipboard_data_source_publish(void *arg)
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
-	/* here is going to publish new data, if previous data from us is still referenced,
+	rdp_defer_rdp_task_done(peerCtx);
+	assert(source->defer_event_source);
+	wl_event_source_remove(source->defer_event_source);
+	source->defer_event_source = NULL;
+
+	/* here is going to publish new data, if previous data from client is still referenced,
 	   unref it after selection */
 	source_prev = peerCtx->clipboard_client_data_source;
 	peerCtx->clipboard_client_data_source = source;
 
-	source->event_source = NULL;
+	source->transfer_event_source = NULL;
 	source->base.accept = clipboard_data_source_accept;
 	source->base.send = clipboard_data_source_send;
 	source->base.cancel = clipboard_data_source_cancel;
@@ -1104,12 +1119,12 @@ clipboard_data_source_publish(void *arg)
 	if (source_prev)
 		clipboard_data_source_unref(source_prev);
 
-	return;
+	return 0;
 }
 
 /* Request the specified clipboard data from data-device at server side */
-static void
-clipboard_data_source_request(void *arg)
+static int
+clipboard_data_source_request(int fd, uint32_t mask, void *arg)
 {
 	RdpPeerContext *peerCtx = (RdpPeerContext *)arg;
 	struct rdp_backend *b = peerCtx->rdpBackend;
@@ -1124,6 +1139,10 @@ clipboard_data_source_request(void *arg)
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
+	rdp_defer_rdp_task_done(peerCtx);
+	assert(peerCtx->clipboard_data_request_event_source);
+	assert(peerCtx->clipboard_data_request_event_source != RDP_INVALID_EVENT_SOURCE);
+	wl_event_source_remove(peerCtx->clipboard_data_request_event_source);
 	/* set to invalid, so it still validate incoming request, but won't free event source at error. */
 	peerCtx->clipboard_data_request_event_source = RDP_INVALID_EVENT_SOURCE;
 
@@ -1177,17 +1196,17 @@ clipboard_data_source_request(void *arg)
 	/* p[1] should be closed by data source */
 
 	/* wait until data is ready on pipe */
-	source->event_source =
+	source->transfer_event_source =
 		wl_event_loop_add_fd(loop, p[0], WL_EVENT_READABLE,
 					clipboard_data_source_read, source);
-	if (!source->event_source) {
+	if (!source->transfer_event_source) {
 		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 		rdp_debug_clipboard_error(b, "RDP %s (%p:%s) wl_event_loop_add_fd failed.\n",
 			__func__, source, clipboard_data_source_state_to_string(source));
 		goto error_exit_free_source;
 	}
 
-	return;
+	return 0;
 
 error_exit_free_source:
 	clipboard_data_source_unref(source);
@@ -1195,7 +1214,7 @@ error_exit_free_source:
 error_exit_response_fail:
 	clipboard_client_send_format_data_response_fail(peerCtx, NULL);
 
-	return;
+	return 0;
 }
 
 /*************************************\
@@ -1228,7 +1247,7 @@ clipboard_set_selection(struct wl_listener *listener, void *data)
 	}
 
 	/* another data source (from server side) gets selected,
-	   no longer need previous data from us */
+	   no longer need previous data from client. */
 	if (peerCtx->clipboard_client_data_source) {
 		clipboard_data_source_unref(peerCtx->clipboard_client_data_source);
 		peerCtx->clipboard_client_data_source = NULL;
@@ -1387,11 +1406,11 @@ clipboard_client_format_list(CliprdrServerContext* context, const CLIPRDR_FORMAT
 		}
 
 		source->state = RDP_CLIPBOARD_SOURCE_FORMATLIST_READY;
-		source->event_source =
+		source->defer_event_source =
 			rdp_defer_rdp_task_to_display_loop(peerCtx,
 				clipboard_data_source_publish,
 				source);
-		if (source->event_source) {
+		if (source->defer_event_source) {
 			isPublished = TRUE;
 		} else {
 			source->state = RDP_CLIPBOARD_SOURCE_FAILED;
@@ -1435,12 +1454,12 @@ clipboard_client_format_data_response(CliprdrServerContext* context, const CLIPR
 	ASSERT_NOT_COMPOSITOR_THREAD(b);
 
 	if (source) {
-		if (source->event_source || (source->inflight_write_count != 0)) {
+		if (source->transfer_event_source || (source->inflight_write_count != 0)) {
 			/* here means client responded more than once for single data request */
 			source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 			rdp_debug_clipboard_error(b, "Client: %s (%p:%s) middle of write loop:%p, %d\n",
 				__func__, source, clipboard_data_source_state_to_string(source),
-				source->event_source, source->inflight_write_count);
+				source->transfer_event_source, source->inflight_write_count);
 			return -1;
 		}
 
@@ -1469,18 +1488,18 @@ clipboard_client_format_data_response(CliprdrServerContext* context, const CLIPR
 			source->data_response_fail_count);
 
 		if (Success) {
-			assert(source->event_source == NULL);
-			source->event_source =
+			assert(source->transfer_event_source == NULL);
+			source->transfer_event_source =
 				wl_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
 						clipboard_data_source_write, source);
-			if (!source->event_source) {
+			if (!source->transfer_event_source) {
 				source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 				rdp_debug_clipboard_error(b, "Client: %s (%p:%s) wl_event_loop_add_fd failed\n",
 					__func__, source, clipboard_data_source_state_to_string(source));
 			}
 		}
 
-		if (!source->event_source) {
+		if (!source->transfer_event_source) {
 			if (formatDataResponse->msgFlags == CB_RESPONSE_OK) {
 				/* if data is recieved, but failed to sent to write(),
 				   then keep data and format index for future request,
@@ -1662,6 +1681,7 @@ rdp_clipboard_destroy(RdpPeerContext *peerCtx)
 	}
 	if (peerCtx->clipboard_data_request_event_source &&
 		peerCtx->clipboard_data_request_event_source != RDP_INVALID_EVENT_SOURCE) {
+		rdp_defer_rdp_task_done(peerCtx);
 		wl_event_source_remove(peerCtx->clipboard_data_request_event_source);
 		peerCtx->clipboard_data_request_event_source = NULL;
 	}

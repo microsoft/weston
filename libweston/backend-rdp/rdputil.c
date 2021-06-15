@@ -34,6 +34,7 @@
 #include <sys/mman.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
+#include <sys/eventfd.h>
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -294,4 +295,37 @@ dump_id_manager_state(FILE *fp, struct rdp_id_manager *id_manager, char* title)
 	fprintf(fp,"\n");
 }
 
+/* this function is ONLY used to defer the task from RDP thread,
+   to be performed at wayland display loop thread */
+struct wl_event_source *
+rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, void *data)
+{
+	if (peerCtx->vcm) {
+		struct rdp_backend *b = peerCtx->rdpBackend;
+		ASSERT_NOT_COMPOSITOR_THREAD(b);
+		struct wl_event_loop *loop = wl_display_get_event_loop(b->compositor->wl_display);
+		struct wl_event_source *event_source =
+			wl_event_loop_add_fd(loop,
+				peerCtx->loop_event_source_fd,
+				WL_EVENT_READABLE,
+				func, data);
+		if (event_source) {
+			eventfd_write(peerCtx->loop_event_source_fd, 1);
+		} else {
+			rdp_debug_error(b, "%s: wl_event_loop_add_idle failed\n", __func__);
+		}
+		return event_source;
+	} else {
+		/* RDP server is not opened, this must not be used */
+		assert(false);
+		return NULL;
+	}
+}
+
+void
+rdp_defer_rdp_task_done(RdpPeerContext *peerCtx)
+{
+	eventfd_t dummy;
+	eventfd_read(peerCtx->loop_event_source_fd, &dummy);
+}
 
