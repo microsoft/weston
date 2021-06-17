@@ -827,8 +827,10 @@ rail_client_LanguageImeInfo_callback(int fd, uint32_t mask, void *arg)
 	if (languageImeInfo->ProfileType == TF_PROFILETYPE_KEYBOARDLAYOUT) {
 		struct xkb_rule_names xkbRuleNames;
 		struct xkb_keymap *keymap = NULL;
+		settings->KeyboardLayout = languageImeInfo->KeyboardLayout;
 		convert_rdp_keyboard_to_xkb_rule_names(settings->KeyboardType,
-						       languageImeInfo->KeyboardLayout,
+						       settings->KeyboardSubType,
+						       settings->KeyboardLayout,
 						       &xkbRuleNames);
 		if (xkbRuleNames.layout) {
 			keymap = xkb_keymap_new_from_names(b->compositor->xkb_context,
@@ -837,6 +839,10 @@ rail_client_LanguageImeInfo_callback(int fd, uint32_t mask, void *arg)
 				weston_seat_update_keymap(peerCtx->item.seat, keymap);
 				xkb_keymap_unref(keymap);
 			}
+		}
+		if (!keymap) {
+			rdp_debug_error(b, "%s: Failed to switch to kbd_layout:0x%x kbd_type:0x%x kbd_subType:0x%x\n",
+				__func__, settings->KeyboardLayout, settings->KeyboardType, settings->KeyboardSubType);
 		}
 	}
 

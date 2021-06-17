@@ -1118,28 +1118,43 @@ static const char *rdp_keyboard_types[] = {
 	"pc102",/* 4: IBM enhanced (101- or 102-key) keyboard */
 	"", /* 5: Nokia 1050 and similar keyboards */
 	"",	/* 6: Nokia 9140 and similar keyboards */
-	"jp106"	/* 7: Japanese keyboard */ /* alternative ja106 */
+	"jp106",/* 7: Japanese keyboard */ /* alternative ja106 */
+	"pc102" /* 8: Korean keyboard which is based on pc101, + 2 special Korean keys */
 };
 
 void
 convert_rdp_keyboard_to_xkb_rule_names(
 	UINT32 KeyboardType,
+	UINT32 KeyboardSubType,
 	UINT32 KeyboardLayout,
 	struct xkb_rule_names *xkbRuleNames)
 {
 	int i;
 	memset(xkbRuleNames, 0, sizeof(*xkbRuleNames));
-	if (KeyboardType <= 7)
+	if (KeyboardType <= ARRAY_LENGTH(rdp_keyboard_types))
 		xkbRuleNames->model = rdp_keyboard_types[KeyboardType];
 	for (i = 0; rdp_keyboards[i].rdpLayoutCode; i++) {
 		if (rdp_keyboards[i].rdpLayoutCode == KeyboardLayout) {
 			xkbRuleNames->layout = rdp_keyboards[i].xkbLayout;
 			xkbRuleNames->variant = rdp_keyboards[i].xkbVariant;
-			weston_log("%s: matching layout=%s variant=%s\n", __FUNCTION__,
-					xkbRuleNames->layout, xkbRuleNames->variant);
 			break;
 		}
 	}
+	/* Korean keyboard support (KeyboardType 8, LangID 0x412) */
+	if (KeyboardType == 8 && ((KeyboardLayout & 0xFFFF) == 0x412)) {
+		/* TODO: PC/AT 101 Enhanced Korean Keyboard (Type B) and (Type C) is not supported yet
+			 because default Xkb settings for Korean layout doesn't have corresponding
+			 configuration.
+			 (Type B): KeyboardSubType:4: rctrl_hangul/ratl_hanja
+			 (Type C): KeyboardSubType:5: shift_space_hangul/crtl_space_hanja */
+		if (KeyboardSubType == 0 ||
+		    KeyboardSubType == 3) // PC/AT 101 Enhanced Korean Keyboard (Type A)
+			xkbRuleNames->variant = "kr104"; // kr(ralt_hangul)/kr(rctrl_hanja)
+		else if (KeyboardSubType == 6) // PC/AT 103 Enhanced Korean Keyboard
+			xkbRuleNames->variant = "kr106"; // kr(hw_keys)
+	}
+	weston_log("%s: matching layout=%s variant=%s options=%s\n", __FUNCTION__,
+		xkbRuleNames->layout, xkbRuleNames->variant, xkbRuleNames->options);
 }
 
 static BOOL
@@ -1320,6 +1335,7 @@ xf_peer_activate(freerdp_peer* client)
 			settings->KeyboardFunctionKey);
 
 	convert_rdp_keyboard_to_xkb_rule_names(settings->KeyboardType,
+					       settings->KeyboardSubType,
 					       settings->KeyboardLayout,
 					       &xkbRuleNames);
 
@@ -1656,8 +1672,10 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 {
 	uint32_t scan_code, vk_code, full_code;
 	enum wl_keyboard_key_state keyState;
+	freerdp_peer *client = input->context->peer;
 	RdpPeerContext *peerContext = (RdpPeerContext *)input->context;
 	struct rdp_backend *b = peerContext->rdpBackend;
+	bool need_release = false;
 
 	int notify = 0;
 	struct timespec time;
@@ -1678,7 +1696,28 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 		if (flags & KBD_FLAGS_EXTENDED)
 			full_code |= KBD_FLAGS_EXTENDED;
 
-		vk_code = GetVirtualKeyCodeFromVirtualScanCode(full_code, 4);
+		/* Korean keyboard support */
+		/* WinPR's GetVirtualKeyCodeFromVirtualScanCode() can't handle hangul/hanja keys */
+		/* 0x1f1 and 0x1f2 keys are only exists on Korean 103 keyboard (Type 8:SubType 6) */
+		if (client->settings->KeyboardType == 8 &&
+			client->settings->KeyboardSubType == 6 &&
+			((full_code == 0x1f1) || (full_code == 0x1f2))) {
+			if (full_code == 0x1f1)
+				vk_code = VK_HANGUL;
+			else if (full_code == 0x1f2)
+				vk_code = VK_HANJA;
+			/* From Linux's keyboard driver at drivers/input/keyboard/atkbd.c */
+			/*
+			 * HANGEUL and HANJA keys do not send release events so we need to
+			 * generate such events ourselves
+			 */
+			/* RDP works same, there is no release for those 2 Korean keys,
+			 * thus generate release right after press. */
+			assert(keyState == WL_KEYBOARD_KEY_STATE_PRESSED);
+			need_release = true;
+		} else {
+			vk_code = GetVirtualKeyCodeFromVirtualScanCode(full_code, client->settings->KeyboardType);
+		}
 		assert(vk_code <= 0xFF);
 		if (keyState == WL_KEYBOARD_KEY_STATE_RELEASED) {
 			/* Ignore release if key is not previously pressed. */
@@ -1688,11 +1727,14 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 				goto exit;
 			}
 			peerContext->key_state[vk_code>>3] &= ~(1<<(vk_code&0x7));
-		} else {
+		} else if (!need_release /* when release is issued right after, no need to save state */) {
 			peerContext->key_state[vk_code>>3] |= (1<<(vk_code&0x7));
 		}
-		if (flags & KBD_FLAGS_EXTENDED)
-			vk_code |= KBDEXT;
+		/* Korean keyboard support */
+		/* WinPR's GetKeycodeFromVirtualKeyCode() expects no extended bit for VK_HANGUL and VK_HANJA */
+		if (vk_code != VK_HANGUL && vk_code != VK_HANJA)
+			if (flags & KBD_FLAGS_EXTENDED)
+				vk_code |= KBDEXT;
 
 		scan_code = GetKeycodeFromVirtualKeyCode(vk_code, KEYCODE_TYPE_EVDEV);
 
@@ -1705,6 +1747,17 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 		/*rdp_debug_verbose(b, "RDP backend: %s code=%x ext=%d vk_code=%x scan_code=%x pressed=%d, idle_inhibit=%d\n",
 			__func__, code, (flags & KBD_FLAGS_EXTENDED) ? 1 : 0,
 			vk_code, scan_code, keyState, b->compositor->idle_inhibit);*/
+
+		if (need_release) {
+			/* send release of same key */
+			weston_compositor_get_time(&time);
+			notify_key(peerContext->item.seat, &time,
+						scan_code - 8, WL_KEYBOARD_KEY_STATE_RELEASED, STATE_UPDATE_AUTOMATIC);
+
+			/*rdp_debug_verbose(b, "RDP backend: %s code=%x ext=%d vk_code=%x scan_code=%x pressed=%d, idle_inhibit=%d\n",
+				__func__, code, (flags & KBD_FLAGS_EXTENDED) ? 1 : 0,
+				vk_code, scan_code, keyState, b->compositor->idle_inhibit);*/
+		}
 	}
 
 exit:

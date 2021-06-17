@@ -430,7 +430,7 @@ typedef struct rdp_peer_context RdpPeerContext;
 /* To enable rdp_debug message, add "--logger-scopes=rdp-backend". */
 
 // rdp.c
-void convert_rdp_keyboard_to_xkb_rule_names(UINT32 KeyboardType, UINT32 KeyboardLayout, struct xkb_rule_names *xkbRuleNames);
+void convert_rdp_keyboard_to_xkb_rule_names(UINT32 KeyboardType, UINT32 KeyboardSubType, UINT32 KeyboardLayout, struct xkb_rule_names *xkbRuleNames);
 struct rdp_head * rdp_head_create(struct weston_compositor *compositor, BOOL isPrimary, struct rdp_monitor_mode *monitorMode);
 void rdp_head_destroy(struct weston_compositor *compositor, struct rdp_head *head);
 
