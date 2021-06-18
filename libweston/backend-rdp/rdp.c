@@ -1826,6 +1826,7 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 	settings->SupportMonitorLayoutPdu = TRUE;
 	settings->RedirectClipboard = TRUE;
 	settings->HasExtendedMouseEvent = TRUE;
+	settings->HasHorizontalWheel = TRUE;
 
 	client->Capabilities = xf_peer_capabilities;
 	client->PostConnect = xf_peer_post_connect;
