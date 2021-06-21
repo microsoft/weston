@@ -1323,8 +1323,6 @@ xf_peer_activate(freerdp_peer* client)
 					       settings->KeyboardLayout,
 					       &xkbRuleNames);
 
-	rdp_debug(b, "HorizontalWheel: %d\n", settings->HasHorizontalWheel);
-
 	keymap = NULL;
 	if (xkbRuleNames.layout) {
 		keymap = xkb_keymap_new_from_names(b->compositor->xkb_context,
@@ -1430,30 +1428,30 @@ dump_mouseinput(RdpPeerContext *peerContext, UINT16 flags, UINT16 x, UINT16 y, b
 	rdp_debug_verbose(b, "RDP mouse input%s: (%d, %d): flags:%x: ", is_ex ? "_ex" : "", x, y, flags);
 	if (is_ex) {
 		if (flags & PTR_XFLAGS_DOWN)
-			rdp_debug(b, "DOWN ");
+			rdp_debug_verbose_continue(b, "DOWN ");
 		if (flags & PTR_XFLAGS_BUTTON1)
-			rdp_debug(b, "XBUTTON1 ");
+			rdp_debug_verbose_continue(b, "XBUTTON1 ");
 		if (flags & PTR_XFLAGS_BUTTON2)
-			rdp_debug(b, "XBUTTON2 ");
+			rdp_debug_verbose_continue(b, "XBUTTON2 ");
 	} else {
 		if (flags & PTR_FLAGS_WHEEL)
-			rdp_debug(b, "WHEEL ");
+			rdp_debug_verbose_continue(b, "WHEEL ");
 		if (flags & PTR_FLAGS_WHEEL_NEGATIVE)
-			rdp_debug(b, "WHEEL_NEGATIVE ");
+			rdp_debug_verbose_continue(b, "WHEEL_NEGATIVE ");
 		if (flags & PTR_FLAGS_HWHEEL)
-			rdp_debug(b, "HWHEEL ");
+			rdp_debug_verbose_continue(b, "HWHEEL ");
 		if (flags & PTR_FLAGS_MOVE)
-			rdp_debug(b, "MOVE ");
+			rdp_debug_verbose_continue(b, "MOVE ");
 		if (flags & PTR_FLAGS_DOWN)
-			rdp_debug(b, "DOWN ");
+			rdp_debug_verbose_continue(b, "DOWN ");
 		if (flags & PTR_FLAGS_BUTTON1)
-			rdp_debug(b, "BUTTON1 ");
+			rdp_debug_verbose_continue(b, "BUTTON1 ");
 		if (flags & PTR_FLAGS_BUTTON2)
-			rdp_debug(b, "BUTTON2 ");
+			rdp_debug_verbose_continue(b, "BUTTON2 ");
 		if (flags & PTR_FLAGS_BUTTON3)
-			rdp_debug(b, "BUTTON3 ");
+			rdp_debug_verbose_continue(b, "BUTTON3 ");
 	}
-	rdp_debug(b, "\n");
+	rdp_debug_verbose_continue(b, "\n");
 }
 
 static void
@@ -1478,6 +1476,7 @@ static bool
 rdp_notify_wheel_scroll(RdpPeerContext *peerContext, UINT16 flags, uint32_t axis)
 {
 	struct weston_pointer_axis_event weston_event;
+	struct rdp_backend *b = peerContext->rdpBackend;
 	int ivalue;
 	double value;
 	struct timespec time;
@@ -1493,8 +1492,12 @@ rdp_notify_wheel_scroll(RdpPeerContext *peerContext, UINT16 flags, uint32_t axis
 	else
 		ivalue = (flags & 0xff);
 
-	/* Flip the scroll direction as the RDP direction is inverse of X/Wayland */
-	ivalue *= -1;
+	/*
+		* Flip the scroll direction as the RDP direction is inverse of X/Wayland 
+		* for vertical scroll 
+		*/
+	if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
+		ivalue *= -1;
 
 	/*
 		* Accumulate the wheel increments.
@@ -1514,7 +1517,7 @@ rdp_notify_wheel_scroll(RdpPeerContext *peerContext, UINT16 flags, uint32_t axis
 		weston_event.discrete = peerContext->accumWheelRotationDiscrete / 120;
 		weston_event.has_discrete = true;
 
-		rdp_debug_verbose(peerContext->rdpBackend, "wheel: value:%f discrete:%d\n", 
+		rdp_debug_verbose(b, "wheel: value:%f discrete:%d\n", 
 			weston_event.value, weston_event.discrete);
 
 		weston_compositor_get_time(&time);
@@ -1572,10 +1575,13 @@ xf_mouseEvent(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y)
 		need_frame = true;
 	}
 
+	/* Per RDP spec, if both PTRFLAGS_WHEEL and PTRFLAGS_HWHEEL are specified
+	 * then PTRFLAGS_WHEEL takes precedent
+	 */
 	if (flags & PTR_FLAGS_WHEEL) {
 		if (rdp_notify_wheel_scroll(peerContext, flags, WL_POINTER_AXIS_VERTICAL_SCROLL))
 			need_frame = true;
-	} else if ((flags & PTR_FLAGS_HWHEEL) && peerContext->_p.settings->HasHorizontalWheel) {
+	} else if (flags & PTR_FLAGS_HWHEEL) {
 		if (rdp_notify_wheel_scroll(peerContext, flags, WL_POINTER_AXIS_HORIZONTAL_SCROLL))
 			need_frame = true;
 	}
