@@ -166,7 +166,7 @@ rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memor
 	strcat(path, "/");
 	strcat(path, shared_memory->name);
 
-	fd = open(path, O_CREAT | O_RDWR, 00600);
+	fd = open(path, O_CREAT | O_RDWR | O_EXCL, S_IWUSR | S_IRUSR);
 	if (fd < 0) {
 		rdp_debug_error(b, "%s: Failed to open \"%s\" with error: %s\n",
 			__func__, path, strerror(errno));
