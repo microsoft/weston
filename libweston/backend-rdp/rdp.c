@@ -1496,41 +1496,51 @@ rdp_notify_wheel_scroll(RdpPeerContext *peerContext, UINT16 flags, uint32_t axis
 	int ivalue;
 	double value;
 	struct timespec time;
+	int *accumWheelRotationPrecise;
+	int *accumWheelRotationDiscrete;
 
 	/*
-		* The RDP specs says the lower bits of flags contains the "the number of rotation
-		* units the mouse wheel was rotated".
-		*
-		* https://blogs.msdn.microsoft.com/oldnewthing/20130123-00/?p=5473 explains the 120 value
-		*/
+	* The RDP specs says the lower bits of flags contains the "the number of rotation
+	* units the mouse wheel was rotated".
+	*
+	* https://blogs.msdn.microsoft.com/oldnewthing/20130123-00/?p=5473 explains the 120 value
+	*/
 	if (flags & PTR_FLAGS_WHEEL_NEGATIVE)
 		ivalue = (int)((char)(flags & 0xff));
 	else
 		ivalue = (flags & 0xff);
 
 	/*
-		* Flip the scroll direction as the RDP direction is inverse of X/Wayland 
-		* for vertical scroll 
-		*/
-	if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
+	* Flip the scroll direction as the RDP direction is inverse of X/Wayland 
+	* for vertical scroll 
+	*/
+	if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
 		ivalue *= -1;
 
+		accumWheelRotationPrecise = &peerContext->verticalAccumWheelRotationPrecise;
+		accumWheelRotationDiscrete = &peerContext->verticalAccumWheelRotationDiscrete;
+	}
+	else {
+		accumWheelRotationPrecise = &peerContext->horizontalAccumWheelRotationPrecise;
+		accumWheelRotationDiscrete = &peerContext->horizontalAccumWheelRotationDiscrete;
+	}
+
 	/*
-		* Accumulate the wheel increments.
-		*
-		* Every 12 wheel increments, we will send an update to our Wayland
-		* clients with an updated value for the wheel for smooth scrolling.
-		*
-		* Every 120 wheel increments, we tick one discrete wheel click.
-		*/
-	peerContext->accumWheelRotationPrecise += ivalue;
-	peerContext->accumWheelRotationDiscrete += ivalue;
-	if (abs(peerContext->accumWheelRotationPrecise) >= 12) {
-		value = (double)(peerContext->accumWheelRotationPrecise / 12);
+	* Accumulate the wheel increments.
+	*
+	* Every 12 wheel increments, we will send an update to our Wayland
+	* clients with an updated value for the wheel for smooth scrolling.
+	*
+	* Every 120 wheel increments, we tick one discrete wheel click.
+	*/
+	*accumWheelRotationPrecise += ivalue;
+	*accumWheelRotationDiscrete += ivalue;
+	if (abs(*accumWheelRotationPrecise) >= 12) {
+		value = (double)(*accumWheelRotationPrecise / 12);
 
 		weston_event.axis = axis;
 		weston_event.value = value;
-		weston_event.discrete = peerContext->accumWheelRotationDiscrete / 120;
+		weston_event.discrete = *accumWheelRotationDiscrete / 120;
 		weston_event.has_discrete = true;
 
 		rdp_debug_verbose(b, "wheel: value:%f discrete:%d\n", 
@@ -1540,8 +1550,8 @@ rdp_notify_wheel_scroll(RdpPeerContext *peerContext, UINT16 flags, uint32_t axis
 
 		notify_axis(peerContext->item.seat, &time, &weston_event);
 
-		peerContext->accumWheelRotationPrecise %= 12;
-		peerContext->accumWheelRotationDiscrete %= 120;
+		*accumWheelRotationPrecise %= 12;
+		*accumWheelRotationDiscrete %= 120;
 		
 		return true;
 	}

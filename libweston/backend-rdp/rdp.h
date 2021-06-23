@@ -276,8 +276,10 @@ struct rdp_peer_context {
 
 	bool button_state[5];
 	char key_state[0xff/8]; // one bit per key.
-	int accumWheelRotationPrecise;
-	int accumWheelRotationDiscrete;
+	int verticalAccumWheelRotationPrecise;
+	int verticalAccumWheelRotationDiscrete;
+	int horizontalAccumWheelRotationPrecise;
+	int horizontalAccumWheelRotationDiscrete;
 
 	// RAIL support
 	HANDLE vcm;
