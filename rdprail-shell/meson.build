@@ -3,10 +3,15 @@ if get_option('shell-rdprail')
 	if dep_winpr.found()
 		config_h.set('HAVE_WINPR2', '1')
 	endif
+	dep_librsvg = dependency('librsvg-2.0', version: '>= 2.36.0', required: false)
+	if dep_librsvg.found()
+		config_h.set('HAVE_LIBRSVG2', '1')
+	endif
 	srcs_shell_rdprail = [
 		'shell.c',
 		'input-panel.c',
 		'app-list.c',
+		'img-load.c',
 		weston_desktop_shell_server_protocol_h,
 		weston_desktop_shell_protocol_c,
 		input_method_unstable_v1_server_protocol_h,
@@ -18,6 +23,7 @@ if get_option('shell-rdprail')
 		dep_libshared,
 		dep_lib_desktop,
 		dep_libweston_public,
+		dep_librsvg,
 		dep_winpr,
 	]
 	plugin_shell_rdprail = shared_library(

@@ -44,7 +44,6 @@
 #include <libweston/config-parser.h>
 #include "shared/helpers.h"
 #include "shared/timespec-util.h"
-#include "shared/image-loader.h"
 #include <libweston-desktop/libweston-desktop.h>
 #include <libweston/libweston.h>
 #include <libweston/backend.h>
@@ -4232,12 +4231,12 @@ wet_shell_init(struct weston_compositor *ec,
 
 	icon_path = getenv("WSL2_DEFAULT_APP_ICON");
 	if (icon_path && (strcmp(icon_path, "disabled") != 0))
-		shell->image_default_app_icon = load_image(icon_path);
+		shell->image_default_app_icon = load_icon_image(shell, icon_path);
 	shell_rdp_debug(shell, "WSL2_DEFAULT_APP_ICON:%s\n", icon_path);
 
 	icon_path = getenv("WSL2_DEFAULT_APP_OVERLAY_ICON");
 	if (icon_path && (strcmp(icon_path, "disabled") != 0))
-		shell->image_default_app_overlay_icon = load_image(icon_path);
+		shell->image_default_app_overlay_icon = load_icon_image(shell, icon_path);
 	shell_rdp_debug(shell, "WSL2_DEFAULT_APP_OVERLAY_ICON:%s\n", icon_path);
 
 	if (getenv("WESTON_RDPRAIL_SHELL_DISABLE_BLEND_OVERLAY_ICON_TASKBAR"))

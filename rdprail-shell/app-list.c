@@ -49,7 +49,6 @@
 
 #include "shell.h"
 #include "shared/helpers.h"
-#include "shared/image-loader.h"
 
 #ifdef HAVE_WINPR2
 #include <winpr/crt.h>
@@ -317,7 +316,7 @@ send_app_entry(struct desktop_shell *shell, char *key, struct app_entry *entry,
 			if (!entry->icon_file)
 				entry->icon_file = find_icon_file(entry->icon);
 			if (entry->icon_file)
-				app_list_data.appIcon = load_image(entry->icon_file);
+				app_list_data.appIcon = load_icon_image(shell, entry->icon_file);
 			detach_app_list_namespace(shell);
 		} 
 		if (!app_list_data.appIcon) {
@@ -837,7 +836,7 @@ app_list_monitor_thread(LPVOID arg)
 					if (!entry->icon_file)
 						entry->icon_file = find_icon_file(entry->icon);
 					if (entry->icon_file)
-						context->load_icon.image = load_image(entry->icon_file);
+						context->load_icon.image = load_icon_image(shell, entry->icon_file);
 					detach_app_list_namespace(shell);
 				}
 				shell_rdp_debug(shell, "app_list_monitor_thread: entry %p, image %p\n", entry, context->load_icon.image);
@@ -1112,11 +1111,11 @@ void app_list_init(struct desktop_shell *shell)
 	/* load default icon */
 	iconpath = getenv("WSL2_DEFAULT_APP_ICON");
 	if (iconpath && (strcmp(iconpath, "disabled") != 0))
-		context->default_icon = load_image(iconpath);
+		context->default_icon = load_icon_image(shell, iconpath);
 
 	iconpath = getenv("WSL2_DEFAULT_APP_OVERLAY_ICON");
 	if (iconpath && (strcmp(iconpath, "disabled") != 0))
-		context->default_overlay_icon = load_image(iconpath);
+		context->default_overlay_icon = load_icon_image(shell, iconpath);
 
 	/* set default language as "en_US". this will be updated once client connected */
 	strcpy(context->lang_info.requestedClientLanguageId, "en_US");

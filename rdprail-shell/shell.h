@@ -181,8 +181,11 @@ shell_blend_overlay_icon(struct desktop_shell *shell,
 void
 shell_rdp_debug_print(struct weston_log_scope *scope, bool cont, char *fmt, ...);
 
+// app-list.c
 void app_list_init(struct desktop_shell *shell);
 void app_list_destroy(struct desktop_shell *shell);
 pixman_image_t *app_list_load_icon_file(struct desktop_shell *shell, const char *key);
 bool app_list_start_backend_update(struct desktop_shell *shell, char *clientLanguageId);
 void app_list_stop_backend_update(struct desktop_shell *shell);
+// img-load.c
+pixman_image_t *load_icon_image(struct desktop_shell *shell, const char *filename);
