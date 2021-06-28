@@ -74,15 +74,19 @@ struct rdp_clipboard_supported_format {
 	pfn_process_data pfn;
 };
 
-static void *clipboard_process_text(struct rdp_clipboard_data_source *, BOOL);
+static void *clipboard_process_text_utf8(struct rdp_clipboard_data_source *, BOOL);
+static void *clipboard_process_text_raw(struct rdp_clipboard_data_source *, BOOL);
 static void *clipboard_process_bmp(struct rdp_clipboard_data_source *, BOOL);
 static void *clipboard_process_html(struct rdp_clipboard_data_source *, BOOL);
 
+//TODO: need to support to 1:n or m:n format conversion.
+//For example, CF_UNICODETEXT to "UTF8_STRING" as well as "text/plain;charset=utf-8".
 struct rdp_clipboard_supported_format clipboard_supported_formats[] = {
-	{ 0, CF_UNICODETEXT,  NULL,               "text/plain;charset=utf-8", clipboard_process_text },
-	{ 1, CF_DIB,          NULL,               "image/bmp",                clipboard_process_bmp  },
-	{ 2, CF_PRIVATE_RTF,  "Rich Text Format", "text/rtf",                 clipboard_process_text }, // same as text
-	{ 3, CF_PRIVATE_HTML, "HTML Format",      "text/html",                clipboard_process_html },
+	{ 0, CF_UNICODETEXT,  NULL,               "text/plain;charset=utf-8", clipboard_process_text_utf8 },
+	{ 1, CF_TEXT,         NULL,               "STRING",                   clipboard_process_text_raw  },
+	{ 2, CF_DIB,          NULL,               "image/bmp",                clipboard_process_bmp       },
+	{ 3, CF_PRIVATE_RTF,  "Rich Text Format", "text/rtf",                 clipboard_process_text_raw  },
+	{ 4, CF_PRIVATE_HTML, "HTML Format",      "text/html",                clipboard_process_html      },
 };
 #define RDP_NUM_CLIPBOARD_FORMATS ARRAY_LENGTH(clipboard_supported_formats)
 
@@ -152,7 +156,7 @@ clipboard_data_source_state_to_string(struct rdp_clipboard_data_source *source)
 }
 
 static void *
-clipboard_process_text(struct rdp_clipboard_data_source *source, BOOL is_send)
+clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, BOOL is_send)
 {
 	freerdp_peer *client = (freerdp_peer*)source->context;
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
@@ -240,14 +244,51 @@ error_return:
 	rdp_debug_clipboard_error(b, "RDP %s FAILED (%p:%s): %s (%d bytes)\n",
 		__func__, source, clipboard_data_source_state_to_string(source),
 		is_send ? "send" : "receive", (UINT32)source->data_contents.size);
-	//rdp_debug_clipboard_verbose(b, "RDP clipboard_process_html FAILED (%p): %s \n\"%s\"\n (%d bytes)\n",
-	//	source, is_send ? "send" : "receive",
+	//rdp_debug_clipboard_verbose(b, "RDP %s FAILED (%p): %s \n\"%s\"\n (%d bytes)\n",
+	//	__func__, source, is_send ? "send" : "receive",
 	//	(char *)source->data_contents.data,
 	//	(UINT32)source->data_contents.size);
 
 	wl_array_release(&data_contents);
 
 	return NULL;
+}
+
+static void *
+clipboard_process_text_raw(struct rdp_clipboard_data_source *source, BOOL is_send)
+{
+	freerdp_peer *client = (freerdp_peer*)source->context;
+	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = peerCtx->rdpBackend;
+
+	if (!source->is_data_processed) {
+		if (is_send) {
+			/* Linux to Windows */
+			/* Include terminating NULL in size */
+			assert((source->data_contents.size + 1) <= source->data_contents.alloc);
+			assert(((char*)source->data_contents.data)[source->data_contents.size] == '\0');
+			source->data_contents.size++;
+		} else {
+			/* Windows to Linux */
+			char *data = (char*)source->data_contents.data;
+			size_t data_size = source->data_contents.size;
+
+			/* Windows's data has trailing chars, which Linux doesn't expect. */
+			while(data_size && ((data[data_size-1] == '\0') || (data[data_size-1] == '\n')))
+				data_size -= 1;
+			source->data_contents.size = data_size;
+		}
+		source->is_data_processed = TRUE;
+	}
+
+	rdp_debug_clipboard_verbose(b, "RDP %s (%p): %s (%d bytes)\n",
+		__func__, source, is_send ? "send" : "receive", (UINT32)source->data_contents.size);
+	//rdp_debug_clipboard_verbose(b, "RDP %s (%p): %s \n\"%s\"\n (%d bytes)\n",
+	//	__func__, source, is_send ? "send" : "receive",
+	//	(char *)source->data_contents.data,
+	//	(UINT32)source->data_contents.size);
+
+	return source->data_contents.data;
 }
 
 /* based off sample code at https://docs.microsoft.com/en-us/troubleshoot/cpp/add-html-code-clipboard
@@ -340,8 +381,8 @@ clipboard_process_html(struct rdp_clipboard_data_source *source, BOOL is_send)
 	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s): %s (%d bytes)\n",
 		__func__, source, clipboard_data_source_state_to_string(source),
 		is_send ? "send" : "receive", (UINT32)source->data_contents.size);
-	//rdp_debug_clipboard_verbose(b, "RDP clipboard_process_html (%p): %s \n\"%s\"\n (%d bytes)\n",
-	//	source, is_send ? "send" : "receive",
+	//rdp_debug_clipboard_verbose(b, "RDP %s (%p): %s \n\"%s\"\n (%d bytes)\n",
+	//	__func__, source, is_send ? "send" : "receive",
 	//	(char *)source->data_contents.data,
 	//	(UINT32)source->data_contents.size);
 
@@ -353,8 +394,8 @@ error_return:
 	rdp_debug_clipboard_error(b, "RDP %s FAILED (%p:%s): %s (%d bytes)\n",
 		__func__, source, clipboard_data_source_state_to_string(source),
 		is_send ? "send" : "receive", (UINT32)source->data_contents.size);
-	//rdp_debug_clipboard_verbose(b, "RDP clipboard_process_html FAILED (%p): %s \n\"%s\"\n (%d bytes)\n",
-	//	source, is_send ? "send" : "receive",
+	//rdp_debug_clipboard_verbose(b, "RDP %s FAILED (%p): %s \n\"%s\"\n (%d bytes)\n",
+	//	__func__, source, is_send ? "send" : "receive",
 	//	(char *)source->data_contents.data,
 	//	(UINT32)source->data_contents.size);
 
@@ -657,11 +698,16 @@ clipboard_data_source_unref(struct rdp_clipboard_data_source *source)
 	if (source->refcount > 0)
 		return;
 
-	if (source->transfer_event_source)
+	if (source->transfer_event_source) {
+		/* removing event source must be done from wayland display thread */
+		ASSERT_COMPOSITOR_THREAD(b);
 		wl_event_source_remove(source->transfer_event_source);
+	}
 
 	if (source->defer_event_source) {
 		rdp_defer_rdp_task_done(peerCtx);
+		/* removing event source must be done from wayland display thread */
+		ASSERT_COMPOSITOR_THREAD(b);
 		wl_event_source_remove(source->defer_event_source);
 	}
 
