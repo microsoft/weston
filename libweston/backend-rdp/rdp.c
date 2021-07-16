@@ -1580,10 +1580,18 @@ xf_mouseEvent(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y)
 			need_frame = true;
 	}
 
-	if (flags & PTR_FLAGS_BUTTON1)
-		button = BTN_LEFT;
-	else if (flags & PTR_FLAGS_BUTTON2)
-		button = BTN_RIGHT;
+	if (flags & PTR_FLAGS_BUTTON1) {
+		if (peerContext->mouseButtonSwap)
+			button = BTN_RIGHT;
+		else
+			button = BTN_LEFT;
+	}
+	else if (flags & PTR_FLAGS_BUTTON2) {
+		if (peerContext->mouseButtonSwap)
+			button = BTN_LEFT;
+		else
+			button = BTN_RIGHT;
+	}
 	else if (flags & PTR_FLAGS_BUTTON3)
 		button = BTN_MIDDLE;
 

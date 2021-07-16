@@ -275,6 +275,7 @@ struct rdp_peer_context {
 	struct rdp_peers_item item;
 
 	bool button_state[5];
+	bool mouseButtonSwap;
 	char key_state[0xff/8]; // one bit per key.
 	int verticalAccumWheelRotationPrecise;
 	int verticalAccumWheelRotationDiscrete;

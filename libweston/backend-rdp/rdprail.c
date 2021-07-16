@@ -518,6 +518,7 @@ rail_client_ClientSysparam_callback(int fd, uint32_t mask, void *arg)
 
 	if (sysparam->params & SPI_MASK_SET_MOUSE_BUTTON_SWAP) {
 		rdp_debug(b, "Client: ClientSysparam: mouseButtonSwap:%d\n", sysparam->mouseButtonSwap);
+		peerCtx->mouseButtonSwap = sysparam->mouseButtonSwap;
 	}
 
 	if (sysparam->params & SPI_MASK_SET_WORK_AREA) {
