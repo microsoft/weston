@@ -1024,7 +1024,7 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{KBD_ITALIAN, "it", 0},
 	{KBD_ITALIAN_142, "it", "nodeadkeys"},
 	{KBD_JAPANESE, "jp", 0},
-	{KBD_JAPANESE_INPUT_SYSTEM_MS_IME2002, "jp", 0}, // default to alphabet input instead of "kana".
+	{KBD_JAPANESE_INPUT_SYSTEM_MS_IME2002, "jp", 0}, // variant is changed to alphabetical input (0) from "kana".
 	{KBD_KOREAN, "kr", 0},
 	{KBD_KOREAN_INPUT_SYSTEM_IME_2000, "kr", "kr104"},
 	{KBD_DUTCH, "nl", 0},
@@ -1050,7 +1050,14 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{KBD_ESTONIAN, "ee", 0},
 	{KBD_LATVIAN, "lv", 0},
 	{KBD_LITHUANIAN_IBM, "lt", "ibm"},
-	{KBD_FARSI, "af", 0},
+	// 0x429 (KBD_FARSI) is for Persian(Iran)
+	// TODO: define exact match with Windows layout in Xkb.
+	//       Such as key <AE01>~<AE10> is 1,2,3...0 on Windows, not Persian numbers,
+	//       but Xkb doesn't have that layout in "ir" group.
+	{KBD_FARSI, "ir", "pes"},
+	// 0x50429 is for Dari(Afghanistan)
+	// TODO: define KBD_DARI in winpr's keyboard.h
+	{0x50429, "af", "basic"},
 	{KBD_VIETNAMESE, "vn", 0},
 	{KBD_ARMENIAN_EASTERN, "am", 0},
 	{KBD_AZERI_LATIN, 0, 0},
