@@ -213,6 +213,8 @@ struct weston_surface_rail_state {
 	bool is_minimized_requested;
 	bool is_maximized;
 	bool is_maximized_requested;
+	bool is_fullscreen;
+	bool is_fullscreen_requested;
 	bool forceRecreateSurface;
 	bool forceUpdateWindowState;
 	bool error;

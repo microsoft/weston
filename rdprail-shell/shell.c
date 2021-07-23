@@ -1571,6 +1571,15 @@ weston_view_set_initial_position(struct weston_view *view,
 static void
 unset_fullscreen(struct shell_surface *shsurf)
 {
+	struct weston_surface *surface =
+		weston_desktop_surface_get_surface(shsurf->desktop_surface);
+	struct weston_surface_rail_state *rail_state =
+		(struct weston_surface_rail_state *)surface->backend_state;
+
+	if (!rail_state)
+		return;
+	rail_state->is_fullscreen_requested = false;
+
 	/* Unset the fullscreen output, driver configuration and transforms. */
 	wl_list_remove(&shsurf->fullscreen.transform.link);
 	wl_list_init(&shsurf->fullscreen.transform.link);
@@ -2336,7 +2345,13 @@ set_fullscreen(struct shell_surface *shsurf, bool fullscreen,
 	struct weston_desktop_surface *desktop_surface = shsurf->desktop_surface;
 	struct weston_surface *surface =
 		weston_desktop_surface_get_surface(shsurf->desktop_surface);
+	struct weston_surface_rail_state *rail_state =
+		(struct weston_surface_rail_state *)surface->backend_state;
 	int32_t width = 0, height = 0;
+
+	if (!rail_state)
+		return;
+	rail_state->is_fullscreen_requested = fullscreen;
 
 	if (fullscreen) {
 		/* handle clients launching in fullscreen */

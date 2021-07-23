@@ -46,6 +46,9 @@
 
 #include "libweston-internal.h"
 
+#define RAIL_WINDOW_FULLSCREEN_STYLE (WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_GROUP | WS_TABSTOP)
+#define RAIL_WINDOW_NORMAL_STYLE (RAIL_WINDOW_FULLSCREEN_STYLE | WS_THICKFRAME | WS_CAPTION)
+
 extern PWtsApiFunctionTable FreeRDP_InitWtsApi(void);
 
 static void rdp_rail_destroy_window(struct wl_listener *listener, void *data);
@@ -1342,52 +1345,8 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 		(WINDOW_ORDER_TYPE_WINDOW | WINDOW_ORDER_STATE_NEW);
 	window_order_info.windowId = window_id;
 
-	/*
-	#define WS_OVERLAPPED       0x00000000L
-	#define WS_POPUP            0x80000000L
-	#define WS_CHILD            0x40000000L
-	#define WS_MINIMIZE         0x20000000L
-	#define WS_VISIBLE          0x10000000L
-	#define WS_DISABLED         0x08000000L
-	#define WS_CLIPSIBLINGS     0x04000000L
-	#define WS_CLIPCHILDREN     0x02000000L
-	#define WS_MAXIMIZE         0x01000000L
-	#define WS_CAPTION          0x00C00000L
-	#define WS_BORDER           0x00800000L
-	#define WS_DLGFRAME         0x00400000L
-	#define WS_VSCROLL          0x00200000L
-	#define WS_HSCROLL          0x00100000L
-	#define WS_SYSMENU          0x00080000L
-	#define WS_THICKFRAME       0x00040000L
-	#define WS_GROUP            0x00020000L
-	#define WS_TABSTOP          0x00010000L
-	#define WS_MINIMIZEBOX      0x00020000L
-	#define WS_MAXIMIZEBOX      0x00010000L
-
-	#define WS_EX_DLGMODALFRAME     0x00000001L
-	#define WS_EX_NOPARENTNOTIFY    0x00000004L
-	#define WS_EX_TOPMOST           0x00000008L
-	#define WS_EX_ACCEPTFILES       0x00000010L
-	#define WS_EX_TRANSPARENT       0x00000020L
-	#define WS_EX_MDICHILD          0x00000040L
-	#define WS_EX_TOOLWINDOW        0x00000080L
-	#define WS_EX_WINDOWEDGE        0x00000100L
-	#define WS_EX_CLIENTEDGE        0x00000200L
-	#define WS_EX_CONTEXTHELP       0x00000400L
-	#define WS_EX_RIGHT             0x00001000L
-	#define WS_EX_LEFT              0x00000000L
-	#define WS_EX_RTLREADING        0x00002000L
-	#define WS_EX_LTRREADING        0x00000000L
-	#define WS_EX_LEFTSCROLLBAR     0x00004000L
-	#define WS_EX_RIGHTSCROLLBAR    0x00000000L
-	#define WS_EX_CONTROLPARENT     0x00010000L
-	#define WS_EX_STATICEDGE        0x00020000L
-	#define WS_EX_APPWINDOW         0x00040000L
-	#define WS_EX_LAYERED           0x00080000L
-	*/
-
 	window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_STYLE;
-	window_state_order.style = (WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_THICKFRAME | WS_GROUP | WS_TABSTOP);
+	window_state_order.style = RAIL_WINDOW_NORMAL_STYLE;
 	window_state_order.extendedStyle = WS_EX_LAYERED;
 
 	window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_OWNER;
@@ -1849,10 +1808,26 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 					window_id, rail_state->is_minimized_requested);
 		}
 
-		if (rail_state->is_maximized != rail_state->is_maximized_requested)
+		if (rail_state->is_maximized != rail_state->is_maximized_requested) {
 			rdp_debug_verbose(b, "WindowUpdate(0x%x - is_maximized:%d)\n",
 					window_id, rail_state->is_maximized_requested);
-		rail_state->is_maximized = rail_state->is_maximized_requested;
+			rail_state->is_maximized = rail_state->is_maximized_requested;
+		}
+
+		if (rail_state->is_fullscreen != rail_state->is_fullscreen_requested) {
+			rdp_debug_verbose(b, "WindowUpdate(0x%x - is_fullscreen:%d)\n",
+					window_id, rail_state->is_fullscreen_requested);
+			rail_state->is_fullscreen = rail_state->is_fullscreen_requested;
+
+			window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_STYLE;
+			if (rail_state->is_fullscreen)
+				window_state_order.style = RAIL_WINDOW_FULLSCREEN_STYLE;
+			else
+				window_state_order.style = RAIL_WINDOW_NORMAL_STYLE;
+			window_state_order.extendedStyle = WS_EX_LAYERED;
+			/* force update window geometry */
+			rail_state->forceUpdateWindowState = true;
+		}
 
 		if (rail_state->forceUpdateWindowState ||
 			rail_state->get_label != surface->get_label) {
@@ -1948,6 +1923,16 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 			window_state_order.visibilityRects = &window_vis;
 			window_state_order.clientAreaWidth = newClientPos.width;
 			window_state_order.clientAreaHeight = newClientPos.height;
+			if (!rail_state->is_fullscreen) {
+				/* when window is not in fullscreen, there should be 'some' area for title bar,
+				   thus substracting 32 pixels out from window size for client area, this value
+				   does not need to be accurate at all, all here need to tell RDP client is that
+				   'real' application client area size is different from window size.
+				   To pursue accuracy if desired, this value can be pulled from X for X app,
+				   but this seems not possible for Wayland native application. */
+				if (window_state_order.clientAreaHeight > 8)
+					window_state_order.clientAreaHeight -= 8;
+			}
 
 			/* if previous window size is 0 and new window is not,
 			   show and place in taskbar (if not set yet) */
@@ -3463,6 +3448,8 @@ rdp_rail_dump_window_iter(void *element, void *data)
 		rail_state->is_minimized, rail_state->is_minimized_requested);
 	fprintf(fp,"    isWindowMaximized:%d, isWindowMaximizedRequested:%d\n",
 		rail_state->is_maximized, rail_state->is_maximized_requested);
+	fprintf(fp,"    isWindowFullscreen:%d, isWindowFullscreenRequested:%d\n",
+		rail_state->is_fullscreen, rail_state->is_fullscreen_requested);
 	fprintf(fp,"    forceRecreateSurface:%d, error:%d\n",
 		rail_state->forceRecreateSurface, rail_state->error);
 	fprintf(fp,"    isUdatePending:%d, isFirstUpdateDone:%d\n",
