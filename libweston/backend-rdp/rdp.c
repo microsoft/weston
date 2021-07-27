@@ -1170,7 +1170,7 @@ convert_rdp_keyboard_to_xkb_rule_names(
 	}
 	/* Brazilian ABNT2 keyboard */
 	else if (KeyboardLayout == KBD_PORTUGUESE_BRAZILIAN_ABNT2) {
-		xkbRuleNames->model = "abnt2";
+		xkbRuleNames->model = "pc105";
 	}
 
 	weston_log("%s: matching model=%s layout=%s variant=%s options=%s\n", __FUNCTION__,
