@@ -1109,7 +1109,7 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{KBD_IRISH, 0, 0},
 	{KBD_BOSNIAN_CYRILLIC, "ba", "us"},
 	{KBD_UNITED_STATES_DVORAK, "us", "dvorak"},
-	{KBD_PORTUGUESE_BRAZILIAN_ABNT2, "br", "nativo"},
+	{KBD_PORTUGUESE_BRAZILIAN_ABNT2, "br", "abnt2"},
 	{KBD_CANADIAN_MULTILINGUAL_STANDARD, "ca", "multix"},
 	{KBD_GAELIC, "ie", "CloGaelach"},
 
@@ -1147,6 +1147,7 @@ convert_rdp_keyboard_to_xkb_rule_names(
 			break;
 		}
 	}
+
 	/* Korean keyboard support (KeyboardType 8, LangID 0x412) */
 	if (KeyboardType == 8 && ((KeyboardLayout & 0xFFFF) == 0x412)) {
 		/* TODO: PC/AT 101 Enhanced Korean Keyboard (Type B) and (Type C) is not supported yet
@@ -1160,8 +1161,20 @@ convert_rdp_keyboard_to_xkb_rule_names(
 		else if (KeyboardSubType == 6) // PC/AT 103 Enhanced Korean Keyboard
 			xkbRuleNames->variant = "kr106"; // kr(hw_keys)
 	}
-	weston_log("%s: matching layout=%s variant=%s options=%s\n", __FUNCTION__,
-		xkbRuleNames->layout, xkbRuleNames->variant, xkbRuleNames->options);
+	/* Japanese keyboard layout is used with other than Japanese 106/109 keyboard */
+	else if (KeyboardType != 7 && ((KeyboardLayout & 0xFFFF) == 0x411)) {
+		/* when Japanese keyboard layout is used other than Japanese 106/109 keyboard (keyboard type 7),
+		   use "us" layout, since the "jp" layout in xkb expects Japanese 106/109 keyboard layout. */
+		xkbRuleNames->layout = "us";
+		xkbRuleNames->variant = 0;
+	}
+	/* Brazilian ABNT2 keyboard */
+	else if (KeyboardLayout == KBD_PORTUGUESE_BRAZILIAN_ABNT2) {
+		xkbRuleNames->model = "abnt2";
+	}
+
+	weston_log("%s: matching model=%s layout=%s variant=%s options=%s\n", __FUNCTION__,
+		xkbRuleNames->model, xkbRuleNames->layout, xkbRuleNames->variant, xkbRuleNames->options);
 }
 
 static BOOL

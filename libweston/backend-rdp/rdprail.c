@@ -751,8 +751,8 @@ languageGuid_to_string(const GUID *guid)
 	} lang_GUID;
 
 	static const lang_GUID c_GUID_NULL = GUID_NULL;
-	static const lang_GUID c_GUID_MSIME_JPN = GUID_MSIME_JPN;
-	static const lang_GUID c_GUID_MSIME_KOR = GUID_MSIME_KOR;
+	static const lang_GUID c_GUID_JPNIME = GUID_MSIME_JPN;
+	static const lang_GUID c_GUID_KORIME = GUID_MSIME_KOR;
 	static const lang_GUID c_GUID_CHSIME = GUID_CHSIME;
 	static const lang_GUID c_GUID_CHTIME = GUID_CHTIME;
 	static const lang_GUID c_GUID_PROFILE_NEWPHONETIC = GUID_PROFILE_NEWPHONETIC;
@@ -767,10 +767,10 @@ languageGuid_to_string(const GUID *guid)
 	RPC_STATUS rpc_status;
 	if (UuidEqual(guid, (GUID *)&c_GUID_NULL, &rpc_status))
 		return "GUID_NULL";
-	else if (UuidEqual(guid, (GUID *)&c_GUID_MSIME_JPN, &rpc_status))
-		return "GUID_MSIME_JPN";
-	else if (UuidEqual(guid, (GUID *)&c_GUID_MSIME_KOR, &rpc_status))
-		return "GUID_MSIME_KOR";
+	else if (UuidEqual(guid, (GUID *)&c_GUID_JPNIME, &rpc_status))
+		return "GUID_JPNIME";
+	else if (UuidEqual(guid, (GUID *)&c_GUID_KORIME, &rpc_status))
+		return "GUID_KORIME";
 	else if (UuidEqual(guid, (GUID *)&c_GUID_CHSIME, &rpc_status))
 		return "GUID_CHSIME";
 	else if (UuidEqual(guid, (GUID *)&c_GUID_CHTIME, &rpc_status))
@@ -804,6 +804,9 @@ rail_client_LanguageImeInfo_callback(int fd, uint32_t mask, void *arg)
 	rdpSettings *settings = client->settings;
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = peerCtx->rdpBackend;
+	UINT32 new_keyboard_layout = 0;
+	struct xkb_keymap *keymap = NULL;
+	struct xkb_rule_names xkbRuleNames;
 	char *s;
 
 	ASSERT_COMPOSITOR_THREAD(b);
@@ -829,12 +832,49 @@ rail_client_LanguageImeInfo_callback(int fd, uint32_t mask, void *arg)
 	rdp_debug(b, "Client: LanguageImeInfo: KeyboardLayout: 0x%x\n", languageImeInfo->KeyboardLayout);
 
 	if (languageImeInfo->ProfileType == TF_PROFILETYPE_KEYBOARDLAYOUT) {
-		struct xkb_rule_names xkbRuleNames;
-		struct xkb_keymap *keymap = NULL;
-		settings->KeyboardLayout = languageImeInfo->KeyboardLayout;
+		new_keyboard_layout = languageImeInfo->KeyboardLayout;
+	} else if (languageImeInfo->ProfileType == TF_PROFILETYPE_INPUTPROCESSOR) {
+		typedef struct _lang_GUID
+		{
+			UINT32 Data1;
+			UINT16 Data2;
+			UINT16 Data3;
+			BYTE Data4_0;
+			BYTE Data4_1;
+			BYTE Data4_2;
+			BYTE Data4_3;
+			BYTE Data4_4;
+			BYTE Data4_5;
+			BYTE Data4_6;
+			BYTE Data4_7;
+		} lang_GUID;
+
+		static const lang_GUID c_GUID_JPNIME = GUID_MSIME_JPN;
+		static const lang_GUID c_GUID_KORIME = GUID_MSIME_KOR;
+		static const lang_GUID c_GUID_CHSIME = GUID_CHSIME;
+		static const lang_GUID c_GUID_CHTIME = GUID_CHTIME;
+
+		RPC_STATUS rpc_status;
+		if (UuidEqual(&languageImeInfo->LanguageProfileCLSID,
+			(GUID *)&c_GUID_JPNIME, &rpc_status))
+			new_keyboard_layout = KBD_JAPANESE;
+		else if (UuidEqual(&languageImeInfo->LanguageProfileCLSID,
+			(GUID *)&c_GUID_KORIME, &rpc_status))
+			new_keyboard_layout = KBD_KOREAN;
+		else if (UuidEqual(&languageImeInfo->LanguageProfileCLSID,
+			(GUID *)&c_GUID_CHSIME, &rpc_status))
+			new_keyboard_layout = KBD_CHINESE_SIMPLIFIED_US;
+		else if (UuidEqual(&languageImeInfo->LanguageProfileCLSID,
+			(GUID *)&c_GUID_CHTIME, &rpc_status))
+			new_keyboard_layout = KBD_CHINESE_TRADITIONAL_US;
+		else 
+			new_keyboard_layout = KBD_US;
+	}
+
+	if (new_keyboard_layout && (new_keyboard_layout != settings->KeyboardLayout)) {
 		convert_rdp_keyboard_to_xkb_rule_names(settings->KeyboardType,
 						       settings->KeyboardSubType,
-						       settings->KeyboardLayout,
+						       new_keyboard_layout,
 						       &xkbRuleNames);
 		if (xkbRuleNames.layout) {
 			keymap = xkb_keymap_new_from_names(b->compositor->xkb_context,
@@ -842,11 +882,12 @@ rail_client_LanguageImeInfo_callback(int fd, uint32_t mask, void *arg)
 			if (keymap) {
 				weston_seat_update_keymap(peerCtx->item.seat, keymap);
 				xkb_keymap_unref(keymap);
+				settings->KeyboardLayout = new_keyboard_layout;
 			}
 		}
 		if (!keymap) {
 			rdp_debug_error(b, "%s: Failed to switch to kbd_layout:0x%x kbd_type:0x%x kbd_subType:0x%x\n",
-				__func__, settings->KeyboardLayout, settings->KeyboardType, settings->KeyboardSubType);
+				__func__, new_keyboard_layout, settings->KeyboardType, settings->KeyboardSubType);
 		}
 	}
 
