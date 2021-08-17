@@ -31,7 +31,7 @@
 #include <libweston/xwayland-api.h>
 #include <libweston/weston-log.h>
 
-#include "weston-desktop-shell-server-protocol.h"
+#include "weston-rdprail-shell-server-protocol.h"
 
 #define RDPRAIL_SHELL_DEBUG_LEVEL_NONE    0
 #define RDPRAIL_SHELL_DEBUG_LEVEL_ERR     1
@@ -86,6 +86,15 @@ struct desktop_shell {
 	struct wl_listener pointer_focus_listener;
 	struct weston_surface *grab_surface;
 
+	struct {
+		struct wl_client *client;
+		struct wl_resource *desktop_shell;
+		struct wl_listener client_destroy_listener;
+
+		unsigned deathcount;
+		struct timespec deathstamp;
+	} child;
+
 	bool prepare_event_sent;
 
 	struct text_backend *text_backend;
@@ -117,6 +126,8 @@ struct desktop_shell {
 	struct wl_listener output_move_listener;
 	struct wl_list output_list;
 
+	char *client;
+
 	struct timespec startup_time;
 
 	bool is_localmove_supported;
@@ -132,6 +143,8 @@ struct desktop_shell {
 
 	bool is_blend_overlay_icon_taskbar;
 	bool is_blend_overlay_icon_app_list;
+
+	struct weston_surface *focus_proxy_surface;
 
 	const struct weston_rdprail_api *rdprail_api;
 	void *rdp_backend;

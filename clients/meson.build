@@ -371,3 +371,18 @@ if get_option('shell-ivi')
 	)
 	env_modmap += 'weston-ivi-shell-user-interface=@0@;'.format(exe_shell_ivi_ui.full_path())
 endif
+
+
+if get_option('shell-rdprail')
+	exe_shell_rdprail = executable(
+		'weston-rdprail-shell',
+		'rdprail-shell.c',
+		weston_rdprail_shell_client_protocol_h,
+		weston_rdprail_shell_protocol_c,
+		include_directories: common_inc,
+		dependencies: dep_toytoolkit,
+		install: true,
+		install_dir: get_option('libexecdir')
+	)
+	env_modmap += 'weston-rdprail-shell=@0@;'.format(exe_shell_rdprail.full_path())
+endif
