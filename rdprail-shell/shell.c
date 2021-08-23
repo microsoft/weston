@@ -1459,37 +1459,19 @@ handle_keyboard_focus(struct wl_listener *listener, void *data)
 {
 	struct weston_keyboard *keyboard = data;
 	struct shell_seat *seat = get_shell_seat(keyboard->seat);
-	struct weston_surface* new_focused_surface = weston_surface_get_main_surface(keyboard->focus);
-	struct weston_surface* old_focused_surface = seat->focused_surface;
-	struct wl_array keys;
-	wl_array_init(&keys);
 
-	if (new_focused_surface != old_focused_surface) {
-		if (old_focused_surface) {
-			struct shell_surface *shsurf = get_shell_surface(old_focused_surface);
-			if (shsurf) {
-				shell_surface_lose_keyboard_focus(shsurf);
-				/* when old focused window is focus proxy surface, server side window is
-				   taking focus, thus let keyboard knows that */
-				/* note: "keys" array is empty, thus it begin with no key pressed */
-				if (old_focused_surface == shsurf->shell->focus_proxy_surface)
-					notify_keyboard_focus_in(keyboard->seat, &keys, STATE_UPDATE_AUTOMATIC);
-			}
-		}
+	if (seat->focused_surface) {
+		struct shell_surface *shsurf = get_shell_surface(seat->focused_surface);
+		if (shsurf)
+			shell_surface_lose_keyboard_focus(shsurf);
+	}
 
-		seat->focused_surface = new_focused_surface;
+	seat->focused_surface = weston_surface_get_main_surface(keyboard->focus);
 
-		if (new_focused_surface) {
-			struct shell_surface *shsurf = get_shell_surface(seat->focused_surface);
-			if (shsurf) {
-				shell_surface_gain_keyboard_focus(shsurf);
-				/* when new focused window is focus proxy window, client side window is
-				   taking focus and server side window is losing focus, let keyboard to
-				   clear out currently pressed keys */
-				if (new_focused_surface == shsurf->shell->focus_proxy_surface)
-					notify_keyboard_focus_out(keyboard->seat);
-			}
-		}
+	if (seat->focused_surface) {
+		struct shell_surface *shsurf = get_shell_surface(seat->focused_surface);
+		if (shsurf)
+			shell_surface_gain_keyboard_focus(shsurf);
 	}
 }
 
