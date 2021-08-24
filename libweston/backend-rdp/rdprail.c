@@ -87,9 +87,9 @@ struct rdp_dispatch_data {
 			pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex); \
 			wl_list_insert(&peerCtx->loop_event_source_list, &dispatch_data->_base_event_source.link); \
 			pthread_mutex_unlock(&peerCtx->loop_event_source_list_mutex); \
-			dispatch_data->_base_event_source.event_source = \
-				rdp_defer_rdp_task_to_display_loop(peerCtx, callback, dispatch_data); \
-			if (!dispatch_data->_base_event_source.event_source) { \
+			if (!rdp_defer_rdp_task_to_display_loop( \
+				peerCtx, callback, \
+				dispatch_data, &dispatch_data->_base_event_source.event_source)) { \
 				rdp_debug_error(b, "%s: rdp_queue_deferred_task failed\n", __func__); \
 				pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex); \
 				wl_list_remove(&dispatch_data->_base_event_source.link); \

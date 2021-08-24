@@ -416,34 +416,31 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 	void *ret = NULL;
 	BITMAPFILEHEADER *bmfh = NULL;
 	BITMAPINFOHEADER *bmih = NULL;
+	const UINT32 size_of_bmfh = sizeof(*bmfh);
 	UINT32 color_table_size = 0;
-	size_t original_data_size = source->data_contents.size;
-	BOOL was_data_processed = source->is_data_processed;
+	/* size_t original_data_size = source->data_contents.size; */
+	/* BOOL was_data_processed = source->is_data_processed; */
 	struct wl_array data_contents;
 
 	wl_array_init(&data_contents);
 
 	if (is_send) {
-		/* Linux to Windows */
-		if (source->data_contents.size <= sizeof(BITMAPFILEHEADER))
+		/* Linux to Windows (remove BITMAPFILEHEADER) */
+		if (source->data_contents.size <= size_of_bmfh)
 			goto error_return;
 		
 		bmfh = (BITMAPFILEHEADER *)source->data_contents.data;
 		bmih = (BITMAPINFOHEADER *)(bmfh + 1);
-		if (bmih->biCompression == BI_BITFIELDS)
-			color_table_size = sizeof(RGBQUAD) * 3;
-		else
-			color_table_size = sizeof(RGBQUAD) * bmih->biClrUsed;
 
 		/* size must be adjusted only once */
 		if (!source->is_data_processed) {
-			source->data_contents.size -= sizeof(*bmfh);
+			source->data_contents.size -= size_of_bmfh;
 			source->is_data_processed = TRUE;
 		}
 
 		ret = (void *)bmih; // Skip BITMAPFILEHEADER.
 	} else {
-		/* Windows to Linux */
+		/* Windows to Linux (insert BITMAPFILEHEADER) */
 		if (!source->is_data_processed) {
 			BITMAPFILEHEADER _bmfh = {};
 			bmih = (BITMAPINFOHEADER *)source->data_contents.data;
@@ -454,7 +451,7 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 				color_table_size = sizeof(RGBQUAD) * bmih->biClrUsed;
 
 			bmfh->bfType = DIB_HEADER_MARKER;
-			bmfh->bfOffBits = sizeof(*bmfh) + bmih->biSize + color_table_size;
+			bmfh->bfOffBits = size_of_bmfh + bmih->biSize + color_table_size;
 			if (bmih->biSizeImage)
 				bmfh->bfSize = bmfh->bfOffBits + bmih->biSizeImage;
 			else if (bmih->biCompression == BI_BITFIELDS || bmih->biCompression == BI_RGB)
@@ -463,12 +460,19 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 			else
 				goto error_return;
 
+			/* source data must have enough size as described at its own bitmap header */
+			if (source->data_contents.size < (bmfh->bfSize - size_of_bmfh))
+				goto error_return;
+
 			if (!wl_array_add(&data_contents, bmfh->bfSize))
 				goto error_return;
 			assert(data_contents.size == bmfh->bfSize);
 
-			memcpy(data_contents.data, bmfh, sizeof(*bmfh));
-			memcpy((char *)data_contents.data + sizeof(*bmfh), source->data_contents.data, bmih->biSizeImage - sizeof(*bmfh));
+			/* copy generated BITMAPFILEHEADER */
+			memcpy(data_contents.data, bmfh, size_of_bmfh);
+			/* copy rest of bitmap data from source */
+			memcpy((char *)data_contents.data + size_of_bmfh,
+				source->data_contents.data, bmfh->bfSize - size_of_bmfh);
 
 			/* swap the data_contents with new one */
 			wl_array_release(&source->data_contents);
@@ -480,10 +484,6 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 		} else {
 			bmfh = (BITMAPFILEHEADER *)source->data_contents.data;
 			bmih = (BITMAPINFOHEADER *)(bmfh + 1);
-			if (bmih->biCompression == BI_BITFIELDS)
-				color_table_size = sizeof(RGBQUAD) * 3;
-			else
-				color_table_size = sizeof(RGBQUAD) * bmih->biClrUsed;
 		}
 
 		ret = source->data_contents.data;
@@ -497,6 +497,8 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 		__func__, source, clipboard_data_source_state_to_string(source),
 		is_send ? "send" : "receive",
 		(UINT32)source->data_contents.size);
+
+	/*
 	rdp_debug_clipboard_verbose_continue(b, "    BITMAPFILEHEADER.bfType:0x%x\n", bmfh->bfType);
 	rdp_debug_clipboard_verbose_continue(b, "    BITMAPFILEHEADER.bfSize:%d\n", bmfh->bfSize);
 	rdp_debug_clipboard_verbose_continue(b, "    BITMAPFILEHEADER.bfOffBits:%d\n", bmfh->bfOffBits);
@@ -512,6 +514,10 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 	rdp_debug_clipboard_verbose_continue(b, "    BITMAPINFOHEADER.biClrUsed:%d\n", bmih->biClrUsed);
 	rdp_debug_clipboard_verbose_continue(b, "    BITMAPINFOHEADER.biClrImportant:%d\n", bmih->biClrImportant);
 	BITMAPINFO *bmi = (BITMAPINFO *)bmih;
+	if (bmih->biCompression == BI_BITFIELDS)
+		color_table_size = sizeof(RGBQUAD) * 3;
+	else
+		color_table_size = sizeof(RGBQUAD) * bmih->biClrUsed;
 	for (UINT32 i = 0; i < color_table_size / sizeof(RGBQUAD); i++) {
 		rdp_debug_clipboard_verbose_continue(b, "    BITMAPINFO.bmiColors[%d]:%02x:%02x:%02x:%02x\n",
 					   i,
@@ -543,6 +549,7 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 	rdp_debug_clipboard_verbose_continue(b, "    original_data_size:%d\n", (UINT32) original_data_size);
 	rdp_debug_clipboard_verbose_continue(b, "    new_data_size:%d\n", (UINT32) source->data_contents.size);
 	rdp_debug_clipboard_verbose_continue(b, "    data_processed:%d -> %d\n", was_data_processed, source->is_data_processed);
+	*/
 
 	return ret;
 
@@ -1452,11 +1459,9 @@ clipboard_client_format_list(CliprdrServerContext* context, const CLIPRDR_FORMAT
 		}
 
 		source->state = RDP_CLIPBOARD_SOURCE_FORMATLIST_READY;
-		source->defer_event_source =
-			rdp_defer_rdp_task_to_display_loop(peerCtx,
-				clipboard_data_source_publish,
-				source);
-		if (source->defer_event_source) {
+		if (rdp_defer_rdp_task_to_display_loop(
+				peerCtx, clipboard_data_source_publish,
+				source, &source->defer_event_source)) {
 			isPublished = TRUE;
 		} else {
 			source->state = RDP_CLIPBOARD_SOURCE_FAILED;
@@ -1619,9 +1624,9 @@ clipboard_client_format_data_request(CliprdrServerContext* context, const CLIPRD
 	index = clipboard_find_supported_format_by_format_id(formatDataRequest->requestedFormatId);
 	if (index >= 0) {
 		peerCtx->clipboard_last_requested_format_index = index;
-		peerCtx->clipboard_data_request_event_source =
-			rdp_defer_rdp_task_to_display_loop(peerCtx, clipboard_data_source_request, peerCtx);
-		if (!peerCtx->clipboard_data_request_event_source) {
+		if (!rdp_defer_rdp_task_to_display_loop(
+			peerCtx, clipboard_data_source_request,
+			peerCtx, &peerCtx->clipboard_data_request_event_source)) {
 			rdp_debug_clipboard_error(b, "Client: %s rdp_defer_rdp_task_to_display_loop failed\n", __func__);
 			goto error_return;
 		}

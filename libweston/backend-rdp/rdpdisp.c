@@ -659,11 +659,9 @@ disp_client_monitor_layout_change(DispServerContext* context, const DISPLAY_CONT
 	pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex);
 	wl_list_insert(&peerCtx->loop_event_source_list, &data->_base_event_source.link);
 	pthread_mutex_unlock(&peerCtx->loop_event_source_list_mutex);
-	data->_base_event_source.event_source =
-		rdp_defer_rdp_task_to_display_loop(peerCtx,
-			disp_monitor_layout_change_callback,
-			data);
-	if (!data->_base_event_source.event_source) {
+	if (!rdp_defer_rdp_task_to_display_loop(
+			peerCtx, disp_monitor_layout_change_callback,
+			data, &data->_base_event_source.event_source)) {
 		pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex);
 		wl_list_remove(&data->_base_event_source.link);
 		pthread_mutex_unlock(&peerCtx->loop_event_source_list_mutex);

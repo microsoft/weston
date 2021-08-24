@@ -297,29 +297,29 @@ dump_id_manager_state(FILE *fp, struct rdp_id_manager *id_manager, char* title)
 
 /* this function is ONLY used to defer the task from RDP thread,
    to be performed at wayland display loop thread */
-struct wl_event_source *
-rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, void *data)
+bool
+rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, void *data, struct wl_event_source **event_source)
 {
+	assert(event_source);
+	*event_source = NULL;
 	if (peerCtx->vcm) {
 		struct rdp_backend *b = peerCtx->rdpBackend;
 		ASSERT_NOT_COMPOSITOR_THREAD(b);
 		struct wl_event_loop *loop = wl_display_get_event_loop(b->compositor->wl_display);
-		struct wl_event_source *event_source =
-			wl_event_loop_add_fd(loop,
-				peerCtx->loop_event_source_fd,
-				WL_EVENT_READABLE,
-				func, data);
-		if (event_source) {
+		*event_source = wl_event_loop_add_fd(loop,
+					peerCtx->loop_event_source_fd,
+					WL_EVENT_READABLE,
+					func, data);
+		if (*event_source) {
 			eventfd_write(peerCtx->loop_event_source_fd, 1);
 		} else {
 			rdp_debug_error(b, "%s: wl_event_loop_add_idle failed\n", __func__);
 		}
-		return event_source;
 	} else {
 		/* RDP server is not opened, this must not be used */
 		assert(false);
-		return NULL;
 	}
+	return (*event_source != NULL);
 }
 
 void

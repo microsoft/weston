@@ -450,7 +450,7 @@ void rdp_id_manager_free(struct rdp_id_manager *id_manager);
 BOOL rdp_id_manager_allocate_id(struct rdp_id_manager *id_manager, void *object, UINT32 *new_id);
 void rdp_id_manager_free_id(struct rdp_id_manager *id_manager, UINT32 id);
 void dump_id_manager_state(FILE *fp, struct rdp_id_manager *id_manager, char* title);
-struct wl_event_source *rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, void *data);
+bool rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, void *data, struct wl_event_source **event_source);
 void rdp_defer_rdp_task_done(RdpPeerContext *peerCtx);
 
 // rdprail.c
