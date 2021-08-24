@@ -199,6 +199,7 @@ struct rotate_grab {
 
 struct shell_seat {
 	struct weston_seat *seat;
+	struct desktop_shell *shell;
 	struct wl_listener seat_destroy_listener;
 	struct weston_surface *focused_surface;
 
@@ -229,6 +230,9 @@ find_shell_output_from_weston_output(struct desktop_shell *shell,
 
 static void
 shell_surface_update_child_surface_layers(struct shell_surface *shsurf);
+
+static void
+shell_backend_request_window_activate(void *shell_context, struct weston_seat *seat, struct weston_surface *surface);
 
 #define ICON_STRIDE( W, BPP ) ((((W) * (BPP) + 31) / 32) * 4)
 
@@ -1459,19 +1463,58 @@ handle_keyboard_focus(struct wl_listener *listener, void *data)
 {
 	struct weston_keyboard *keyboard = data;
 	struct shell_seat *seat = get_shell_seat(keyboard->seat);
+	struct desktop_shell *shell = seat->shell;
+	struct weston_surface* new_focused_surface = weston_surface_get_main_surface(keyboard->focus);
+	struct weston_surface* old_focused_surface = seat->focused_surface;
 
-	if (seat->focused_surface) {
-		struct shell_surface *shsurf = get_shell_surface(seat->focused_surface);
+	if (shell->debugLevel >= RDPRAIL_SHELL_DEBUG_LEVEL_VERBOSE) {
+		struct weston_desktop_surface *old_desktop_surface = NULL;
+		struct weston_desktop_surface *new_desktop_surface = NULL;
+		const char *old_title = NULL;
+		const char *new_title = NULL;
+
+		if (old_focused_surface)
+			old_desktop_surface = weston_surface_get_desktop_surface(old_focused_surface);
+		if (new_focused_surface)
+			new_desktop_surface = weston_surface_get_desktop_surface(new_focused_surface);
+		if (old_desktop_surface)
+			old_title = weston_desktop_surface_get_title(old_desktop_surface);
+		if (new_desktop_surface)
+			new_title = weston_desktop_surface_get_title(new_desktop_surface);
+
+		shell_rdp_debug_verbose(shell, "%s: moving focus from %p:%s to %p:%s\n", __func__,
+			old_focused_surface, old_title, new_focused_surface, new_title);
+	}
+
+	if (old_focused_surface) {
+		struct shell_surface *shsurf = get_shell_surface(old_focused_surface);
 		if (shsurf)
 			shell_surface_lose_keyboard_focus(shsurf);
 	}
 
-	seat->focused_surface = weston_surface_get_main_surface(keyboard->focus);
+	seat->focused_surface = new_focused_surface;
 
-	if (seat->focused_surface) {
-		struct shell_surface *shsurf = get_shell_surface(seat->focused_surface);
+	if (new_focused_surface) {
+		struct shell_surface *shsurf = get_shell_surface(new_focused_surface);
 		if (shsurf)
 			shell_surface_gain_keyboard_focus(shsurf);
+	}
+
+	if (new_focused_surface == shell->focus_proxy_surface) {
+		/* When new focused window is focus proxy window, client side window is
+		   taking focus and server side window is losing focus, thus let keyboard
+		   to clear out currently pressed keys. This is because once server side
+		   window is gone from client desktop, the client no longer sends keyboard
+		   inputs including key release, thus if any keys are currently at pressed
+		   state, it doesn't recieve release for those keys from RDP client. */
+		while (keyboard->keys.size) {
+			struct timespec time;
+			uint32_t *k = keyboard->keys.data;
+			weston_compositor_get_time(&time);
+			notify_key(seat->seat, &time, *k,
+				WL_KEYBOARD_KEY_STATE_RELEASED, STATE_UPDATE_AUTOMATIC);
+			/* shell_rdp_debug_verbose(shell, "%s: released key:0x%x\n", __func__, *k); */
+		}
 	}
 }
 
@@ -1935,7 +1978,7 @@ shell_seat_caps_changed(struct wl_listener *listener, void *data)
 }
 
 static struct shell_seat *
-create_shell_seat(struct weston_seat *seat)
+create_shell_seat(struct desktop_shell *shell, struct weston_seat *seat)
 {
 	struct shell_seat *shseat;
 
@@ -1946,6 +1989,7 @@ create_shell_seat(struct weston_seat *seat)
 	}
 
 	shseat->seat = seat;
+	shseat->shell = shell;
 
 	shseat->seat_destroy_listener.notify = destroy_shell_seat;
 	wl_signal_add(&seat->destroy_signal,
@@ -3740,7 +3784,26 @@ desktop_shell_set_focus_proxy(struct wl_client *client,
 			      struct wl_resource *surface_resource)
 {
 	struct desktop_shell *shell = wl_resource_get_user_data(resource);
-	shell->focus_proxy_surface = wl_resource_get_user_data(surface_resource);
+	struct weston_surface *surface;
+	struct shell_surface *shsurf;
+
+	surface = wl_resource_get_user_data(surface_resource);
+	if (!surface) {
+		shell_rdp_debug(shell, "%s: surface is NULL\n", __func__);
+		return;
+	}
+
+	shsurf = get_shell_surface(surface);
+	if (!shsurf) {
+		shell_rdp_debug(shell, "%s: surface:%p is not shell surface\n", __func__, surface);
+		return;
+	}
+
+	shell->focus_proxy_surface = surface;
+
+	/* Update the surface’s layer. This brings it to the top of the stacking
+	 * order as appropriate. */
+	shell_surface_update_layer(shsurf);
 }
 
 static const struct weston_rdprail_shell_interface rdprail_shell_implementation = {
@@ -4074,8 +4137,12 @@ static void
 handle_seat_created(struct wl_listener *listener, void *data)
 {
 	struct weston_seat *seat = data;
+	struct desktop_shell *shell;
 
-	create_shell_seat(seat);
+	shell = container_of(listener, struct desktop_shell,
+			     seat_create_listener);
+
+	create_shell_seat(shell, seat);
 }
 
 struct shell_workarea_change {
@@ -4114,7 +4181,8 @@ shell_reposition_view_on_workarea_change(struct weston_view *view, void *data)
 		   but if it does, the server has no way to tell where it goes, thus here forcing
 		   backend to resend window state to client, this force window state, especially
 		   window position keeps in sync between server and client. */
-		rail_state->forceUpdateWindowState = true;
+		if (rail_state)
+			rail_state->forceUpdateWindowState = true;
 
 		/* If view's upper-left is within 10% of bottom-right of workarea boundary, adjust the position. */
 		int new_workarea_width = (int)workarea_change->new_workarea.width;

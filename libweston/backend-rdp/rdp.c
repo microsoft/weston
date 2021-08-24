@@ -1736,8 +1736,10 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 	enum wl_keyboard_key_state keyState;
 	freerdp_peer *client = input->context->peer;
 	RdpPeerContext *peerContext = (RdpPeerContext *)input->context;
-	struct rdp_backend *b = peerContext->rdpBackend;
-	bool need_release = false;
+	struct weston_keyboard *keyboard = weston_seat_get_keyboard(peerContext->item.seat);
+	/*struct rdp_backend *b = peerContext->rdpBackend;*/
+	bool send_key = false;
+	bool send_release_key = false;
 
 	int notify = 0;
 	struct timespec time;
@@ -1753,7 +1755,7 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 		notify = 1;
 	}
 
-	if (notify) {
+	if (keyboard && notify) {
 		full_code = code;
 		if (flags & KBD_FLAGS_EXTENDED)
 			full_code |= KBD_FLAGS_EXTENDED;
@@ -1776,21 +1778,9 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 			/* RDP works same, there is no release for those 2 Korean keys,
 			 * thus generate release right after press. */
 			assert(keyState == WL_KEYBOARD_KEY_STATE_PRESSED);
-			need_release = true;
+			send_release_key = true;
 		} else {
 			vk_code = GetVirtualKeyCodeFromVirtualScanCode(full_code, client->settings->KeyboardType);
-		}
-		assert(vk_code <= 0xFF);
-		if (keyState == WL_KEYBOARD_KEY_STATE_RELEASED) {
-			/* Ignore release if key is not previously pressed. */
-			if ((peerContext->key_state[vk_code>>3] & (1<<(vk_code&0x7))) == 0) {
-				rdp_debug_verbose(b, "%s: inconsistent key state vk_code:%x\n",
-					__func__, vk_code);
-				goto exit;
-			}
-			peerContext->key_state[vk_code>>3] &= ~(1<<(vk_code&0x7));
-		} else if (!need_release /* when release is issued right after, no need to save state */) {
-			peerContext->key_state[vk_code>>3] |= (1<<(vk_code&0x7));
 		}
 		/* Korean keyboard support */
 		/* WinPR's GetKeycodeFromVirtualKeyCode() expects no extended bit for VK_HANGUL and VK_HANJA */
@@ -1799,30 +1789,42 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 				vk_code |= KBDEXT;
 
 		scan_code = GetKeycodeFromVirtualKeyCode(vk_code, KEYCODE_TYPE_EVDEV);
-
 		/*weston_log("code=%x ext=%d vk_code=%x scan_code=%x\n", code, (flags & KBD_FLAGS_EXTENDED) ? 1 : 0,
 				vk_code, scan_code);*/
-		weston_compositor_get_time(&time);
-		notify_key(peerContext->item.seat, &time,
-					scan_code - 8, keyState, STATE_UPDATE_AUTOMATIC);
 
-		/*rdp_debug_verbose(b, "RDP backend: %s code=%x ext=%d vk_code=%x scan_code=%x pressed=%d, idle_inhibit=%d\n",
-			__func__, code, (flags & KBD_FLAGS_EXTENDED) ? 1 : 0,
-			vk_code, scan_code, keyState, b->compositor->idle_inhibit);*/
+		/* Ignore release if key is not previously pressed. */
+		if (keyState == WL_KEYBOARD_KEY_STATE_RELEASED) {
+			uint32_t *k, *end;
+			end = keyboard->keys.data + keyboard->keys.size;
+			for (k = keyboard->keys.data; k < end; k++) {
+				if (*k == (scan_code - 8)) {
+					send_key = true;
+					break;
+				}
+			}
+		} else {
+			send_key = true;
+		}
 
-		if (need_release) {
-			/* send release of same key */
+		if (send_key) {
+send_release_key:
 			weston_compositor_get_time(&time);
 			notify_key(peerContext->item.seat, &time,
-						scan_code - 8, WL_KEYBOARD_KEY_STATE_RELEASED, STATE_UPDATE_AUTOMATIC);
+				scan_code - 8, keyState, STATE_UPDATE_AUTOMATIC);
 
-			/*rdp_debug_verbose(b, "RDP backend: %s code=%x ext=%d vk_code=%x scan_code=%x pressed=%d, idle_inhibit=%d\n",
+			/*rdp_debug(b, "RDP backend: %s code=%x ext=%d vk_code=%x scan_code=%x pressed=%d, idle_inhibit=%d\n",
 				__func__, code, (flags & KBD_FLAGS_EXTENDED) ? 1 : 0,
 				vk_code, scan_code, keyState, b->compositor->idle_inhibit);*/
+
+			if (send_release_key) {
+				send_release_key = false;
+				assert(keyState == WL_KEYBOARD_KEY_STATE_PRESSED); 
+				keyState = WL_KEYBOARD_KEY_STATE_RELEASED;
+				goto send_release_key;
+			}
 		}
 	}
 
-exit:
 	FREERDP_CB_RETURN(TRUE);
 }
 
