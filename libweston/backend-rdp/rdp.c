@@ -791,6 +791,11 @@ rdp_destroy(struct weston_compositor *ec)
 
 	rdp_rail_destroy(b);
 
+	if (b->debugClipboard) {
+		weston_log_scope_destroy(b->debugClipboard);
+		b->debugClipboard = NULL;
+	}
+
 	if (b->debug) {
 		weston_log_scope_destroy(b->debug);
 		b->debug = NULL;
@@ -2215,6 +2220,25 @@ rdp_backend_create(struct weston_compositor *compositor,
 	rdp_debug(b, "RDP backend: WESTON_RDP_DEBUG_LEVEL: %d\n", b->debugLevel);
 	/* After here, rdp_debug() is ready to be used */
 
+	b->debugClipboard = weston_log_ctx_add_log_scope(b->compositor->weston_log_ctx,
+							 "rdp-backend-clipboard",
+							 "Debug messages from RDP backend clipboard\n",
+							  NULL, NULL, NULL);
+	if (b->debugClipboard) {
+		s = getenv("WESTON_RDP_DEBUG_CLIPBOARD_LEVEL");
+		if (s) {
+			if (!safe_strtoint(s, &b->debugClipboardLevel))
+				b->debugClipboardLevel = RDP_DEBUG_CLIPBOARD_LEVEL_DEFAULT;
+			else if (b->debugClipboardLevel > RDP_DEBUG_LEVEL_VERBOSE)
+				b->debugClipboardLevel = RDP_DEBUG_LEVEL_VERBOSE;
+		} else {
+			/* by default, clipboard scope is disabled, so when it's enabled,
+			   log with verbose mode to assist debugging */
+			b->debugClipboardLevel = RDP_DEBUG_LEVEL_VERBOSE; // RDP_DEBUG_CLIPBOARD_LEVEL_DEFAULT;
+		}
+	}
+	rdp_debug_clipboard(b, "RDP backend: WESTON_RDP_DEBUG_CLIPBOARD_LEVEL: %d\n", b->debugClipboardLevel);
+
 	s = getenv("WESTON_RDP_MONITOR_REFRESH_RATE");
 	if (s) {
 		if (!safe_strtoint(s, &b->rdp_monitor_refresh_rate) ||
@@ -2335,6 +2359,8 @@ err_output:
 err_compositor:
 	weston_compositor_shutdown(compositor);
 err_free_strings:
+	if (b->debugClipboard)
+		weston_log_scope_destroy(b->debugClipboard);
 	if (b->debug)
 		weston_log_scope_destroy(b->debug);
 	free(b->rdp_key);
