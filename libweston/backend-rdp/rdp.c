@@ -1768,13 +1768,17 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 		/* Korean keyboard support */
 		/* WinPR's GetVirtualKeyCodeFromVirtualScanCode() can't handle hangul/hanja keys */
 		/* 0x1f1 and 0x1f2 keys are only exists on Korean 103 keyboard (Type 8:SubType 6) */
+		/* From Linux's keyboard driver at drivers/input/keyboard/atkbd.c */
+		#define ATKBD_RET_HANJA   0xf1
+		#define ATKBD_RET_HANGEUL 0xf2
 		if (client->settings->KeyboardType == 8 &&
 			client->settings->KeyboardSubType == 6 &&
-			((full_code == 0x1f1) || (full_code == 0x1f2))) {
-			if (full_code == 0x1f1)
-				vk_code = VK_HANGUL;
-			else if (full_code == 0x1f2)
+			((full_code == (KBD_FLAGS_EXTENDED | ATKBD_RET_HANJA)) ||
+			 (full_code == (KBD_FLAGS_EXTENDED | ATKBD_RET_HANGEUL)))) {
+			if (full_code == (KBD_FLAGS_EXTENDED | ATKBD_RET_HANJA))
 				vk_code = VK_HANJA;
+			else if (full_code == (KBD_FLAGS_EXTENDED | ATKBD_RET_HANGEUL))
+				vk_code = VK_HANGUL;
 			/* From Linux's keyboard driver at drivers/input/keyboard/atkbd.c */
 			/*
 			 * HANGEUL and HANJA keys do not send release events so we need to
