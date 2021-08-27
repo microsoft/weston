@@ -463,8 +463,17 @@ weston_desktop_xwayland_init(struct weston_desktop *desktop)
 	weston_layer_init(&xwayland->layer, compositor);
 	/* We put this layer on top of regular shell surfaces, but hopefully
 	 * below any UI the shell would add */
+	/* Previously, (WESTON_LAYER_POSITION_NORMAL + 1) is used, but this is below
+	   fullscreen layer, thus dropdown menu is invisible when top level window is
+	   fullscreen. Here solution is define WESTON_LAYER_POSITION_POPUP_UI, which
+	   is just above fullscreen layer, but below TOP_UI. This means it shows up
+	   above UI layer, which is used for shell panel, but coming up popup menu
+	   above shell panel is acceptable than menu is totally invisible with fullscreen.
+	   Ideally the layer to be placed should depend on state of top level window,
+	   fullscreen or not, but determine that from XWAYLAND (or overrside_redirect),
+	   there seems no ideal way. Need further investigation. */
 	weston_layer_set_position(&xwayland->layer,
-				  WESTON_LAYER_POSITION_NORMAL + 1);
+				  WESTON_LAYER_POSITION_POPUP_UI);
 
 	compositor->xwayland = xwayland;
 	compositor->xwayland_interface = &weston_desktop_xwayland_interface;

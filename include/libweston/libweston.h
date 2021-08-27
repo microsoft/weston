@@ -854,6 +854,9 @@ enum weston_layer_position {
 	/* For fullscreen applications that should cover UI. */
 	WESTON_LAYER_POSITION_FULLSCREEN = 0xb0000000,
 
+	/* For menu/popup window that should be above fullscreen applications */
+	WESTON_LAYER_POSITION_POPUP_UI   = 0xc0000000,
+
 	/* For special UI like on-screen keyboard that fullscreen applications
 	 * will need. */
 	WESTON_LAYER_POSITION_TOP_UI     = 0xe0000000,
