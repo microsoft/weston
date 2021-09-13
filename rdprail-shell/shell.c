@@ -670,6 +670,10 @@ shell_configuration(struct desktop_shell *shell)
 	/* default to not allow zap */
 	weston_config_section_get_bool(section,
 				       "allow-zap", &allow_zap, false);
+	if (!allow_zap) {
+		s = getenv("WESTON_RDPRAIL_SHELL_ALLOW_ZAP");
+		allow_zap = (s && (strcmp(s, "true") == 0));
+	}
 	shell->allow_zap = allow_zap;
 
 	/* set "none" to default to disable optional key-bindings */
