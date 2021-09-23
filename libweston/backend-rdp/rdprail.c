@@ -645,8 +645,8 @@ rail_client_ClientGetAppidReq_callback(int fd, uint32_t mask, void *arg)
 			goto Exit;
 		}
 
-		pid = b->rdprail_shell_api->get_window_app_id(
-					surface, &appId[0], sizeof(appId)-1, &imageName[0], sizeof(imageName)-1);
+		pid = b->rdprail_shell_api->get_window_app_id(b->rdprail_shell_context,
+					surface, &appId[0], sizeof(appId), &imageName[0], sizeof(imageName));
 		if (appId[0] == '\0') {
 			rdp_debug_error(b, "Client: ClientGetAppidReq: WindowId:0x%x does not have appId, or not top level window.\n", getAppidReq->windowId);
 			goto Exit;

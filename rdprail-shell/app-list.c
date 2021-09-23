@@ -58,7 +58,7 @@
 #include <winpr/thread.h>
 #include <winpr/file.h>
 
-#define NUM_CONTROL_EVENT 4
+#define NUM_CONTROL_EVENT 5
 
 struct app_list_context {
 	wHashTable* table;
@@ -67,6 +67,7 @@ struct app_list_context {
 	HANDLE startRdpNotifyEvent; // control event: wait index 1
 	HANDLE stopRdpNotifyEvent;  // control event: wait index 2
 	HANDLE loadIconEvent;       // control event: wait index 3
+	HANDLE findImageNameEvent;  // control event: wait index 4
 	HANDLE replyEvent;
 	bool isRdpNotifyStarted;
 	bool isAppListNamespaceAttached;
@@ -75,10 +76,15 @@ struct app_list_context {
 	pixman_image_t* default_icon;
 	pixman_image_t* default_overlay_icon;
 	struct {
-		CRITICAL_SECTION lock; // use at load_icon_file.
 		pixman_image_t* image; // use as reply message at load_icon_file.
 		const char *key;       // use as send message at load_icon_file.
 	} load_icon;
+	struct {
+		pid_t pid;
+		bool is_wayland;
+		char *image_name;
+		size_t image_name_size;
+	} find_image_name;
 	struct {
 		char requestedClientLanguageId[32]; // 32 = RDPAPPLIST_LANG_SIZE.
 		char currentClientLanguageId[32];
@@ -670,6 +676,99 @@ app_list_stop_rdp_notify(struct desktop_shell *shell)
 	send_app_entry(shell, NULL, NULL, false, false, true, false, false, false);
 }
 
+static void
+translate_to_windows_path(struct desktop_shell *shell, char *image_name, size_t image_name_size)
+{
+	bool is_succeeded = false;
+
+	attach_app_list_namespace(shell);
+
+	if (is_file_exist("/usr/bin/wslpath")) {
+		pid_t pid;
+		int pipe[2] = {};
+		int imageNameLength, len;
+
+		pipe2(pipe, O_CLOEXEC); 
+		if (!pipe[0] || !pipe[1]) {
+			shell_rdp_debug(shell, "app_list_monitor_thread: pipe2 failed: %s\n", strerror(errno));
+			goto Exit;
+		}
+
+		pid = fork();
+		if (pid == -1) {
+			shell_rdp_debug(shell, "app_list_monitor_thread: fork() failed: %s\n", strerror(errno));
+			close(pipe[0]);
+			close(pipe[1]);
+			goto Exit;
+		}
+
+		if (pid == 0) {
+			if (dup2(pipe[1], STDOUT_FILENO) < 0) {
+				shell_rdp_debug(shell, "app_list_monitor_thread: dup2 failed: %s\n", strerror(errno));
+			} else {
+				char *argv[] = {
+					"/usr/bin/wslpath",
+					"-w",
+					image_name,
+					0
+				};
+
+				close(pipe[0]);
+				close(pipe[1]);
+
+				if (execv(argv[0], argv) < 0)
+					shell_rdp_debug(shell, "app_list_monitor_thread: execv failed: %s\n", strerror(errno));
+			}
+			_exit(EXIT_SUCCESS);
+		}
+
+		close(pipe[1]);
+
+		imageNameLength = 0;
+		while ((len = read(pipe[0], image_name + imageNameLength,
+			image_name_size - imageNameLength)) != 0) {
+			if (len < 0) {
+				shell_rdp_debug(shell, "app_list_monitor_thread: read error: %s\n", strerror(errno));
+				/* if already read some, clear it, otherwise leave as-is and fallback. */
+				if (imageNameLength) {
+					imageNameLength = 0;
+					image_name[0] = '\0';
+				}
+				break;
+			}
+			imageNameLength += len;
+		}
+
+		close(pipe[0]);
+
+		/* trim trailing '\n' */
+		while (imageNameLength > 0 &&
+			image_name[imageNameLength - 1] == '\n') {
+			image_name[imageNameLength - 1] = '\0';
+			imageNameLength--;
+		}
+
+		if (imageNameLength)
+			is_succeeded = true;
+	}
+
+Exit:
+	detach_app_list_namespace(shell);
+
+	if (!is_succeeded) {
+		/* fallback when wslpath doesn't exst, fork/pipe failed, or nothing read,
+		   here simply patch '/' with '\'. */
+		int i = 0;
+		while (image_name[i] != '\0') {
+			if (image_name[i] == '/')
+				image_name[i] = '\\';
+			i++;
+		}
+	}
+
+	shell_rdp_debug_verbose(shell, "app_list_monitor_thread: Windows image_path:%s\n", image_name);
+}
+
 static DWORD WINAPI
 app_list_monitor_thread(LPVOID arg)
 {
@@ -724,6 +823,7 @@ app_list_monitor_thread(LPVOID arg)
 	events[num_events++] = context->startRdpNotifyEvent;
 	events[num_events++] = context->stopRdpNotifyEvent;
 	events[num_events++] = context->loadIconEvent;
+	events[num_events++] = context->findImageNameEvent;
 	assert(num_events == NUM_CONTROL_EVENT);
 
 	if (shell->rdprail_api->notify_app_list) {
@@ -845,6 +945,36 @@ app_list_monitor_thread(LPVOID arg)
 			continue;
 		}
 
+		/* Find ImageName event */
+		if (status == WAIT_OBJECT_0 + 4) {
+			assert(context->find_image_name.image_name);
+			assert(context->find_image_name.image_name_size);
+			shell_rdp_debug_verbose(shell, "app_list_monitor_thread: findImageNameEvent is signalled. pid:%d\n",
+				context->find_image_name.pid);
+
+			/* read execuable name from /proc */
+			context->find_image_name.image_name[0] = '\0';
+			sprintf(path, "/proc/%d/exe", context->find_image_name.pid);
+			if (!context->find_image_name.is_wayland)
+				attach_app_list_namespace(shell);
+			if (readlink(path, context->find_image_name.image_name, context->find_image_name.image_name_size) < 0)
+				shell_rdp_debug(shell, "app_list_monitor_thread: readlink failed %s:%s\n", path, strerror(errno));
+			if (!context->find_image_name.is_wayland)
+				detach_app_list_namespace(shell);
+			shell_rdp_debug_verbose(shell, "app_list_monitor_thread: Linux image_path:%s\n",
+				context->find_image_name.image_name);
+
+			/* If image name is provided, convert to Windows-style path. */
+			if (context->find_image_name.image_name[0] != '\0') {
+				translate_to_windows_path(shell,
+					context->find_image_name.image_name,
+					context->find_image_name.image_name_size);
+			}
+
+			SetEvent(context->replyEvent);
+			continue;
+		}
+
 		/* Somethings are changed in watch folders */
 		if (shell->rdprail_api->notify_app_list && num_watch) {
 			len = read(fd[status - WAIT_OBJECT_0 - NUM_CONTROL_EVENT], buf, sizeof buf); 
@@ -901,8 +1031,6 @@ start_app_list_monitor(struct desktop_shell *shell)
 
 	context->isRdpNotifyStarted = false;
 
-	InitializeCriticalSectionAndSpinCount(&(context->load_icon.lock), 4000);
-
 	context->stopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	if (!context->stopEvent)
 		goto Error_Exit;
@@ -923,6 +1051,11 @@ start_app_list_monitor(struct desktop_shell *shell)
 		goto Error_Exit;
 
 	/* bManualReset = TRUE, ideally here needs FALSE, but winpr doesn't support it */
+	context->findImageNameEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	if (!context->findImageNameEvent)
+		goto Error_Exit;
+
+	/* bManualReset = TRUE, ideally here needs FALSE, but winpr doesn't support it */
 	context->replyEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	if (!context->replyEvent)
 		goto Error_Exit;
@@ -938,6 +1071,11 @@ Error_Exit:
 	if (context->replyEvent) {
 		CloseHandle(context->replyEvent);
 		context->replyEvent = NULL;
+	}
+
+	if (context->findImageNameEvent) {
+		CloseHandle(context->findImageNameEvent);
+		context->findImageNameEvent = NULL;
 	}
 
 	if (context->loadIconEvent) {
@@ -959,8 +1097,6 @@ Error_Exit:
 		CloseHandle(context->stopEvent);
 		context->stopEvent = NULL;
 	}
-
-	DeleteCriticalSection(&(context->load_icon.lock));
 
 	return;
 }
@@ -993,6 +1129,11 @@ stop_app_list_monitor(struct desktop_shell *shell)
 		context->replyEvent = NULL;
 	}
 
+	if (context->findImageNameEvent) {
+		CloseHandle(context->findImageNameEvent);
+		context->findImageNameEvent = NULL;
+	}
+
 	if (context->loadIconEvent) {
 		CloseHandle(context->loadIconEvent);
 		context->loadIconEvent = NULL;
@@ -1007,8 +1148,6 @@ stop_app_list_monitor(struct desktop_shell *shell)
 		CloseHandle(context->stopEvent);
 		context->stopEvent = NULL;
 	}
-
-	DeleteCriticalSection(&(context->load_icon.lock));
 
 	context->isRdpNotifyStarted = false;
 
@@ -1025,9 +1164,6 @@ pixman_image_t* app_list_load_icon_file(struct desktop_shell *shell, const char 
 
 	if (context) {
 		/* hand off to worker thread where can access user-distro files */
-		/* TODO: should not need critical secion as long as this is called only
-		         from display loop thread */
-		EnterCriticalSection(&context->load_icon.lock);
 		assert(context->load_icon.image == NULL);
 		assert(context->load_icon.key == NULL);
 		context->load_icon.key = key;
@@ -1041,12 +1177,40 @@ pixman_image_t* app_list_load_icon_file(struct desktop_shell *shell, const char 
 		image = context->load_icon.image;
 		context->load_icon.image = NULL;
 		context->load_icon.key = NULL;
-		LeaveCriticalSection(&context->load_icon.lock);
 
 		return image;
 	}
 #endif
 	return NULL;
+}
+
+void app_list_find_image_name(struct desktop_shell *shell, pid_t pid, char *image_name, size_t image_name_size, bool is_wayland)
+{
+#ifdef HAVE_WINPR2
+	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
+
+	if (context) {
+		assert(context->find_image_name.pid == (pid_t) 0);
+		assert(context->find_image_name.image_name == NULL);
+		assert(context->find_image_name.image_name_size == 0);
+		context->find_image_name.pid = pid;
+		context->find_image_name.is_wayland = is_wayland;
+		context->find_image_name.image_name = image_name;
+		context->find_image_name.image_name_size = image_name_size;
+
+		/* signal worker thread to load icon at worker thread */
+		SetEvent(context->findImageNameEvent);
+		WaitForSingleObject(context->replyEvent, INFINITE);
+		/* here must reset since winpr doesn't support auto reset event */
+		ResetEvent(context->replyEvent);
+
+		context->find_image_name.pid = (pid_t) 0;
+		context->find_image_name.is_wayland = false;
+		context->find_image_name.image_name = NULL;
+		context->find_image_name.image_name_size = 0;
+	}
+#endif
+	return;
 }
 
 bool app_list_start_backend_update(struct desktop_shell *shell, char *clientLanguageId)

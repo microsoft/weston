@@ -95,7 +95,7 @@ struct weston_rdprail_shell_api {
 
 	/** Get app_id and pid
 	  */
-	pid_t (*get_window_app_id)(struct weston_surface *surface,
+	pid_t (*get_window_app_id)(void *shell_context, struct weston_surface *surface,
 				char *app_id, size_t app_id_size, char *image_name, size_t image_name_size);
 
 	/** Start/stop application list update

@@ -4249,16 +4249,18 @@ shell_backend_set_desktop_workarea(struct weston_output *output, void *context, 
 }
 
 static pid_t
-shell_backend_get_app_id(struct weston_surface *surface, char *app_id, size_t app_id_size, char *image_name, size_t image_name_size)
+shell_backend_get_app_id(void *shell_context, struct weston_surface *surface, char *app_id, size_t app_id_size, char *image_name, size_t image_name_size)
 {
+	struct desktop_shell *shell = (struct desktop_shell *)shell_context;
 	struct weston_desktop_surface *desktop_surface;
 	struct shell_surface *shsurf;
 	const struct weston_xwayland_surface_api *api; 
 	pid_t pid;
 	const char *id;
 	char *class_name;
-	char path[32] = {};
+	bool is_wayland = true;
 
+	assert(shell);
 	assert(app_id);
 	assert(app_id_size);
 	assert(image_name);
@@ -4290,6 +4292,8 @@ shell_backend_get_app_id(struct weston_surface *surface, char *app_id, size_t ap
 				if (class_name) {
 					strncpy(app_id, class_name, app_id_size);
 					free(class_name);
+					/* app_id is from Xwayland */
+					is_wayland = false;
 				}
 			}
 		}
@@ -4297,15 +4301,25 @@ shell_backend_get_app_id(struct weston_surface *surface, char *app_id, size_t ap
 
 	/* obtain pid for execuable path */
 	pid = weston_desktop_surface_get_pid(desktop_surface);
-	if (pid > 0 && !is_system_distro()) {
-		sprintf(path, "/proc/%d/exe", pid);
-		if (readlink(path, image_name, image_name_size) < 0)
-			weston_log("shell_backend_get_app_id: readlink failed %s:%s\n", path, strerror(errno));
+	/* find image name via user-distro for Xwayland */
+	if (pid > 0)
+		app_list_find_image_name(shell, pid, image_name, image_name_size, is_wayland);
+
+	/* if app_id is not obtained but image name, use image name (only name) as app_id. */
+	/* NOTE: image name is Windows's style path, so separator is '\\', not '/'. */
+	if (app_id[0] == '\0' && image_name[0] != '\0') {
+		char *p = strrchr(image_name, '\\');
+		if (p && p[1] != '\0')
+			p++;
+		else
+			p = image_name;
+		strncpy(app_id, p, app_id_size);
+	} else if (app_id[0] != '\0' && image_name[0] == '\0') {
+		strncpy(image_name, app_id, image_name_size);
 	}
 
-	/* if app_id is not specified by above, use execuable path as app_id */
-	if (app_id[0] == '\0' && image_name[0] != '\0')
-		strncpy(app_id, image_name, app_id_size);
+	shell_rdp_debug_verbose(shell, "shell_backend_get_app_id: 0x%p: pid:%d, app_id:%s, image_name:%s\n",
+		surface, pid, app_id, image_name);
 
 	return pid;
 }
