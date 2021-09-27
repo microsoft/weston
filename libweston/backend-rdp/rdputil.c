@@ -187,7 +187,7 @@ rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memor
 	}
 
 	rdp_debug_verbose(b, "%s: allocated %d: %s (%ld bytes) at %p\n",
-		__func__, fd, shared_memory->name, shared_memory->size, shared_memory->addr);
+		__func__, fd, shared_memory->name, shared_memory->size, addr);
 
 	shared_memory->fd = fd;
 	shared_memory->addr = addr;
@@ -211,6 +211,10 @@ error_exit:
 void
 rdp_free_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *shared_memory)
 {
+	rdp_debug_verbose(b, "%s: freed %d: %s (%ld bytes) at %p\n", __func__,
+		shared_memory->fd, shared_memory->name,
+		shared_memory->size, shared_memory->addr);
+
 	if (shared_memory->addr) {
 		munmap(shared_memory->addr, shared_memory->size);
 		shared_memory->addr = NULL;

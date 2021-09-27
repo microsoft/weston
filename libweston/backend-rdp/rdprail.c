@@ -2105,9 +2105,11 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 				if (b->use_gfxredir) {
 					assert(rail_state->isUpdatePending == FALSE);
 
-					if (rail_state->surfaceBuffer)
+					if (rail_state->surfaceBuffer) {
 						rdp_destroy_shared_buffer(surface);
-
+						/* at window resize, reset name as old name might still be referenced by client */
+						rail_state->shared_memory.name[0] = '\0';
+					}
 					assert(rail_state->surfaceBuffer == NULL);
 					assert(rail_state->shared_memory.addr == NULL);
 					rail_state->shared_memory.size = copyBufferSize;
