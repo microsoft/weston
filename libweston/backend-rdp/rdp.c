@@ -1530,10 +1530,9 @@ rdp_notify_wheel_scroll(RdpPeerContext *peerContext, UINT16 flags, uint32_t axis
 	*
 	* https://blogs.msdn.microsoft.com/oldnewthing/20130123-00/?p=5473 explains the 120 value
 	*/
+	ivalue = ((int)flags & 0x000000ff);
 	if (flags & PTR_FLAGS_WHEEL_NEGATIVE)
-		ivalue = (int)((char)(flags & 0xff));
-	else
-		ivalue = (flags & 0xff);
+		ivalue = (0xff - ivalue) * -1;
 
 	/*
 	* Flip the scroll direction as the RDP direction is inverse of X/Wayland 
@@ -1560,6 +1559,8 @@ rdp_notify_wheel_scroll(RdpPeerContext *peerContext, UINT16 flags, uint32_t axis
 	*/
 	*accumWheelRotationPrecise += ivalue;
 	*accumWheelRotationDiscrete += ivalue;
+        rdp_debug_verbose(b, "wheel: rawValue:%d accumPrecise:%d accumDiscrete %d\n",
+                ivalue, *accumWheelRotationPrecise, *accumWheelRotationDiscrete);
 	if (abs(*accumWheelRotationPrecise) >= 12) {
 		value = (double)(*accumWheelRotationPrecise / 12);
 
