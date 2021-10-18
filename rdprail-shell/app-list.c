@@ -50,7 +50,8 @@
 #include "shell.h"
 #include "shared/helpers.h"
 
-#ifdef HAVE_WINPR2
+#ifdef HAVE_WINPR
+#include <winpr/version.h>
 #include <winpr/crt.h>
 #include <winpr/tchar.h>
 #include <winpr/collections.h>
@@ -586,7 +587,11 @@ app_list_desktop_file_changed(struct desktop_shell *shell, char *folder, char *f
 					send_app_entry(shell, key, entry, false, false, false, false, false, false);
 			}
 		} else {
+#if WINPR_VERSION_MAJOR >= 3
+			if (HashTable_Insert(context->table, key, (void *)entry) < 0)
+#else
 			if (HashTable_Add(context->table, key, (void *)entry) < 0)
+#endif
 				free_app_entry(entry);
 			else if (context->isRdpNotifyStarted)
 				send_app_entry(shell, key, entry, true, false, false, false, false, false);
@@ -1154,11 +1159,11 @@ stop_app_list_monitor(struct desktop_shell *shell)
 	assert(context->weston_pidfd <= 0);
 	assert(context->app_list_pidfd <= 0);
 }
-#endif // HAVE_WINPR2
+#endif // HAVE_WINPR
 
 pixman_image_t* app_list_load_icon_file(struct desktop_shell *shell, const char *key)
 {
-#ifdef HAVE_WINPR2
+#ifdef HAVE_WINPR
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	pixman_image_t* image = NULL;
 
@@ -1186,7 +1191,7 @@ pixman_image_t* app_list_load_icon_file(struct desktop_shell *shell, const char 
 
 void app_list_find_image_name(struct desktop_shell *shell, pid_t pid, char *image_name, size_t image_name_size, bool is_wayland)
 {
-#ifdef HAVE_WINPR2
+#ifdef HAVE_WINPR
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 
 	if (context) {
@@ -1215,7 +1220,7 @@ void app_list_find_image_name(struct desktop_shell *shell, pid_t pid, char *imag
 
 bool app_list_start_backend_update(struct desktop_shell *shell, char *clientLanguageId)
 {
-#ifdef HAVE_WINPR2
+#ifdef HAVE_WINPR
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	if (context) {
 		if (!clientLanguageId || *clientLanguageId == '\0')
@@ -1232,7 +1237,7 @@ bool app_list_start_backend_update(struct desktop_shell *shell, char *clientLang
 
 void app_list_stop_backend_update(struct desktop_shell *shell)
 {
-#ifdef HAVE_WINPR2
+#ifdef HAVE_WINPR
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	if (context) {
 		SetEvent(context->stopRdpNotifyEvent);
@@ -1245,9 +1250,12 @@ void app_list_stop_backend_update(struct desktop_shell *shell)
 
 void app_list_init(struct desktop_shell *shell)
 {
-#ifdef HAVE_WINPR2
+#ifdef HAVE_WINPR
 	struct app_list_context *context;
 	wHashTable* table;
+#if WINPR_VERSION_MAJOR >= 3
+	wObject* obj;
+#endif
 	char *iconpath;
 
 	shell->app_list_context = NULL;
@@ -1261,13 +1269,23 @@ void app_list_init(struct desktop_shell *shell)
 		free(context);
 		return;
 	}
+
+#if WINPR_VERSION_MAJOR >= 3
+	if (!HashTable_SetupForStringData(table, false)) {
+		free(context);
+		return;
+	}
+	obj = HashTable_ValueObject(table);
+	obj->fnObjectNew = NULL; // make sure value won't be cloned.
+	obj->fnObjectFree = free_app_entry;
+#else
 	table->hash = HashTable_StringHash;
 	table->keyCompare = HashTable_StringCompare;
-	//table->valueCompare = HashTable_StringCompare;
 	table->keyClone = HashTable_StringClone;
-	table->valueClone = NULL; // make sure value won't be cloned.
 	table->keyFree = HashTable_StringFree;
+	table->valueClone = NULL; // make sure value won't be cloned.
 	table->valueFree = free_app_entry;
+#endif
 
 	context->table = table;
 	shell->app_list_context = (void *)context;
@@ -1289,12 +1307,12 @@ void app_list_init(struct desktop_shell *shell)
 	start_app_list_monitor(shell);
 #else
 	shell->app_list_context = NULL;
-#endif // HAVE_WINPR2
+#endif // HAVE_WINPR
 }
 
 void app_list_destroy(struct desktop_shell *shell)
 {
-#ifdef HAVE_WINPR2
+#ifdef HAVE_WINPR
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	wHashTable* table;
 	int count;
@@ -1319,6 +1337,6 @@ void app_list_destroy(struct desktop_shell *shell)
 		shell->app_list_context = NULL;
 	}
 #else
-	asseer(!shell->app_list_context);
-#endif // HAVE_WINPR2
+	assert(!shell->app_list_context);
+#endif // HAVE_WINPR
 }

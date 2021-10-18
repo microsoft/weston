@@ -4030,16 +4030,22 @@ rdp_rail_backend_create(struct rdp_backend *b)
 		use_gfxredir = false;
 
 		dlerror(); /* clear error */
+#if FREERDP_VERSION_MAJOR >= 3
+		b->libFreeRDPServer = dlopen("libfreerdp-server3.so", RTLD_NOW);
+#else
 		b->libFreeRDPServer = dlopen("libfreerdp-server2.so", RTLD_NOW);
+#endif
 		if (!b->libFreeRDPServer) {
-			rdp_debug_error(b, "dlopen(libfreerdp-server2.so) failed with %s\n", dlerror());
+			rdp_debug_error(b, "dlopen(libfreerdp-server%d.so) failed with %s\n",
+				FREERDP_VERSION_MAJOR, dlerror());
 		} else {
 			*(void **)(&b->gfxredir_server_context_new) = dlsym(b->libFreeRDPServer, "gfxredir_server_context_new");
 			*(void **)(&b->gfxredir_server_context_free) = dlsym(b->libFreeRDPServer, "gfxredir_server_context_free");
 			if (b->gfxredir_server_context_new && b->gfxredir_server_context_new) {
 				use_gfxredir = true;
 			} else {
-				rdp_debug(b, "libfreerdp-server2.so doesn't support graphics redirection API.\n");
+				rdp_debug(b, "libfreerdp-server%d.so doesn't support graphics redirection API.\n",
+					FREERDP_VERSION_MAJOR);
 				dlclose(b->libFreeRDPServer);
 				b->libFreeRDPServer = NULL;
 			}

@@ -1,7 +1,12 @@
 if get_option('shell-rdprail')
-	dep_winpr = dependency('winpr2', version: '>= 2.0.0', required: false)
+	dep_winpr = dependency('winpr3', version: '>= 3.0.0', required: false)
 	if dep_winpr.found()
-		config_h.set('HAVE_WINPR2', '1')
+		config_h.set('HAVE_WINPR', '1')
+	else
+		dep_winpr = dependency('winpr2', version: '>= 2.0.0', required: false)
+		if dep_winpr.found()
+			config_h.set('HAVE_WINPR', '1')
+		endif
 	endif
 	dep_librsvg = dependency('librsvg-2.0', version: '>= 2.36.0', required: false)
 	if dep_librsvg.found()

@@ -45,6 +45,7 @@
 
 #include "rdp.h"
 
+#include <winpr/version.h>
 #include <winpr/input.h>
 
 #if FREERDP_VERSION_MAJOR >= 2
@@ -1061,8 +1062,11 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	//       but Xkb doesn't have that layout in "ir" group.
 	{KBD_FARSI, "ir", "pes"},
 	// 0x50429 is for Dari(Afghanistan)
-	// TODO: define KBD_DARI in winpr's keyboard.h
+#if WINPR_VERSION_MAJOR >= 3
+	{KBD_PERSIAN, "af", "basic"},
+#else
 	{0x50429, "af", "basic"},
+#endif
 	{KBD_VIETNAMESE, "vn", 0},
 	{KBD_ARMENIAN_EASTERN, "am", 0},
 	{KBD_AZERI_LATIN, 0, 0},
@@ -1944,7 +1948,11 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 
 	client->update->SuppressOutput = (pSuppressOutput)xf_suppress_output;
 
+#if FREERDP_VERSION_MAJOR >= 3
+	input = client->context->input;
+#else
 	input = client->input;
+#endif
 	input->SynchronizeEvent = xf_input_synchronize_event;
 	input->MouseEvent = xf_mouseEvent;
 	input->ExtendedMouseEvent = xf_extendedMouseEvent;
@@ -2267,6 +2275,14 @@ rdp_backend_create(struct weston_compositor *compositor,
 		rdp_debug(b, "  %s\n", environ[i]);
 	}
 	rdp_debug(b, "RDP backend: Environment dump - end\n");
+
+#ifdef FREERDP_GIT_REVISION
+	rdp_debug(b, "RDP backend: FreeRDP version: %s, Git version: %s\n",
+		FREERDP_VERSION_FULL, FREERDP_GIT_REVISION);
+#else
+	rdp_debug(b, "RDP backend: FreeRDP version: %s\n",
+		FREERDP_VERSION_FULL);
+#endif
 
 	compositor->backend = &b->base;
 
