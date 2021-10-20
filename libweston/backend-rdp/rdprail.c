@@ -1106,7 +1106,7 @@ gfxredir_client_graphics_redirection_caps_advertise(GfxRedirServerContext* conte
 
 		confirmPdu.version = selected->version; /* return the version of selected caps */
 		confirmPdu.length = selected->length; /* must return same length as selected caps from advertised */
-		confirmPdu.capsData = &selected->capsData[0]; /* return caps data in selected caps */
+		confirmPdu.capsData = (const BYTE*)(selected+1); /* return caps data in selected caps */
 
 		peerCtx->gfxredir_server_context->GraphicsRedirectionCapsConfirm(context, &confirmPdu);
 	}
