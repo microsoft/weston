@@ -2615,7 +2615,7 @@ rdp_rail_output_repaint(struct weston_output *output, pixman_region32_t *damage)
 			rdp_rail_sync_window_zorder(b->compositor);
 			peerCtx->is_window_zorder_dirty = false;
 		}
-		if (iter_data.isUpdatePending) {
+		if (iter_data.isUpdatePending && b->keep_display_power_by_screenupdate) {
 			/* By default, compositor won't update idle timer by screen activity,
 			   thus, here manually call wake function to postpone idle timer when
 			   RDP backend sends frame to client. */
@@ -4119,6 +4119,14 @@ rdp_rail_backend_create(struct rdp_backend *b)
 			b->enable_window_zorder_sync = false;
 	}
 	rdp_debug(b, "RDP backend: enable_window_zorder_sync = %d\n", b->enable_window_zorder_sync);
+
+	b->keep_display_power_by_screenupdate = false;
+	s = getenv("WESTON_RDP_ENABLE_DISPLAY_POWER_BY_SCREENUPDATE");
+	if (s) {
+		if (strcmp(s, "true") == 0)
+			b->keep_display_power_by_screenupdate = true;
+	}
+	rdp_debug(b, "RDP backend: keep_display_power_by_screenupdate = %d\n", b->keep_display_power_by_screenupdate);
 
 	b->rdprail_shell_name = NULL;
 
