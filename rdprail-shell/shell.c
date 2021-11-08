@@ -2627,10 +2627,7 @@ shell_backend_request_window_maximize(struct weston_surface *surface)
 	if (api && api->is_xwayland_surface(surface)) {
 		api->set_maximized(surface, true);
 	} else {
-		struct weston_desktop_surface *desktop_surface =
-			weston_surface_get_desktop_surface(surface);
-
-		weston_desktop_api_maximized_requested(shsurf->shell->desktop, desktop_surface, true);
+		set_maximized(shsurf, true);
 	}
 }
 
@@ -2659,10 +2656,7 @@ shell_backend_request_window_restore(struct weston_surface *surface)
 		if (api && api->is_xwayland_surface(surface)) {
 			api->set_maximized(surface, false);
 		} else {
-			struct weston_desktop_surface *desktop_surface =
-				weston_surface_get_desktop_surface(surface);
-
-			weston_desktop_api_maximized_requested(shsurf->shell->desktop, desktop_surface, false);
+			set_maximized(shsurf, false);
 		}
 	}
 }

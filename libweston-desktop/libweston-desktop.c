@@ -225,7 +225,7 @@ weston_desktop_api_fullscreen_requested(struct weston_desktop *desktop,
 						  desktop->user_data);
 }
 
-WL_EXPORT void
+void
 weston_desktop_api_maximized_requested(struct weston_desktop *desktop,
 				       struct weston_desktop_surface *surface,
 				       bool maximized)
