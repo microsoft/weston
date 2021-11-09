@@ -287,9 +287,9 @@ rdp_id_manager_unlock(struct rdp_id_manager *id_manager)
 {
 	ASSERT_NOT_COMPOSITOR_THREAD(id_manager->rdp_backend);
 
-	pthread_mutex_unlock(&id_manager->mutex);
 	/* At unlock, restore compositor thread as owner */
 	id_manager->mutex_tid = id_manager->rdp_backend->compositor_tid;
+	pthread_mutex_unlock(&id_manager->mutex);
 }
 
 void *
