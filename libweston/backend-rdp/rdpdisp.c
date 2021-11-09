@@ -593,7 +593,7 @@ disp_monitor_layout_change(DispServerContext* context, const DISPLAY_CONTROL_MON
 	peerCtx->rail_grfx_server_context->ResetGraphics(peerCtx->rail_grfx_server_context, &resetGraphics);
 
 	/* force recreate all surface and redraw. */
-	hash_table_for_each(peerCtx->windowId.hash_table, disp_force_recreate_iter, NULL);
+	rdp_id_manager_for_each(&peerCtx->windowId, disp_force_recreate_iter, NULL);
 	weston_compositor_damage_all(b->compositor);
 
 Exit:

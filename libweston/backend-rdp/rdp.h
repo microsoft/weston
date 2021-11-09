@@ -136,6 +136,7 @@ struct rdp_id_manager {
 	UINT32 id_high_limit;
 	UINT32 id_total;
 	UINT32 id_used;
+	pthread_mutex_t mutex;
 	struct hash_table *hash_table;
 };
 
@@ -449,6 +450,8 @@ BOOL rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_
 void rdp_free_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *shared_memory);
 BOOL rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 high_limit);
 void rdp_id_manager_free(struct rdp_id_manager *id_manager);
+void *rdp_id_manager_lookup(struct rdp_id_manager *id_manager, UINT32 id);
+void rdp_id_manager_for_each(struct rdp_id_manager *id_manager, hash_table_iterator_func_t func, void *data);
 BOOL rdp_id_manager_allocate_id(struct rdp_id_manager *id_manager, void *object, UINT32 *new_id);
 void rdp_id_manager_free_id(struct rdp_id_manager *id_manager, UINT32 id);
 void dump_id_manager_state(FILE *fp, struct rdp_id_manager *id_manager, char* title);

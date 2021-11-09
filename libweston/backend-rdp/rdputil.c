@@ -229,6 +229,8 @@ rdp_free_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *s
 BOOL
 rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 high_limit)
 {
+	assert(id_manager->hash_table == NULL);
+	assert(low_limit > 0);
 	assert(low_limit < high_limit);
 	id_manager->rdp_backend = rdp_backend;
 	id_manager->id_total = high_limit - low_limit;
@@ -237,8 +239,15 @@ rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_m
 	id_manager->id_high_limit = high_limit;
 	id_manager->id = low_limit;
 	id_manager->hash_table = hash_table_create();
-	if (!id_manager->hash_table)
+	if (id_manager->hash_table) {
+		pthread_mutexattr_t mat;
+		pthread_mutexattr_init(&mat);
+		pthread_mutexattr_settype(&mat, PTHREAD_MUTEX_RECURSIVE);
+		pthread_mutex_init(&id_manager->mutex, &mat);
+		pthread_mutexattr_destroy(&mat);
+	} else {
 		rdp_debug_error(rdp_backend, "%s: unable to create hash_table.\n", __func__);
+	}
 	return id_manager->hash_table != NULL;
 }
 
@@ -249,8 +258,9 @@ rdp_id_manager_free(struct rdp_id_manager *id_manager)
 		rdp_debug_error(id_manager->rdp_backend, "%s: possible id leak: %d\n", __func__, id_manager->id_used);
 	if (id_manager->hash_table) {
 		hash_table_destroy(id_manager->hash_table);
-		id_manager->hash_table = NULL;
+		pthread_mutex_destroy(&id_manager->mutex);
 	}
+	id_manager->hash_table = NULL;
 	id_manager->id = 0;
 	id_manager->id_low_limit = 0;
 	id_manager->id_high_limit = 0;
@@ -259,32 +269,60 @@ rdp_id_manager_free(struct rdp_id_manager *id_manager)
 	id_manager->rdp_backend = NULL;
 }
 
+void *
+rdp_id_manager_lookup(struct rdp_id_manager *id_manager, UINT32 id)
+{
+	void *p;
+	assert(id_manager->hash_table);
+	pthread_mutex_lock(&id_manager->mutex);
+	p = hash_table_lookup(id_manager->hash_table, id);
+	pthread_mutex_unlock(&id_manager->mutex);
+	return p;
+}
+
+void
+rdp_id_manager_for_each(struct rdp_id_manager *id_manager, hash_table_iterator_func_t func, void *data)
+{
+	if (!id_manager->hash_table)
+		return;
+
+	pthread_mutex_lock(&id_manager->mutex);
+	hash_table_for_each(id_manager->hash_table, func, data);
+	pthread_mutex_unlock(&id_manager->mutex);
+}
+
 BOOL
 rdp_id_manager_allocate_id(struct rdp_id_manager *id_manager, void *object, UINT32 *new_id)
 {
 	UINT32 id = 0;
+	assert(id_manager->hash_table);
+	pthread_mutex_lock(&id_manager->mutex);
 	for(;id_manager->id_used < id_manager->id_total;) {
 		id = id_manager->id++;
 		if (id_manager->id == id_manager->id_high_limit)
 			id_manager->id = id_manager->id_low_limit;
 		/* Make sure this id is not currently used */
-		if (hash_table_lookup(id_manager->hash_table, id) == NULL) {
+		if (rdp_id_manager_lookup(id_manager, id) == NULL) {
 			if (hash_table_insert(id_manager->hash_table, id, object) < 0)
 				break;
 			/* successfully to reserve new id for given object */
 			id_manager->id_used++;
 			*new_id = id;
-			return TRUE;
+			break;
 		}
 	}
-	return FALSE;
+	pthread_mutex_unlock(&id_manager->mutex);
+	return id != 0;
 }
 
 void
 rdp_id_manager_free_id(struct rdp_id_manager *id_manager, UINT32 id)
 {
+	assert(id_manager->hash_table);
+	pthread_mutex_lock(&id_manager->mutex);
 	hash_table_remove(id_manager->hash_table, id);
 	id_manager->id_used--;
+	pthread_mutex_unlock(&id_manager->mutex);
 }
 
 void

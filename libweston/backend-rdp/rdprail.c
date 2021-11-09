@@ -311,7 +311,7 @@ rail_client_Activate_callback(int fd, uint32_t mask, void *arg)
 		b->rdprail_shell_api->request_window_activate &&
 		b->rdprail_shell_context) {
 		if (activate->windowId && activate->enabled) {
-			surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, activate->windowId);
+			surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, activate->windowId);
 			if (!surface)
 				rdp_debug_error(b, "Client: ClientActivate: WindowId:0x%x is not found.\n", activate->windowId);
 		}
@@ -348,7 +348,7 @@ rail_client_SnapArrange_callback(int fd, uint32_t mask, void *arg)
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
-	surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, snap->windowId);
+	surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, snap->windowId);
 	if (surface) {
 		rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 		if (b->rdprail_shell_api &&
@@ -394,7 +394,7 @@ rail_client_WindowMove_callback(int fd, uint32_t mask, void *arg)
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
-	surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, windowMove->windowId);
+	surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, windowMove->windowId);
 	if (surface) {
 		if (b->rdprail_shell_api &&
 			b->rdprail_shell_api->request_window_move) {
@@ -429,7 +429,7 @@ rail_client_Syscommand_callback(int fd, uint32_t mask, void *arg)
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
-	surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, syscommand->windowId);
+	surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, syscommand->windowId);
 	if (!surface) {
 		rdp_debug_error(b, "Client: ClientSyscommand: WindowId:0x%x is not found.\n", syscommand->windowId);
 		goto Exit;
@@ -639,7 +639,7 @@ rail_client_ClientGetAppidReq_callback(int fd, uint32_t mask, void *arg)
 	if (b->rdprail_shell_api &&
 		b->rdprail_shell_api->get_window_app_id) {
 
-		surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, getAppidReq->windowId);
+		surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, getAppidReq->windowId);
 		if (!surface) {
 			rdp_debug_error(b, "Client: ClientGetAppidReq: WindowId:0x%x is not found.\n", getAppidReq->windowId);
 			goto Exit;
@@ -1130,7 +1130,7 @@ gfxredir_client_present_buffer_ack(GfxRedirServerContext* context, const GFXREDI
 
 	peerCtx->acknowledgedFrameId = (UINT32)presentAck->presentId;
 
-	surface = (struct weston_surface *)hash_table_lookup(peerCtx->windowId.hash_table, presentAck->windowId);
+	surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, presentAck->windowId);
 	if (surface) {
 		rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 		rail_state->isUpdatePending = FALSE;
@@ -1333,7 +1333,7 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 	/* windowId can be assigned only after activation completed */
 	if (!rdp_id_manager_allocate_id(&peerCtx->windowId, (void*)surface, &window_id)) {
 		rail_state->error = true;
-		rdp_debug_error(b, "CreateWindow(): fail to insert windowId.hash_table (windowId:%d surface:%p.\n",
+		rdp_debug_error(b, "CreateWindow(): fail to insert windowId (windowId:%d surface:%p.\n",
 				 window_id, surface);
 		return;
 	}
@@ -2602,7 +2602,7 @@ rdp_rail_output_repaint(struct weston_output *output, pixman_region32_t *damage)
 			 peerCtx->currentFrameId, peerCtx->acknowledgedFrameId, peerCtx->isAcknowledgedSuspended);
 		struct update_window_iter_data iter_data = {};
 		iter_data.output_id = output->id;
-		hash_table_for_each(peerCtx->windowId.hash_table, rdp_rail_update_window_iter, (void*) &iter_data);
+		rdp_id_manager_for_each(&peerCtx->windowId, rdp_rail_update_window_iter, (void*) &iter_data);
 		if (iter_data.needEndFrame) {
 			/* if frame is started at above iteration, send EndFrame here. */
 			RDPGFX_END_FRAME_PDU endFrame = {};
@@ -3151,8 +3151,7 @@ rdp_rail_peer_context_free(freerdp_peer* client, RdpPeerContext* context)
 {
 	struct rdp_loop_event_source *current, *next;
 
-	if (context->windowId.hash_table)
-		hash_table_for_each(context->windowId.hash_table, rdp_rail_destroy_window_iter, NULL);
+	rdp_id_manager_for_each(&context->windowId, rdp_rail_destroy_window_iter, NULL);
 
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
 	if (context->applist_server_context) {
@@ -3555,7 +3554,7 @@ rdp_rail_dump_window_binding(struct weston_keyboard *keyboard,
 		size_t len;
 		FILE *fp = open_memstream(&str, &len);
 		assert(fp);
-		fprintf(fp,"\nrdp debug binding 'W' - dump all window from window hash_table.\n");
+		fprintf(fp,"\nrdp debug binding 'W' - dump all window.\n");
 		peerCtx = (RdpPeerContext *)b->rdp_peer->context;
 		dump_id_manager_state(fp, &peerCtx->windowId, "windowId");
 		dump_id_manager_state(fp, &peerCtx->surfaceId, "surfaceId");
@@ -3565,7 +3564,7 @@ rdp_rail_dump_window_binding(struct weston_keyboard *keyboard,
 #endif // HAVE_FREERDP_GFXREDIR_H
 		context.peerCtx = peerCtx;
 		context.fp = fp;
-		hash_table_for_each(peerCtx->windowId.hash_table, rdp_rail_dump_window_iter, (void*)&context);
+		rdp_id_manager_for_each(&peerCtx->windowId, rdp_rail_dump_window_iter, (void*)&context);
 		err = fclose(fp);
 		assert(err == 0);
 		rdp_debug_error(b, "%s", str);
