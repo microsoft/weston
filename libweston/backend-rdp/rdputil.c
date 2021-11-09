@@ -229,6 +229,8 @@ rdp_free_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *s
 BOOL
 rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 high_limit)
 {
+	ASSERT_COMPOSITOR_THREAD(rdp_backend);
+
 	assert(id_manager->hash_table == NULL);
 	assert(low_limit > 0);
 	assert(low_limit < high_limit);
@@ -240,11 +242,10 @@ rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_m
 	id_manager->id = low_limit;
 	id_manager->hash_table = hash_table_create();
 	if (id_manager->hash_table) {
-		pthread_mutexattr_t mat;
-		pthread_mutexattr_init(&mat);
-		pthread_mutexattr_settype(&mat, PTHREAD_MUTEX_RECURSIVE);
-		pthread_mutex_init(&id_manager->mutex, &mat);
-		pthread_mutexattr_destroy(&mat);
+		pthread_mutex_init(&id_manager->mutex, NULL);
+		/* by default, pretend mutex is held by compositor thread,
+		   so it can be accessed without trigerring assert */
+		id_manager->mutex_tid = rdp_backend->compositor_tid;
 	} else {
 		rdp_debug_error(rdp_backend, "%s: unable to create hash_table.\n", __func__);
 	}
@@ -254,12 +255,15 @@ rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_m
 void
 rdp_id_manager_free(struct rdp_id_manager *id_manager)
 {
+	ASSERT_COMPOSITOR_THREAD(id_manager->rdp_backend);
+
 	if (id_manager->id_used != 0)
 		rdp_debug_error(id_manager->rdp_backend, "%s: possible id leak: %d\n", __func__, id_manager->id_used);
 	if (id_manager->hash_table) {
 		hash_table_destroy(id_manager->hash_table);
 		pthread_mutex_destroy(&id_manager->mutex);
 	}
+	id_manager->mutex_tid = 0;
 	id_manager->hash_table = NULL;
 	id_manager->id = 0;
 	id_manager->id_low_limit = 0;
@@ -269,34 +273,54 @@ rdp_id_manager_free(struct rdp_id_manager *id_manager)
 	id_manager->rdp_backend = NULL;
 }
 
+void
+rdp_id_manager_lock(struct rdp_id_manager *id_manager)
+{
+	ASSERT_NOT_COMPOSITOR_THREAD(id_manager->rdp_backend);
+
+	pthread_mutex_lock(&id_manager->mutex);
+	id_manager->mutex_tid = rdp_get_tid();
+}
+
+void
+rdp_id_manager_unlock(struct rdp_id_manager *id_manager)
+{
+	ASSERT_NOT_COMPOSITOR_THREAD(id_manager->rdp_backend);
+
+	pthread_mutex_unlock(&id_manager->mutex);
+	/* At unlock, restore compositor thread as owner */
+	id_manager->mutex_tid = id_manager->rdp_backend->compositor_tid;
+}
+
 void *
 rdp_id_manager_lookup(struct rdp_id_manager *id_manager, UINT32 id)
 {
-	void *p;
+	/* lookup can be done under compositor thread or after mutex held by rdp_id_manager_lock */
+	assert(id_manager->mutex_tid == rdp_get_tid());
+
 	assert(id_manager->hash_table);
-	pthread_mutex_lock(&id_manager->mutex);
-	p = hash_table_lookup(id_manager->hash_table, id);
-	pthread_mutex_unlock(&id_manager->mutex);
-	return p;
+	return hash_table_lookup(id_manager->hash_table, id);
 }
 
 void
 rdp_id_manager_for_each(struct rdp_id_manager *id_manager, hash_table_iterator_func_t func, void *data)
 {
+	ASSERT_COMPOSITOR_THREAD(id_manager->rdp_backend);
+
 	if (!id_manager->hash_table)
 		return;
 
-	pthread_mutex_lock(&id_manager->mutex);
 	hash_table_for_each(id_manager->hash_table, func, data);
-	pthread_mutex_unlock(&id_manager->mutex);
 }
 
 BOOL
 rdp_id_manager_allocate_id(struct rdp_id_manager *id_manager, void *object, UINT32 *new_id)
 {
 	UINT32 id = 0;
+
+	ASSERT_COMPOSITOR_THREAD(id_manager->rdp_backend);
 	assert(id_manager->hash_table);
-	pthread_mutex_lock(&id_manager->mutex);
+
 	for(;id_manager->id_used < id_manager->id_total;) {
 		id = id_manager->id++;
 		if (id_manager->id == id_manager->id_high_limit)
@@ -311,18 +335,19 @@ rdp_id_manager_allocate_id(struct rdp_id_manager *id_manager, void *object, UINT
 			break;
 		}
 	}
-	pthread_mutex_unlock(&id_manager->mutex);
 	return id != 0;
 }
 
 void
 rdp_id_manager_free_id(struct rdp_id_manager *id_manager, UINT32 id)
 {
+	ASSERT_COMPOSITOR_THREAD(id_manager->rdp_backend);
 	assert(id_manager->hash_table);
+
 	pthread_mutex_lock(&id_manager->mutex);
 	hash_table_remove(id_manager->hash_table, id);
-	id_manager->id_used--;
 	pthread_mutex_unlock(&id_manager->mutex);
+	id_manager->id_used--;
 }
 
 void

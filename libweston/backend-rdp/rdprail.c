@@ -1130,6 +1130,8 @@ gfxredir_client_present_buffer_ack(GfxRedirServerContext* context, const GFXREDI
 
 	peerCtx->acknowledgedFrameId = (UINT32)presentAck->presentId;
 
+	/* when accessing ID outside of wayland display loop thread, aquire lock */
+	rdp_id_manager_lock(&peerCtx->windowId);
 	surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, presentAck->windowId);
 	if (surface) {
 		rail_state = (struct weston_surface_rail_state *)surface->backend_state;
@@ -1137,6 +1139,7 @@ gfxredir_client_present_buffer_ack(GfxRedirServerContext* context, const GFXREDI
 	} else {
 		rdp_debug_error(b, "Client: PresentBufferAck: WindowId:0x%lx is not found.\n", presentAck->windowId);
 	}
+	rdp_id_manager_unlock(&peerCtx->windowId);
 
 	return CHANNEL_RC_OK;
 }
@@ -1581,6 +1584,7 @@ rdp_rail_destroy_window(struct wl_listener *listener, void *data)
 				RDPGFX_DELETE_SURFACE_PDU deleteSurface = {};
 
 				rdp_debug_verbose(b, "DeleteSurface(surfaceId:0x%x for windowsId:0x%x)\n", rail_state->surface_id, window_id);
+
 				deleteSurface.surfaceId = (UINT16)rail_state->surface_id;
 				peerCtx->rail_grfx_server_context->DeleteSurface(peerCtx->rail_grfx_server_context, &deleteSurface);
 
