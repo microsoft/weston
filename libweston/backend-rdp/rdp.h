@@ -26,55 +26,7 @@
 #ifndef RDP_H
 #define RDP_H
 
-#if HAVE_FREERDP_VERSION_H
 #include <freerdp/version.h>
-#else
-/* assume it's a early 1.1 version */
-#define FREERDP_VERSION_MAJOR 1
-#define FREERDP_VERSION_MINOR 1
-#define FREERDP_VERSION_REVISION 0
-#endif
-
-#define FREERDP_VERSION_NUMBER ((FREERDP_VERSION_MAJOR * 0x10000) + \
-		(FREERDP_VERSION_MINOR * 0x100) + FREERDP_VERSION_REVISION)
-
-
-#if FREERDP_VERSION_NUMBER >= 0x10201
-#define HAVE_SKIP_COMPRESSION
-#endif
-
-#if FREERDP_VERSION_NUMBER < 0x10202
-#	define FREERDP_CB_RET_TYPE void
-#	define FREERDP_CB_RETURN(V) return
-#	define NSC_RESET(C, W, H)
-#	define RFX_RESET(C, W, H) do { rfx_context_reset(C); C->width = W; C->height = H; } while(0)
-#else
-#if FREERDP_VERSION_MAJOR >= 2
-#	define NSC_RESET(C, W, H) nsc_context_reset(C, W, H)
-#	define RFX_RESET(C, W, H) rfx_context_reset(C, W, H)
-#else
-#	define NSC_RESET(C, W, H) do { nsc_context_reset(C); C->width = W; C->height = H; } while(0)
-#	define RFX_RESET(C, W, H) do { rfx_context_reset(C); C->width = W; C->height = H; } while(0)
-#endif
-#define FREERDP_CB_RET_TYPE BOOL
-#define FREERDP_CB_RETURN(V) return TRUE
-#endif
-
-#ifdef HAVE_SURFACE_BITS_BMP
-#define SURFACE_BPP(cmd) cmd.bmp.bpp
-#define SURFACE_CODECID(cmd) cmd.bmp.codecID
-#define SURFACE_WIDTH(cmd) cmd.bmp.width
-#define SURFACE_HEIGHT(cmd) cmd.bmp.height
-#define SURFACE_BITMAP_DATA(cmd) cmd.bmp.bitmapData
-#define SURFACE_BITMAP_DATA_LEN(cmd) cmd.bmp.bitmapDataLength
-#else
-#define SURFACE_BPP(cmd) cmd.bpp
-#define SURFACE_CODECID(cmd) cmd.codecID
-#define SURFACE_WIDTH(cmd) cmd.width
-#define SURFACE_HEIGHT(cmd) cmd.height
-#define SURFACE_BITMAP_DATA(cmd) cmd.bitmapData
-#define SURFACE_BITMAP_DATA_LEN(cmd) cmd.bitmapDataLength
-#endif
 
 #include <freerdp/freerdp.h>
 #include <freerdp/listener.h>
@@ -115,15 +67,7 @@
 #define RDP_MODE_FREQ 60 * 1000
 #define RDP_MAX_MONITOR 16 // RDP max monitors.
 
-#if FREERDP_VERSION_MAJOR >= 2 && defined(PIXEL_FORMAT_BGRA32) && !defined(PIXEL_FORMAT_B8G8R8A8)
-	/* The RDP API is truly wonderful: the pixel format definition changed
-	 * from BGRA32 to B8G8R8A8, but some versions ship with a definition of
-	 * PIXEL_FORMAT_BGRA32 which doesn't actually build. Try really, really,
-	 * hard to find one which does. */
-#	define DEFAULT_PIXEL_FORMAT PIXEL_FORMAT_BGRA32
-#else
-#	define DEFAULT_PIXEL_FORMAT RDP_PIXEL_FORMAT_B8G8R8A8
-#endif
+#define DEFAULT_PIXEL_FORMAT PIXEL_FORMAT_BGRA32
 
 struct rdp_output;
 struct rdp_clipboard_data_source;
