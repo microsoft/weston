@@ -72,6 +72,8 @@ disp_get_client_scale_from_monitor(RdpPeerContext *peerCtx, struct rdp_monitor_m
 			return (float)b->debug_desktop_scaling_factor / 100.f;
 		else if (b->enable_fractional_hi_dpi_support)
 			return (float)monitorMode->monitorDef.attributes.desktopScaleFactor / 100.0f;
+		else if (b->enable_fractional_hi_dpi_roundup)
+			return (float)(int)((monitorMode->monitorDef.attributes.desktopScaleFactor + 50) / 100);
 		else
 			return (float)(int)(monitorMode->monitorDef.attributes.desktopScaleFactor / 100);
 	} else {

@@ -4098,6 +4098,25 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	}
 	rdp_debug(b, "RDP backend: enable_fractional_hi_dpi_support = %d\n", b->enable_fractional_hi_dpi_support);
 
+	b->enable_fractional_hi_dpi_roundup = true;
+	if (b->enable_hi_dpi_support) {
+		if (b->enable_fractional_hi_dpi_support) {
+			/* if fractional support is enabled, no round up */
+			b->enable_fractional_hi_dpi_roundup = false;
+		} else {
+			s = getenv("WESTON_RDP_DISABLE_FRACTIONAL_HI_DPI_SCALING_ROUNDUP");
+			if (s) {
+				if (strcmp(s, "true") == 0)
+					b->enable_fractional_hi_dpi_roundup = false;
+				else if (strcmp(s, "false") == 0)
+					b->enable_fractional_hi_dpi_roundup = true;
+			}
+		}
+	} else {
+		b->enable_fractional_hi_dpi_roundup = false;
+	}
+	rdp_debug(b, "RDP backend: enable_fractional_hi_dpi_roundup = %d\n", b->enable_fractional_hi_dpi_roundup);
+
 	b->debug_desktop_scaling_factor = 0;
 	if (b->enable_hi_dpi_support) {
 		char *debug_desktop_scaling_factor = getenv("WESTON_RDP_DEBUG_DESKTOP_SCALING_FACTOR");
