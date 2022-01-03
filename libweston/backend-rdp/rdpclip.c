@@ -148,7 +148,7 @@ clipboard_data_source_state_to_string(struct rdp_clipboard_data_source *source)
 	case RDP_CLIPBOARD_SOURCE_CANCEL_PENDING:
 		return "cancel pending";
 	case RDP_CLIPBOARD_SOURCE_CANCELED:
-		return "cenceled";
+		return "canceled";
 	case RDP_CLIPBOARD_SOURCE_RETRY:
 		return "retry";
 	case RDP_CLIPBOARD_SOURCE_FAILED:
@@ -721,13 +721,18 @@ clipboard_data_source_unref(struct rdp_clipboard_data_source *source)
 		wl_event_source_remove(source->defer_event_source);
 	}
 
-	if (source->data_source_fd != -1)
+	if (source->data_source_fd != -1) {
+		ASSERT_COMPOSITOR_THREAD(b);
 		close(source->data_source_fd);
+	}
+
+	if (!wl_list_empty(&source->base.destroy_signal.listener_list)) {
+		ASSERT_COMPOSITOR_THREAD(b);
+		wl_signal_emit(&source->base.destroy_signal,
+			       &source->base);
+	}
 
 	wl_array_release(&source->data_contents);
-
-	wl_signal_emit(&source->base.destroy_signal,
-		       &source->base);
 
 	wl_array_for_each(p, &source->base.mime_types)
 		free(*p);
@@ -1273,6 +1278,10 @@ clipboard_data_source_request(int fd, uint32_t mask, void *arg)
 
 	source->data_source_fd = p[0];
 
+	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) pipe write:%d -> read:%d\n",
+		__func__, source, clipboard_data_source_state_to_string(source),
+		p[1], p[0]);
+
 	/* Request data from data source */
 	source->state = RDP_CLIPBOARD_SOURCE_REQUEST_DATA;
 	selection_data_source->send(selection_data_source, requested_mime_type, p[1]);
@@ -1505,7 +1514,7 @@ clipboard_client_format_list(CliprdrServerContext* context, const CLIPRDR_FORMAT
 
 	CLIPRDR_FORMAT_LIST_RESPONSE formatListResponse = {};
 	formatListResponse.msgType = CB_FORMAT_LIST_RESPONSE;
-	formatListResponse.msgFlags = source ? CB_RESPONSE_OK : CB_RESPONSE_FAIL;
+	formatListResponse.msgFlags = (source && isPublished) ? CB_RESPONSE_OK : CB_RESPONSE_FAIL;
 	formatListResponse.dataLen = 0;
 	if (peerCtx->clipboard_server_context->ServerFormatListResponse(peerCtx->clipboard_server_context, &formatListResponse) != 0) {
 		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
@@ -1514,8 +1523,10 @@ clipboard_client_format_list(CliprdrServerContext* context, const CLIPRDR_FORMAT
 		return -1;
 	}
 
-	if (!isPublished && source)
+	if (!isPublished && source) {
+		assert(source->refcount == 1);
 		clipboard_data_source_unref(source);
+	}
 
 	return 0;
 }
@@ -1566,7 +1577,7 @@ clipboard_client_format_data_response(CliprdrServerContext* context, const CLIPR
 			source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 			source->data_response_fail_count++;
 		}
-		rdp_debug_clipboard_verbose(b, "Client: %s (%p:%s:%d)\n",
+		rdp_debug_clipboard_verbose(b, "Client: %s (%p:%s) fail count:%d)\n",
 			__func__, source,
 			clipboard_data_source_state_to_string(source),
 			source->data_response_fail_count);
@@ -1630,6 +1641,7 @@ clipboard_client_format_list_response(CliprdrServerContext* context, const CLIPR
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	rdp_debug_clipboard(b, "Client: %s msgFlags:0x%x\n", __func__, formatListResponse->msgFlags);
+	ASSERT_NOT_COMPOSITOR_THREAD(b);
 	return 0;
 }
 
@@ -1734,6 +1746,9 @@ void
 rdp_clipboard_destroy(RdpPeerContext *peerCtx)
 {
 	struct rdp_clipboard_data_source* data_source;
+	struct rdp_backend *b = peerCtx->rdpBackend;
+
+	ASSERT_COMPOSITOR_THREAD(b);
 
 	if (peerCtx->clipboard_selection_listener.notify) {
 		wl_list_remove(&peerCtx->clipboard_selection_listener.link);

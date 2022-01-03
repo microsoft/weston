@@ -60,13 +60,15 @@ writable_callback(int fd, uint32_t mask, void *data)
 		if (wm->property_source)
 			wl_event_source_remove(wm->property_source);
 		wm->property_source = NULL;
+		weston_log("write error to target fd:%d start:%d reminder:%d %s\n",
+			   fd, wm->property_start, remainder, strerror(errno));
 		close(fd);
-		weston_log("write error to target fd: %s\n", strerror(errno));
+		wm->data_source_fd = -1;
 		return 1;
 	}
 
-	weston_log("wrote %d (chunk size %d) of %d bytes\n",
-		wm->property_start + len,
+	weston_log("wrote fd:%d %d (chunk size %d) of %d bytes\n",
+		fd, wm->property_start + len,
 		len, xcb_get_property_value_length(wm->property_reply));
 
 	wm->property_start += len;
@@ -82,8 +84,9 @@ writable_callback(int fd, uint32_t mask, void *data)
 					    wm->selection_window,
 					    wm->atom.wl_selection);
 		} else {
-			weston_log("transfer complete\n");
+			weston_log("transfer write complete\n");
 			close(fd);
+			wm->data_source_fd = -1;
 		}
 	}
 
@@ -139,8 +142,9 @@ weston_wm_get_incr_chunk(struct weston_wm *wm)
 		 * for freeing it */
 		weston_wm_write_property(wm, reply);
 	} else {
-		weston_log("transfer complete\n");
+		weston_log("transfer write complete (zero size reply)\n");
 		close(wm->data_source_fd);
+		wm->data_source_fd = -1;
 		free(reply);
 	}
 }
@@ -403,19 +407,20 @@ weston_wm_read_data_source(int fd, uint32_t mask, void *data)
 
 	len = read(fd, p, available);
 	if (len == -1) {
-		weston_log("read error from data source: %s\n",
-			   strerror(errno));
+		weston_log("read error from data source fd:%d %s\n",
+			   fd, strerror(errno));
 		weston_wm_send_selection_notify(wm, XCB_ATOM_NONE);
 		if (wm->property_source)
 			wl_event_source_remove(wm->property_source);
 		wm->property_source = NULL;
 		close(fd);
+		wm->data_source_fd = -1;
 		wl_array_release(&wm->source_data);
 		return 1;
 	}
 
-	weston_log("read %d (available %d, mask 0x%x)\n",
-		len, available, mask);
+	weston_log("read fd:%d %d (available %d, mask 0x%x)\n",
+		fd, len, available, mask);
 	/*remove actual data due to privacy*/
 	/*weston_log("read %d (available %d, mask 0x%x) bytes: \"%.*s\"\n",
 		len, available, mask, len, (char *) p);*/
@@ -454,7 +459,7 @@ weston_wm_read_data_source(int fd, uint32_t mask, void *data)
 			weston_wm_flush_source_data(wm);
 		}
 	} else if (len == 0 && !wm->incr) {
-		weston_log("non-incr transfer complete\n");
+		weston_log("non-incr transfer read complete\n");
 		/* Non-incr transfer all done. */
 		weston_wm_flush_source_data(wm);
 		weston_wm_send_selection_notify(wm, wm->selection_request.property);
@@ -463,10 +468,11 @@ weston_wm_read_data_source(int fd, uint32_t mask, void *data)
 			wl_event_source_remove(wm->property_source);
 		wm->property_source = NULL;
 		close(fd);
+		wm->data_source_fd = -1;
 		wl_array_release(&wm->source_data);
 		wm->selection_request.requestor = XCB_NONE;
 	} else if (len == 0 && wm->incr) {
-		weston_log("incr transfer complete\n");
+		weston_log("incr transfer read complete\n");
 
 		wm->flush_property_on_delete = 1;
 		if (wm->selection_property_set) {
@@ -482,9 +488,8 @@ weston_wm_read_data_source(int fd, uint32_t mask, void *data)
 		if (wm->property_source)
 			wl_event_source_remove(wm->property_source);
 		wm->property_source = NULL;
-		close(wm->data_source_fd);
-		wm->data_source_fd = -1;
 		close(fd);
+		wm->data_source_fd = -1;
 	} else {
 		weston_log("nothing happened, buffered the bytes\n");
 	}
