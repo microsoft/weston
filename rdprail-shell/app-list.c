@@ -526,18 +526,43 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 	return false;
 }
 
+static bool
+app_list_key_from_file(char *key, size_t key_length, char *file)
+{
+	char *ext = is_desktop_file(file);
+	if (ext) {
+		copy_string(key, key_length, file);
+		key[ext-file] = '\0'; // drop ".desktop" extention for key.
+		/* Despite wayland protocol specification notes below,
+		   many applications specify only last component of
+		   reserse DNS as app ID, so "FooViewer" only in below example,
+		   thus here make only that part as key.
+		   [from xdg-shell.xml]
+		   <request name="set_app_id">
+			The compositor shell will try to group application surfaces together
+			by their app ID. As a best practice, it is suggested to select app
+			ID's that match the basename of the application's .desktop file.
+			For example, "org.freedesktop.FooViewer" where the .desktop file is
+			"org.freedesktop.FooViewer.desktop".
+		*/
+		char *s = strrchr(key, '.');
+		if (s &&
+			s != key &&
+			*(++s) != '\0')
+			copy_string(key, key_length, s);
+	}
+	return ext != NULL;
+}
+
 static void
 app_list_desktop_file_removed(struct desktop_shell *shell, char *file)
 {
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	struct app_entry *entry;
 	char key[512];
-	char *ext;
 
-	copy_string(key, sizeof key, file);
-	ext = is_desktop_file(key);
-	assert(ext);
-	key[ext-key] = '\0'; // drop extention for key.
+	if (!app_list_key_from_file(key, sizeof key, file))
+		return;
 
 	if (context->isRdpNotifyStarted) {
 		entry = (struct app_entry *)HashTable_GetItemValue(context->table, (void*)key);
@@ -554,15 +579,12 @@ app_list_desktop_file_changed(struct desktop_shell *shell, char *folder, char *f
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	char key[512];
 	char full_path[512];
-	char *ext;
 	bool entry_filled = false;
 	struct app_entry *entry;
 	struct app_entry *entry_old;
 
-	copy_string(key, sizeof key, file);
-	ext = is_desktop_file(key);
-	assert(ext);
-	key[ext-key] = '\0'; // drop extention for key.
+	if (!app_list_key_from_file(key, sizeof key, file))
+		return;
 
 	copy_string(full_path, sizeof full_path, folder);
 	append_string(full_path, sizeof full_path, "/");

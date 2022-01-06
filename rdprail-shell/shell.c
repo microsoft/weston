@@ -374,33 +374,36 @@ shell_surface_set_window_icon(struct weston_desktop_surface *desktop_surface,
 					format = PIXMAN_a8r8g8b8;
 					break;
 				default:
-					shell_rdp_debug_error(shsurf->shell, "shell_surface_set_window_icon(): unsupported bpp: %d\n", bpp);
+					shell_rdp_debug_error(shsurf->shell, "%s: unsupported bpp: %d\n", __func__, bpp);
 					return;
 			}
 			image = pixman_image_create_bits_no_clear(format,
 				width, height, bits, ICON_STRIDE(width, bpp));
-			if (image)
-				shsurf->icon.is_default_icon_used = false;
+			if (!image) {
+				shell_rdp_debug_error(shsurf->shell, "%s: pixman_image_create_bits_no_clear failed\n", __func__);
+				return;
+			}
+			shsurf->icon.is_default_icon_used = false;
 		}
 		if (!image) {
-			/* Try .desktop for icon for non-overlay icon */
+			/* If this is X app, query from X first */
+			api = shsurf->shell->xwayland_surface_api;
+			if (!api) {
+				api = weston_xwayland_surface_get_api(shsurf->shell->compositor);
+				shsurf->shell->xwayland_surface_api = api;
+			}
+			if (api && api->is_xwayland_surface(surface)) {
+				/* trigger_set_window_icon calls back this function
+				   with custom icon image obtained from X app. */
+				if (api->trigger_set_window_icon(surface))
+					return;
+			}
+		}
+		if (!image) {
+			/* Next, try icon from .desktop file */
 			id = weston_desktop_surface_get_app_id(desktop_surface);
 			if (id)
 				image = app_list_load_icon_file(shsurf->shell, id);
-			if (!image) {
-				/* If this is X app, query from X */
-				api = shsurf->shell->xwayland_surface_api;
-				if (!api) {
-					api = weston_xwayland_surface_get_api(shsurf->shell->compositor);
-					shsurf->shell->xwayland_surface_api = api;
-				}
-				if (api && api->is_xwayland_surface(surface)) {
-					/* trigger_set_window_icon calls back this function
-					   with custom icon image obtained from X app. */
-					if (api->trigger_set_window_icon(surface))
-						return;
-				}
-			}
 			if (image)
 				shsurf->icon.is_default_icon_used = false;
 		}
