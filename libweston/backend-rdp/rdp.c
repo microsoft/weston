@@ -985,6 +985,7 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{KBD_GREEK_319, "gr", "extended"},
 	{KBD_GREEK_POLYTONIC, "gr", "polytonic"},
 	{KBD_US, "us", 0},
+	{KBD_UNITED_STATES_INTERNATIONAL, "us", "intl"},
 	{KBD_US_ENGLISH_TABLE_FOR_IBM_ARABIC_238_L, "ara", "buckwalter"},
 	{KBD_SPANISH, "es", 0},
 	{KBD_SPANISH_VARIATION, "es", "nodeadkeys"},
