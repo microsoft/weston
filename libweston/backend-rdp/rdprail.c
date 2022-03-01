@@ -4098,7 +4098,7 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	}
 	rdp_debug(b, "RDP backend: enable_fractional_hi_dpi_support = %d\n", b->enable_fractional_hi_dpi_support);
 
-	b->enable_fractional_hi_dpi_roundup = true;
+	b->enable_fractional_hi_dpi_roundup = false;
 	if (b->enable_hi_dpi_support) {
 		if (b->enable_fractional_hi_dpi_support) {
 			/* if fractional support is enabled, no round up */
@@ -4112,8 +4112,6 @@ rdp_rail_backend_create(struct rdp_backend *b)
 					b->enable_fractional_hi_dpi_roundup = true;
 			}
 		}
-	} else {
-		b->enable_fractional_hi_dpi_roundup = false;
 	}
 	rdp_debug(b, "RDP backend: enable_fractional_hi_dpi_roundup = %d\n", b->enable_fractional_hi_dpi_roundup);
 
