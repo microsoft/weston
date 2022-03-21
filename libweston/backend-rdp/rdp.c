@@ -992,6 +992,8 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{KBD_FINNISH, "fi", 0},
 	{KBD_FRENCH, "fr", 0},
 	{KBD_HEBREW, "il", 0},
+	// 0x2040d is for Hebrew (Standard) Layout.
+	{0x2040d, "il", "basic"},
 	{KBD_HUNGARIAN, "hu", 0},
 	{KBD_HUNGARIAN_101_KEY, "hu", "standard"},
 	{KBD_ICELANDIC, "is", 0},
