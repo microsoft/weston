@@ -968,6 +968,16 @@ struct rdp_to_xkb_keyboard_layout {
 
 /* table reversed from
 	https://github.com/awakecoding/FreeRDP/blob/master/libfreerdp/locale/xkb_layout_ids.c#L811 */
+/* Locally define missing keyboard layout IDs in FreeRDP 2.x */
+#ifndef KBD_HEBREW_STANDARD
+/* 0x2040d is for Hebrew (Standard) */
+#define KBD_HEBREW_STANDARD 0x2040d
+#endif
+#ifndef KBD_PERSIAN
+/* 0x50429 is for Dari (Afghanistan) */
+#define KBD_PERSIAN 0x50429
+#endif
+
 static const
 struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{KBD_ARABIC_101, "ara", 0},
@@ -992,8 +1002,7 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{KBD_FINNISH, "fi", 0},
 	{KBD_FRENCH, "fr", 0},
 	{KBD_HEBREW, "il", 0},
-	// 0x2040d is for Hebrew (Standard) Layout.
-	{0x2040d, "il", "basic"},
+	{KBD_HEBREW_STANDARD, "il", "basic"},
 	{KBD_HUNGARIAN, "hu", 0},
 	{KBD_HUNGARIAN_101_KEY, "hu", "standard"},
 	{KBD_ICELANDIC, "is", 0},
@@ -1031,12 +1040,7 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	//       Such as key <AE01>~<AE10> is 1,2,3...0 on Windows, not Persian numbers,
 	//       but Xkb doesn't have that layout in "ir" group.
 	{KBD_FARSI, "ir", "pes"},
-	// 0x50429 is for Dari(Afghanistan)
-#if WINPR_VERSION_MAJOR >= 3
 	{KBD_PERSIAN, "af", "basic"},
-#else
-	{0x50429, "af", "basic"},
-#endif
 	{KBD_VIETNAMESE, "vn", 0},
 	{KBD_ARMENIAN_EASTERN, "am", 0},
 	{KBD_AZERI_LATIN, 0, 0},
