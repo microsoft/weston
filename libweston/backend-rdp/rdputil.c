@@ -379,6 +379,7 @@ rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_fun
 					func, data);
 		if (*event_source) {
 			eventfd_write(peerCtx->loop_event_source_fd, 1);
+			return true;
 		} else {
 			rdp_debug_error(b, "%s: wl_event_loop_add_idle failed\n", __func__);
 		}
@@ -386,7 +387,7 @@ rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_fun
 		/* RDP server is not opened, this must not be used */
 		assert(false);
 	}
-	return (*event_source != NULL);
+	return false;
 }
 
 void
