@@ -1151,12 +1151,19 @@ rdp_rail_create_cursor(struct weston_surface *surface)
 	struct weston_compositor *compositor = surface->compositor;
 	struct rdp_backend *b = (struct rdp_backend*)compositor->backend;
 	RdpPeerContext *peerCtx = (RdpPeerContext *)b->rdp_peer->context;
+	struct weston_surface_rail_state *rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 
 	ASSERT_COMPOSITOR_THREAD(b);
+
+	rail_state->clientPos.width = 0; /* triggers force update on next update. */
+	rail_state->clientPos.height = 0;
+	pixman_region32_init_rect(&rail_state->damage,
+		 0, 0, surface->width_from_buffer, surface->height_from_buffer);
 
 	if (peerCtx->cursorSurface)
 		rdp_debug_error(b, "cursor surface already exists old %p vs new %p\n", peerCtx->cursorSurface, surface);
 	peerCtx->cursorSurface = surface;
+
 	return 0;
 }
 
@@ -1171,8 +1178,6 @@ rdp_rail_update_cursor(struct weston_surface *surface)
 	BOOL isCursorResized = FALSE;
 	BOOL isCursorHidden = FALSE;
 	BOOL isCursorDamanged = FALSE;
-	int numViews;
-	struct weston_view *view;
 	struct weston_rdp_rail_window_pos newPos = {.x = 0, .y = 0, .width = surface->width, .height = surface->height};
 	struct weston_rdp_rail_window_pos newClientPos = {.x = 0, .y = 0, .width = surface->width, .height = surface->height};
 	int contentBufferWidth;
@@ -1181,44 +1186,29 @@ rdp_rail_update_cursor(struct weston_surface *surface)
 	ASSERT_COMPOSITOR_THREAD(b);
 	assert(rail_state);
 
-	/* obtain view's global position */
-	numViews = 0;
-	wl_list_for_each(view, &surface->views, surface_link) {
-		float sx, sy;
-		weston_view_to_global_float(view, 0, 0, &sx, &sy);
-		newPos.x = (int)sx;
-		newPos.y = (int)sy;
-		numViews++;
-		break; // just handle the first view for this hack
-	}
-	if (numViews == 0) {
-		view = NULL;
-		rdp_debug_verbose(b, "%s: surface has no view (windowId:0x%x)\n", __func__, rail_state->window_id);
-	}
-
-	if (newPos.x < 0 || newPos.y < 0)
-		isCursorHidden = TRUE;
-
 	weston_surface_get_content_size(surface, &contentBufferWidth, &contentBufferHeight);
 	newClientPos.width = contentBufferWidth;
 	newClientPos.height = contentBufferHeight;
 	if (surface->output)
 		to_client_coordinate(peerCtx, surface->output,
-			&newClientPos.x, &newClientPos.y, &newClientPos.width, &newClientPos.height);
+			&newClientPos.x, &newClientPos.y, /* these are zero since position at client side doesn't matter */
+			&newClientPos.width, &newClientPos.height);
 
-	if (newClientPos.width > 0 && newClientPos.height > 0)
-		isCursorResized = TRUE;
-	else
+	if (newPos.x < 0 || newPos.y < 0 || /* check if negative in weston space */
+		newClientPos.width <= 0 || newClientPos.height <= 0) {
 		isCursorHidden = TRUE;
-
-	rail_state->pos = newPos;
-	rail_state->clientPos = newClientPos;
-
-	if (!isCursorHidden && !isCursorResized) {
-		if ((surface->damage.extents.x2 - surface->damage.extents.x1) > 0  ||
-			(surface->damage.extents.y2 - surface->damage.extents.y1) > 0)
-			isCursorDamanged = TRUE;
+		rdp_debug(b, "CursorUpdate: hidden\n");
+	} else if (rail_state->clientPos.width != newClientPos.width || /* check if size changed in client side */
+			rail_state->clientPos.height != newClientPos.height) {
+		isCursorResized = TRUE;
+		rdp_debug(b, "CursorUpdate: resized\n");
+	} else if (pixman_region32_not_empty(&rail_state->damage)) {
+		isCursorDamanged = TRUE;
+		rdp_debug(b, "CursorUpdate: dirty\n");
 	}
+
+	rail_state->clientPos = newClientPos;
+	pixman_region32_clear(&rail_state->damage);
 
 	if (isCursorHidden) {
 		/* hide pointer */
@@ -1593,8 +1583,8 @@ rdp_rail_destroy_window(struct wl_listener *listener, void *data)
 			}
 			rail_state->isWindowCreated = FALSE;
 		}
-		pixman_region32_fini(&rail_state->damage);
 	}
+	pixman_region32_fini(&rail_state->damage);
 
 	rdp_id_manager_free_id(&peerCtx->windowId, window_id);
 	rail_state->window_id = 0;
