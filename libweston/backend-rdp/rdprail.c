@@ -1197,14 +1197,14 @@ rdp_rail_update_cursor(struct weston_surface *surface)
 	if (newPos.x < 0 || newPos.y < 0 || /* check if negative in weston space */
 		newClientPos.width <= 0 || newClientPos.height <= 0) {
 		isCursorHidden = TRUE;
-		rdp_debug(b, "CursorUpdate: hidden\n");
+		rdp_debug_verbose(b, "CursorUpdate: hidden\n");
 	} else if (rail_state->clientPos.width != newClientPos.width || /* check if size changed in client side */
 			rail_state->clientPos.height != newClientPos.height) {
 		isCursorResized = TRUE;
-		rdp_debug(b, "CursorUpdate: resized\n");
+		rdp_debug_verbose(b, "CursorUpdate: resized\n");
 	} else if (pixman_region32_not_empty(&rail_state->damage)) {
 		isCursorDamanged = TRUE;
-		rdp_debug(b, "CursorUpdate: dirty\n");
+		rdp_debug_verbose(b, "CursorUpdate: dirty\n");
 	}
 
 	rail_state->clientPos = newClientPos;
