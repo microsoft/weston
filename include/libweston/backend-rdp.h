@@ -75,7 +75,7 @@ struct weston_rdprail_shell_api {
 
 	/** Move a window.
 	 */
-	void (*request_window_move)(struct weston_surface *surface, int x, int y);
+	void (*request_window_move)(struct weston_surface *surface, int x, int y, int width, int height);
 
 	/** Snap a window.
 	 */

@@ -338,8 +338,9 @@ rail_client_SnapArrange_callback(int fd, uint32_t mask, void *arg)
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	struct weston_surface *surface;
 	struct weston_surface_rail_state *rail_state;
+	pixman_rectangle32_t snapArrangeRect;
 
-	rdp_debug(b, "SnapArrange(%d) - (%d, %d, %d, %d)\n", 
+	rdp_debug(b, "Client: SnapArrange: WindowId:0x%x at (%d, %d) %dx%d\n", 
 		snap->windowId,
 		snap->left,
 		snap->top,
@@ -353,12 +354,18 @@ rail_client_SnapArrange_callback(int fd, uint32_t mask, void *arg)
 		rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 		if (b->rdprail_shell_api &&
 			b->rdprail_shell_api->request_window_move) {
-			/* TODO: HI-DPI MULTIMON */
+			snapArrangeRect.x = snap->left;
+			snapArrangeRect.y = snap->top;
+			snapArrangeRect.width = snap->right - snap->left;
+			snapArrangeRect.height = snap->bottom - snap->top;
+			to_weston_coordinate(peerCtx,
+				&snapArrangeRect.x, &snapArrangeRect.y,
+				&snapArrangeRect.width, &snapArrangeRect.height);
 			b->rdprail_shell_api->request_window_snap(surface, 
-				to_weston_x(peerCtx, snap->left), 
-				to_weston_y(peerCtx, snap->top),
-				snap->right - snap->left,
-				snap->bottom - snap->top);
+				snapArrangeRect.x,
+				snapArrangeRect.y,
+				snapArrangeRect.width,
+				snapArrangeRect.height);
 		}
 
 		rail_state->forceUpdateWindowState = true;
@@ -384,8 +391,9 @@ rail_client_WindowMove_callback(int fd, uint32_t mask, void *arg)
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	struct weston_surface *surface;
+	pixman_rectangle32_t windowMoveRect;
 
-	rdp_debug(b, "WindowMove(%d) - (%d, %d, %d, %d)\n", 
+	rdp_debug(b, "Client: WindowMove: WindowId:0x0x at (%d, %d) %dx%d\n", 
 		windowMove->windowId,
 		windowMove->left,
 		windowMove->top,
@@ -398,10 +406,18 @@ rail_client_WindowMove_callback(int fd, uint32_t mask, void *arg)
 	if (surface) {
 		if (b->rdprail_shell_api &&
 			b->rdprail_shell_api->request_window_move) {
-			/* TODO: HI-DPI MULTIMON */
+			windowMoveRect.x = windowMove->left;
+			windowMoveRect.y = windowMove->top;
+			windowMoveRect.width = windowMove->right - windowMove->left;
+			windowMoveRect.height = windowMove->bottom - windowMove->top;
+			to_weston_coordinate(peerCtx,
+				&windowMoveRect.x, &windowMoveRect.y,
+				&windowMoveRect.width, &windowMoveRect.height);
 			b->rdprail_shell_api->request_window_move(surface, 
-				to_weston_x(peerCtx, windowMove->left), 
-				to_weston_y(peerCtx, windowMove->top));
+				windowMoveRect.x,
+				windowMoveRect.y,
+				windowMoveRect.width,
+				windowMoveRect.height);
 		}
 	}
 
@@ -2682,7 +2698,7 @@ rdp_rail_peer_activate(freerdp_peer* client)
 		UINT32 railHandshakeFlags =
 			(TS_RAIL_ORDER_HANDSHAKEEX_FLAGS_HIDEF
 			 | TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_EXTENDED_SPI_SUPPORTED
-			 /*| TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_SNAP_ARRANGE_SUPPORTED*/);
+			/* | TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_SNAP_ARRANGE_SUPPORTED */);
 		handshakeEx.buildNumber = 0;
 		handshakeEx.railHandshakeFlags = railHandshakeFlags;
 		if (peerCtx->rail_server_context->ServerHandshakeEx(peerCtx->rail_server_context, &handshakeEx) != CHANNEL_RC_OK)

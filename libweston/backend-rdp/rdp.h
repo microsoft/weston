@@ -483,20 +483,6 @@ rdp_matrix_transform_scale(struct weston_matrix *matrix, int *sx, int *sy)
 	}
 }
 
-/* TO BE REMOVED */
-static inline int32_t
-to_weston_x(RdpPeerContext *peer, int32_t x)
-{
-	return x - peer->regionClientHeads.extents.x1;
-}
-
-/* TO BE REMOVED */
-static inline int32_t
-to_weston_y(RdpPeerContext *peer, int32_t y)
-{
-	return y - peer->regionClientHeads.extents.y1;
-}
-
 static inline void
 to_weston_scale_only(RdpPeerContext *peer, struct weston_output *output, float scale, int *x, int *y)
 {

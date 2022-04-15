@@ -2665,7 +2665,7 @@ shell_backend_request_window_restore(struct weston_surface *surface)
 }
 
 static void
-shell_backend_request_window_move(struct weston_surface *surface, int x, int y)
+shell_backend_request_window_move(struct weston_surface *surface, int x, int y, int width, int height)
 {
 	struct weston_view *view;
 	struct shell_surface *shsurf = get_shell_surface(surface);
@@ -2680,6 +2680,7 @@ shell_backend_request_window_move(struct weston_surface *surface, int x, int y)
 
 	assert(!shsurf->snapped.is_maximized_requested);
 	weston_view_set_position(view, x, y);
+	//TODO: support window resize (width x height)
 }
 
 static void
