@@ -2697,8 +2697,9 @@ rdp_rail_peer_activate(freerdp_peer* client)
 		RAIL_HANDSHAKE_EX_ORDER handshakeEx = {};
 		UINT32 railHandshakeFlags =
 			(TS_RAIL_ORDER_HANDSHAKEEX_FLAGS_HIDEF
-			 | TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_EXTENDED_SPI_SUPPORTED
-			/* | TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_SNAP_ARRANGE_SUPPORTED */);
+			 | TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_EXTENDED_SPI_SUPPORTED);
+		if (b->enable_window_snap_arrange)
+			railHandshakeFlags |= TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_SNAP_ARRANGE_SUPPORTED;
 		handshakeEx.buildNumber = 0;
 		handshakeEx.railHandshakeFlags = railHandshakeFlags;
 		if (peerCtx->rail_server_context->ServerHandshakeEx(peerCtx->rail_server_context, &handshakeEx) != CHANNEL_RC_OK)
@@ -4107,6 +4108,9 @@ rdp_rail_backend_create(struct rdp_backend *b)
 
 	b->enable_window_zorder_sync = rdp_read_config_bool("WESTON_RDP_WINDOW_ZORDER_SYNC", true);
 	rdp_debug(b, "RDP backend: window_zorder_sync = %d\n", b->enable_window_zorder_sync);
+
+	b->enable_window_snap_arrange = rdp_read_config_bool("WESTON_RDP_WINDOW_SNAP_ARRANGE", false);
+	rdp_debug(b, "RDP backend: window_snap_arrange = %d\n", b->enable_window_snap_arrange);
 
 	b->keep_display_power_by_screenupdate = rdp_read_config_bool("WESTON_RDP_DISPLAY_POWER_BY_SCREENUPDATE", false);
 	rdp_debug(b, "RDP backend: display_power_by_screenupdate = %d\n", b->keep_display_power_by_screenupdate);

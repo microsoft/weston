@@ -131,6 +131,7 @@ struct rdp_backend {
 	struct wl_listener create_window_listener;
 
 	bool enable_window_zorder_sync;
+	bool enable_window_snap_arrange;
 
 	bool keep_display_power_by_screenupdate;
 
