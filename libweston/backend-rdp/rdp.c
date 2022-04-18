@@ -2200,12 +2200,8 @@ rdp_backend_create(struct weston_compositor *compositor,
 	}
 	rdp_debug_clipboard(b, "RDP backend: WESTON_RDP_DEBUG_CLIPBOARD_LEVEL: %d\n", b->debugClipboardLevel);
 
-	b->rdp_monitor_refresh_rate = rdp_read_config_int("WESTON_RDP_MONITOR_REFRESH_RATE", 0);
-	if (b->rdp_monitor_refresh_rate == 0) {
-		b->rdp_monitor_refresh_rate = RDP_MODE_FREQ;
-	} else {
-		b->rdp_monitor_refresh_rate *= 1000;
-	}
+	b->rdp_monitor_refresh_rate = rdp_read_config_int("WESTON_RDP_MONITOR_REFRESH_RATE", RDP_MODE_FREQ);
+	b->rdp_monitor_refresh_rate *= 1000;
 	rdp_debug(b, "RDP backend: WESTON_RDP_MONITOR_REFRESH_RATE: %d\n", b->rdp_monitor_refresh_rate);
 
 	clock_getres(CLOCK_MONOTONIC, &ts);

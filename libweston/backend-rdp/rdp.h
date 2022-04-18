@@ -64,7 +64,7 @@
 #include "shared/timespec-util.h"
 
 #define MAX_FREERDP_FDS 32
-#define RDP_MODE_FREQ 60 * 1000
+#define RDP_MODE_FREQ 60 // Hz
 #define RDP_MAX_MONITOR 16 // RDP max monitors.
 
 #define DEFAULT_PIXEL_FORMAT PIXEL_FORMAT_BGRA32
