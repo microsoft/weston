@@ -3970,14 +3970,8 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	}
 
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
-	bool use_rdpapplist = true;
-
-	s = getenv("WESTON_RDP_DISABLE_APPLIST");
-	if (s) {
-		rdp_debug(b, "WESTON_RDP_DISABLE_APPLIST is set to %s.\n", s);
-		if (strcmp(s, "true") == 0)
-			use_rdpapplist = false;
-	}
+	bool use_rdpapplist = rdp_read_config_bool("WESTON_RDP_APPLIST", true);
+	rdp_debug(b, "WESTON_RDP_APPLIST is set to %d.\n", use_rdpapplist);
 
 	if (use_rdpapplist) {
 		use_rdpapplist = false;
@@ -4012,18 +4006,13 @@ rdp_rail_backend_create(struct rdp_backend *b)
 #endif // HAVE_FREERDP_RDPAPPLIST_H
 
 #ifdef HAVE_FREERDP_GFXREDIR_H
-	bool use_gfxredir = true;
-
-	s = getenv("WESTON_RDP_DISABLE_SHARED_MEMORY");
-	if (s) {
-		rdp_debug(b, "WESTON_RDP_DISABLE_SHARED_MEMORY is set to %s.\n", s);
-		if (strcmp(s, "true") == 0)
-			use_gfxredir = false;
-	}
+	bool use_gfxredir = rdp_read_config_bool("WESTON_RDP_SHARED_MEMORY", true);
+	rdp_debug(b, "WESTON_RDP_SHARED_MEMORY is set to %d.\n", use_gfxredir);
 
 	/* check if shared memory mount path is set */
 	if (use_gfxredir) {
 		use_gfxredir = false;
+		/* this value is always given as environment value from WSL. */
 		s = getenv("WSL2_SHARED_MEMORY_MOUNT_POINT");
 		if (s) {
 			b->shared_memory_mount_path = s;
@@ -4081,55 +4070,33 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	/*
 	 * Configure HI-DPI scaling.
 	 */
-	b->enable_hi_dpi_support = true;
-	s = getenv("WESTON_RDP_DISABLE_HI_DPI_SCALING");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			b->enable_hi_dpi_support = false;
-		else if (strcmp(s, "false") == 0)
-			b->enable_hi_dpi_support = true;
-	}
-	rdp_debug(b, "RDP backend: enable_hi_dpi_support = %d\n", b->enable_hi_dpi_support);
+	b->enable_hi_dpi_support = rdp_read_config_bool("WESTON_RDP_HI_DPI_SCALING", true);
+	rdp_debug(b, "RDP backend: hi_dpi_support = %d\n", b->enable_hi_dpi_support);
 
 	b->enable_fractional_hi_dpi_support = false;
 	if (b->enable_hi_dpi_support) {
 		/* Disable by default for now. b->enable_fractional_hi_dpi_support = true; */
-		s = getenv("WESTON_RDP_DISABLE_FRACTIONAL_HI_DPI_SCALING");
-		if (s) {
-			if (strcmp(s, "true") == 0)
-				b->enable_fractional_hi_dpi_support = false;
-			else if (strcmp(s, "false") == 0)
-				b->enable_fractional_hi_dpi_support = true;
-		}
+		b->enable_fractional_hi_dpi_support = rdp_read_config_bool("WESTON_RDP_FRACTIONAL_HI_DPI_SCALING", false);
 	}
-	rdp_debug(b, "RDP backend: enable_fractional_hi_dpi_support = %d\n", b->enable_fractional_hi_dpi_support);
+	rdp_debug(b, "RDP backend: fractional_hi_dpi_support = %d\n", b->enable_fractional_hi_dpi_support);
 
 	b->enable_fractional_hi_dpi_roundup = false;
-	if (b->enable_hi_dpi_support) {
-		if (b->enable_fractional_hi_dpi_support) {
-			/* if fractional support is enabled, no round up */
-			b->enable_fractional_hi_dpi_roundup = false;
-		} else {
-			s = getenv("WESTON_RDP_DISABLE_FRACTIONAL_HI_DPI_SCALING_ROUNDUP");
-			if (s) {
-				if (strcmp(s, "true") == 0)
-					b->enable_fractional_hi_dpi_roundup = false;
-				else if (strcmp(s, "false") == 0)
-					b->enable_fractional_hi_dpi_roundup = true;
-			}
-		}
+	if (b->enable_hi_dpi_support && b->enable_fractional_hi_dpi_support) {
+		/* if fractional support is enabled, no round up */
+		b->enable_fractional_hi_dpi_roundup = false;
+	} else {
+		b->enable_fractional_hi_dpi_roundup = rdp_read_config_bool("WESTON_RDP_FRACTIONAL_HI_DPI_SCALING_ROUNDUP", false);
 	}
-	rdp_debug(b, "RDP backend: enable_fractional_hi_dpi_roundup = %d\n", b->enable_fractional_hi_dpi_roundup);
+	rdp_debug(b, "RDP backend: fractional_hi_dpi_roundup = %d\n", b->enable_fractional_hi_dpi_roundup);
 
 	b->debug_desktop_scaling_factor = 0;
 	if (b->enable_hi_dpi_support) {
-		char *debug_desktop_scaling_factor = getenv("WESTON_RDP_DEBUG_DESKTOP_SCALING_FACTOR");
-		if (debug_desktop_scaling_factor) {
-			if (!safe_strtoint(debug_desktop_scaling_factor, &b->debug_desktop_scaling_factor) ||
-			    (b->debug_desktop_scaling_factor < 100 || b->debug_desktop_scaling_factor > 500)) {
-				b->debug_desktop_scaling_factor = 0;
+		b->debug_desktop_scaling_factor = rdp_read_config_int("WESTON_RDP_DEBUG_DESKTOP_SCALING_FACTOR", 0);
+		if (b->debug_desktop_scaling_factor != 0) {
+			if (b->debug_desktop_scaling_factor < 100 || b->debug_desktop_scaling_factor > 500) {
 				rdp_debug(b, "WESTON_RDP_DEBUG_DESKTOP_SCALING_FACTOR = %s is invalid and ignored.\n",
-					  debug_desktop_scaling_factor);
+					  b->debug_desktop_scaling_factor);
+				b->debug_desktop_scaling_factor = 0;
 			} else {
 				rdp_debug(b, "WESTON_RDP_DEBUG_DESKTOP_SCALING_FACTOR = %d is set.\n",
 					  b->debug_desktop_scaling_factor);
@@ -4138,43 +4105,22 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	}
 	rdp_debug(b, "RDP backend: debug_desktop_scaling_factor = %d\n", b->debug_desktop_scaling_factor);
 
-	b->enable_window_zorder_sync = true;
-	s = getenv("WESTON_RDP_DISABLE_WINDOW_ZORDER_SYNC");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			b->enable_window_zorder_sync = false;
-	}
-	rdp_debug(b, "RDP backend: enable_window_zorder_sync = %d\n", b->enable_window_zorder_sync);
+	b->enable_window_zorder_sync = rdp_read_config_bool("WESTON_RDP_WINDOW_ZORDER_SYNC", true);
+	rdp_debug(b, "RDP backend: window_zorder_sync = %d\n", b->enable_window_zorder_sync);
 
-	b->keep_display_power_by_screenupdate = false;
-	s = getenv("WESTON_RDP_ENABLE_DISPLAY_POWER_BY_SCREENUPDATE");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			b->keep_display_power_by_screenupdate = true;
-	}
-	rdp_debug(b, "RDP backend: keep_display_power_by_screenupdate = %d\n", b->keep_display_power_by_screenupdate);
+	b->keep_display_power_by_screenupdate = rdp_read_config_bool("WESTON_RDP_DISPLAY_POWER_BY_SCREENUPDATE", false);
+	rdp_debug(b, "RDP backend: display_power_by_screenupdate = %d\n", b->keep_display_power_by_screenupdate);
 
 	b->rdprail_shell_name = NULL;
 
-	b->enable_distro_name_title = true;
-	s = getenv("WESTON_RDP_DISABLE_APPEND_DISTRONAME_TITLE");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			b->enable_distro_name_title = false;
-	}
-	rdp_debug(b, "RDP backend: enable_distro_name_title = %d\n", b->enable_distro_name_title);
+	b->enable_distro_name_title = rdp_read_config_bool("WESTON_RDP_APPEND_DISTRONAME_TITLE", true);
+	rdp_debug(b, "RDP backend: append_distroname_title = %d\n", b->enable_distro_name_title);
 
 	b->enable_copy_warning_title = false;
-	if (b->debugLevel >= RDP_DEBUG_LEVEL_WARN &&
-            !b->use_gfxredir) {
-		b->enable_copy_warning_title = true;
-		s = getenv("WESTON_RDP_DISABLE_COPY_WARNING_TITLE");
-		if (s) {
-			if (strcmp(s, "true") == 0)
-				b->enable_copy_warning_title = false;
-		}
+	if (b->debugLevel >= RDP_DEBUG_LEVEL_WARN && !b->use_gfxredir) {
+		b->enable_copy_warning_title = rdp_read_config_bool("WESTON_RDP_COPY_WARNING_TITLE", true);
 	}
-	rdp_debug(b, "RDP backend: enable_copy_warning_title = %d\n", b->enable_copy_warning_title);
+	rdp_debug(b, "RDP backend: copy_warning_title = %d\n", b->enable_copy_warning_title);
 
 	/* M to dump all outstanding monitor info */
 	b->debug_binding_M = weston_compositor_add_debug_binding(b->compositor, KEY_M,

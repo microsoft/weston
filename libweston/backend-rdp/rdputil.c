@@ -397,3 +397,37 @@ rdp_defer_rdp_task_done(RdpPeerContext *peerCtx)
 	eventfd_read(peerCtx->loop_event_source_fd, &dummy);
 }
 
+bool
+rdp_read_config_bool(char *config_name, bool default_value)
+{
+	char *s;
+
+	s = getenv(config_name);
+	if (s) {
+		if (strcmp(s, "true") == 0)
+			return true;
+		else if (strcmp(s, "false") == 0)
+			return false;
+		else if (strcmp(s, "1") == 0)
+			return true;
+		else if (strcmp(s, "0") == 0)
+			return false;
+	}
+
+	return default_value;
+}
+
+int
+rdp_read_config_int(char *config_name, int default_value)
+{
+	char *s;
+	int i;
+
+	s = getenv(config_name);
+	if (s) {
+		if (safe_strtoint(s, &i))
+			return i;
+	}
+
+	return default_value;
+}

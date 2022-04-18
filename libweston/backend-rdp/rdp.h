@@ -405,6 +405,8 @@ void rdp_id_manager_free_id(struct rdp_id_manager *id_manager, UINT32 id);
 void dump_id_manager_state(FILE *fp, struct rdp_id_manager *id_manager, char* title);
 bool rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, void *data, struct wl_event_source **event_source);
 void rdp_defer_rdp_task_done(RdpPeerContext *peerCtx);
+bool rdp_read_config_bool(char *config_name, bool default_value);
+int rdp_read_config_int(char *config_name, int default_value);
 
 // rdprail.c
 int rdp_rail_backend_create(struct rdp_backend *b);

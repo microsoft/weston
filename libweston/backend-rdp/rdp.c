@@ -1176,7 +1176,6 @@ xf_peer_activate(freerdp_peer* client)
 	pixman_region32_t damage;
 	char seat_name[50];
 	POINTER_SYSTEM_UPDATE pointer_system;
-	char *s;
 
 	peerCtx = (RdpPeerContext *)client->context;
 	b = peerCtx->rdpBackend;
@@ -1214,23 +1213,9 @@ xf_peer_activate(freerdp_peer* client)
 	}
 
 	/* override settings by env variables */
-	s = getenv("WESTON_RDP_DISABLE_CLIPBOARD");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			settings->RedirectClipboard = FALSE;
-	}
-
-	s = getenv("WESTON_RDP_DISABLE_AUDIO_PLAYBACK");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			settings->AudioPlayback = FALSE;
-	}
-
-	s = getenv("WESTON_RDP_DISABLE_AUDIO_CAPTURE");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			settings->AudioCapture = FALSE;
-	}
+	settings->RedirectClipboard = rdp_read_config_bool("WESTON_RDP_CLIPBOARD", true);
+	settings->AudioPlayback = rdp_read_config_bool("WESTON_RDP_AUDIO_PLAYBACK", true);
+	settings->AudioCapture = rdp_read_config_bool("WESTON_RDP_AUDIO_CAPTURE", true);
 
 	if (settings->RemoteApplicationMode ||
 		settings->RedirectClipboard ||
@@ -2169,7 +2154,6 @@ rdp_backend_create(struct weston_compositor *compositor,
 
 	struct weston_head *base, *next;
 	struct rdp_output *output;
-	char *s;
 	int i;
 	struct timespec ts;
 
@@ -2196,15 +2180,9 @@ rdp_backend_create(struct weston_compositor *compositor,
 						   "Debug messages from RDP backend\n",
 						    NULL, NULL, NULL);
 	if (b->debug) {
-		s = getenv("WESTON_RDP_DEBUG_LEVEL");
-		if (s) {
-			if (!safe_strtoint(s, &b->debugLevel))
-				b->debugLevel = RDP_DEBUG_LEVEL_DEFAULT;
-			else if (b->debugLevel > RDP_DEBUG_LEVEL_VERBOSE)
-				b->debugLevel = RDP_DEBUG_LEVEL_VERBOSE;
-		} else {
-			b->debugLevel = RDP_DEBUG_LEVEL_DEFAULT;
-		}
+		b->debugLevel = rdp_read_config_int("WESTON_RDP_DEBUG_LEVEL", RDP_DEBUG_LEVEL_DEFAULT);
+		if (b->debugLevel > RDP_DEBUG_LEVEL_VERBOSE)
+			b->debugLevel = RDP_DEBUG_LEVEL_VERBOSE;
 	}
 	rdp_debug(b, "RDP backend: WESTON_RDP_DEBUG_LEVEL: %d\n", b->debugLevel);
 	/* After here, rdp_debug() is ready to be used */
@@ -2214,30 +2192,19 @@ rdp_backend_create(struct weston_compositor *compositor,
 							 "Debug messages from RDP backend clipboard\n",
 							  NULL, NULL, NULL);
 	if (b->debugClipboard) {
-		s = getenv("WESTON_RDP_DEBUG_CLIPBOARD_LEVEL");
-		if (s) {
-			if (!safe_strtoint(s, &b->debugClipboardLevel))
-				b->debugClipboardLevel = RDP_DEBUG_CLIPBOARD_LEVEL_DEFAULT;
-			else if (b->debugClipboardLevel > RDP_DEBUG_LEVEL_VERBOSE)
-				b->debugClipboardLevel = RDP_DEBUG_LEVEL_VERBOSE;
-		} else {
-			/* by default, clipboard scope is disabled, so when it's enabled,
-			   log with verbose mode to assist debugging */
-			b->debugClipboardLevel = RDP_DEBUG_LEVEL_VERBOSE; // RDP_DEBUG_CLIPBOARD_LEVEL_DEFAULT;
-		}
+		/* by default, clipboard scope is disabled, so when it's enabled,
+		   log with verbose mode to assist debugging */
+		b->debugClipboardLevel = rdp_read_config_int("WESTON_RDP_DEBUG_CLIPBOARD_LEVEL", RDP_DEBUG_LEVEL_VERBOSE);
+		if (b->debugClipboardLevel > RDP_DEBUG_LEVEL_VERBOSE)
+			b->debugClipboardLevel = RDP_DEBUG_LEVEL_VERBOSE;
 	}
 	rdp_debug_clipboard(b, "RDP backend: WESTON_RDP_DEBUG_CLIPBOARD_LEVEL: %d\n", b->debugClipboardLevel);
 
-	s = getenv("WESTON_RDP_MONITOR_REFRESH_RATE");
-	if (s) {
-		if (!safe_strtoint(s, &b->rdp_monitor_refresh_rate) ||
-			b->rdp_monitor_refresh_rate == 0) {
-			b->rdp_monitor_refresh_rate = RDP_MODE_FREQ;
-		} else {
-			b->rdp_monitor_refresh_rate *= 1000;
-		}
-	} else {
+	b->rdp_monitor_refresh_rate = rdp_read_config_int("WESTON_RDP_MONITOR_REFRESH_RATE", 0);
+	if (b->rdp_monitor_refresh_rate == 0) {
 		b->rdp_monitor_refresh_rate = RDP_MODE_FREQ;
+	} else {
+		b->rdp_monitor_refresh_rate *= 1000;
 	}
 	rdp_debug(b, "RDP backend: WESTON_RDP_MONITOR_REFRESH_RATE: %d\n", b->rdp_monitor_refresh_rate);
 
