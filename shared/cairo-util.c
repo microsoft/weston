@@ -461,7 +461,6 @@ create_layout(cairo_t *cr, const char *title)
 {
 	PangoLayout *layout;
 	PangoFontDescription *desc;
-	PangoAttrList *attrs;
 
 	layout = pango_cairo_create_layout(cr);
 	if (title) {
@@ -469,13 +468,6 @@ create_layout(cairo_t *cr, const char *title)
 		desc = pango_font_description_from_string("Sans Bold 10");
 		pango_layout_set_font_description(layout, desc);
 		pango_font_description_free(desc);
-		/* enable fallback attribute */
-		attrs = pango_attr_list_new();
-		if (attrs) {
-			pango_attr_list_insert(attrs, pango_attr_fallback_new(true));
-			pango_layout_set_attributes(layout, attrs);
-			pango_attr_list_unref(attrs);
-		}
 	}
 	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
 	pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
