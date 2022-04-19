@@ -64,7 +64,6 @@
 #include "shared/timespec-util.h"
 
 #define MAX_FREERDP_FDS 32
-#define RDP_MODE_FREQ 60 * 1000
 #define RDP_MAX_MONITOR 16 // RDP max monitors.
 
 #define DEFAULT_PIXEL_FORMAT PIXEL_FORMAT_BGRA32
@@ -115,6 +114,9 @@ struct rdp_backend {
 	char *rdp_key;
 	int no_clients_resize;
 	int force_no_compression;
+	bool redirect_clipboard;
+	bool redirect_audio_playback;
+	bool redirect_audio_capture;
 
 	const struct weston_rdprail_shell_api *rdprail_shell_api;
 	void *rdprail_shell_context;
@@ -131,8 +133,9 @@ struct rdp_backend {
 	struct wl_listener create_window_listener;
 
 	bool enable_window_zorder_sync;
+	bool enable_window_snap_arrange;
 
-	bool keep_display_power_by_screenupdate;
+	bool enable_display_power_by_screenupdate;
 
 	bool enable_hi_dpi_support;
 	bool enable_fractional_hi_dpi_support;
@@ -407,7 +410,7 @@ bool rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_f
 void rdp_defer_rdp_task_done(RdpPeerContext *peerCtx);
 
 // rdprail.c
-int rdp_rail_backend_create(struct rdp_backend *b);
+int rdp_rail_backend_create(struct rdp_backend *b, struct weston_rdp_backend_config *config);
 void rdp_rail_destroy(struct rdp_backend *b);
 BOOL rdp_rail_peer_activate(freerdp_peer* client);
 void rdp_rail_sync_window_status(freerdp_peer* client);

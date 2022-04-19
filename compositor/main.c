@@ -2704,6 +2704,56 @@ weston_rdp_backend_config_init(struct weston_rdp_backend_config *config)
 	config->env_socket = 0;
 	config->no_clients_resize = 0;
 	config->force_no_compression = 0;
+	config->redirect_clipboard = false;
+	config->redirect_audio_playback = false;
+	config->redirect_audio_capture = false;
+	config->rdp_monitor_refresh_rate = WESTON_RDP_MODE_FREQ;
+	config->rail_config.use_rdpapplist = false;
+	config->rail_config.use_shared_memory = false;
+	config->rail_config.enable_hi_dpi_support = false;
+	config->rail_config.enable_fractional_hi_dpi_support = false;
+	config->rail_config.enable_fractional_hi_dpi_roundup = false;
+	config->rail_config.debug_desktop_scaling_factor = 0;
+	config->rail_config.enable_window_zorder_sync = false;
+	config->rail_config.enable_window_snap_arrange = false;
+	config->rail_config.enable_distro_name_title = false;
+	config->rail_config.enable_copy_warning_title = false;
+	config->rail_config.enable_display_power_by_screenupdate = false;
+}
+
+static bool
+read_rdp_config_bool(char *config_name, bool default_value)
+{
+	char *s;
+
+	s = getenv(config_name);
+	if (s) {
+		if (strcmp(s, "true") == 0)
+			return true;
+		else if (strcmp(s, "false") == 0)
+			return false;
+		else if (strcmp(s, "1") == 0)
+			return true;
+		else if (strcmp(s, "0") == 0)
+			return false;
+	}
+
+	return default_value;
+}
+
+static int
+read_rdp_config_int(char *config_name, int default_value)
+{
+	char *s;
+	int i;
+
+	s = getenv(config_name);
+	if (s) {
+		if (safe_strtoint(s, &i))
+			return i;
+	}
+
+	return default_value;
 }
 
 static int
@@ -2734,6 +2784,53 @@ load_rdp_backend(struct weston_compositor *c,
 	};
 
 	parse_options(rdp_options, ARRAY_LENGTH(rdp_options), argc, argv);
+
+	/* certain configurations are read from environment variables */
+	config.redirect_clipboard = read_rdp_config_bool("WESTON_RDP_CLIPBOARD", true);
+	config.redirect_audio_playback = read_rdp_config_bool("WESTON_RDP_AUDIO_PLAYBACK", true);
+	config.redirect_audio_capture = read_rdp_config_bool("WESTON_RDP_AUDIO_CAPTURE", true);
+	config.rdp_monitor_refresh_rate = read_rdp_config_int("WESTON_RDP_MONITOR_REFRESH_RATE", WESTON_RDP_MODE_FREQ);
+
+	config.rail_config.use_rdpapplist = read_rdp_config_bool("WESTON_RDP_APPLIST", true);
+	config.rail_config.use_shared_memory = read_rdp_config_bool("WESTON_RDP_SHARED_MEMORY", true);
+
+	/* Configure HI-DPI scaling */
+	config.rail_config.enable_hi_dpi_support = read_rdp_config_bool("WESTON_RDP_HI_DPI_SCALING", true);
+	if (config.rail_config.enable_hi_dpi_support) {
+		/* Disable by default for now. */
+		config.rail_config.enable_fractional_hi_dpi_support =
+			read_rdp_config_bool("WESTON_RDP_FRACTIONAL_HI_DPI_SCALING", false);
+	} else {
+		config.rail_config.enable_fractional_hi_dpi_support = false;
+	}
+	/* if fractional support is enabled, no round up */
+	if (config.rail_config.enable_fractional_hi_dpi_support) {
+		config.rail_config.enable_fractional_hi_dpi_roundup = false;
+	} else {
+		config.rail_config.enable_fractional_hi_dpi_roundup =
+			read_rdp_config_bool("WESTON_RDP_FRACTIONAL_HI_DPI_SCALING_ROUNDUP", false);
+	}
+	if (config.rail_config.enable_hi_dpi_support) {
+		config.rail_config.debug_desktop_scaling_factor =
+			read_rdp_config_int("WESTON_RDP_DEBUG_DESKTOP_SCALING_FACTOR", 0);
+		if (config.rail_config.debug_desktop_scaling_factor != 0) {
+			if (config.rail_config.debug_desktop_scaling_factor < 100 ||
+			    config.rail_config.debug_desktop_scaling_factor > 500) {
+				config.rail_config.debug_desktop_scaling_factor = 0;
+			}
+		}
+	} else {
+		config.rail_config.debug_desktop_scaling_factor = 0;
+	}
+
+	config.rail_config.enable_window_zorder_sync = read_rdp_config_bool("WESTON_RDP_WINDOW_ZORDER_SYNC", true);
+	config.rail_config.enable_window_snap_arrange = read_rdp_config_bool("WESTON_RDP_WINDOW_SNAP_ARRANGE", false);
+
+	config.rail_config.enable_display_power_by_screenupdate =
+		read_rdp_config_bool("WESTON_RDP_DISPLAY_POWER_BY_SCREENUPDATE", false);
+
+	config.rail_config.enable_distro_name_title = read_rdp_config_bool("WESTON_RDP_APPEND_DISTRONAME_TITLE", true);
+	config.rail_config.enable_copy_warning_title = read_rdp_config_bool("WESTON_RDP_COPY_WARNING_TITLE", true);
 
 	wet_set_simple_head_configurator(c, rdp_backend_output_configure);
 

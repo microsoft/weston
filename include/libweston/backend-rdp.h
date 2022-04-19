@@ -33,6 +33,8 @@ extern "C" {
 #include <libweston/libweston.h>
 #include <libweston/plugin-registry.h>
 
+#define WESTON_RDP_MODE_FREQ 60 // Hz
+
 #define WESTON_RDP_OUTPUT_API_NAME "weston_rdp_output_api_v1"
 
 struct weston_rdp_output_api {
@@ -233,7 +235,7 @@ struct weston_surface_rail_state {
 	uint32_t surface_id;
 };
 
-#define WESTON_RDP_BACKEND_CONFIG_VERSION 2
+#define WESTON_RDP_BACKEND_CONFIG_VERSION 3
 
 struct weston_rdp_backend_config {
 	struct weston_backend_config base;
@@ -245,6 +247,23 @@ struct weston_rdp_backend_config {
 	int env_socket;
 	int no_clients_resize;
 	int force_no_compression;
+	bool redirect_clipboard;
+	bool redirect_audio_playback;
+	bool redirect_audio_capture;
+	int rdp_monitor_refresh_rate;
+	struct {
+		bool use_rdpapplist;
+		bool use_shared_memory;
+		bool enable_hi_dpi_support;
+		bool enable_fractional_hi_dpi_support;
+		bool enable_fractional_hi_dpi_roundup;
+		int debug_desktop_scaling_factor;
+		bool enable_window_zorder_sync;
+		bool enable_window_snap_arrange;
+		bool enable_distro_name_title;
+		bool enable_copy_warning_title;
+		bool enable_display_power_by_screenupdate;
+	} rail_config;
 };
 
 #ifdef  __cplusplus

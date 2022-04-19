@@ -1176,7 +1176,6 @@ xf_peer_activate(freerdp_peer* client)
 	pixman_region32_t damage;
 	char seat_name[50];
 	POINTER_SYSTEM_UPDATE pointer_system;
-	char *s;
 
 	peerCtx = (RdpPeerContext *)client->context;
 	b = peerCtx->rdpBackend;
@@ -1214,23 +1213,9 @@ xf_peer_activate(freerdp_peer* client)
 	}
 
 	/* override settings by env variables */
-	s = getenv("WESTON_RDP_DISABLE_CLIPBOARD");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			settings->RedirectClipboard = FALSE;
-	}
-
-	s = getenv("WESTON_RDP_DISABLE_AUDIO_PLAYBACK");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			settings->AudioPlayback = FALSE;
-	}
-
-	s = getenv("WESTON_RDP_DISABLE_AUDIO_CAPTURE");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			settings->AudioCapture = FALSE;
-	}
+	settings->RedirectClipboard = b->redirect_clipboard;
+	settings->AudioPlayback = b->redirect_audio_playback;
+	settings->AudioCapture = b->redirect_audio_capture;
 
 	if (settings->RemoteApplicationMode ||
 		settings->RedirectClipboard ||
@@ -2166,10 +2151,10 @@ rdp_backend_create(struct weston_compositor *compositor,
 	char *fd_str;
 	char *fd_tail;
 	int fd, ret;
+	char *s;
 
 	struct weston_head *base, *next;
 	struct rdp_output *output;
-	char *s;
 	int i;
 	struct timespec ts;
 
@@ -2186,6 +2171,10 @@ rdp_backend_create(struct weston_compositor *compositor,
 	b->server_key = config->server_key ? strdup(config->server_key) : NULL;
 	b->no_clients_resize = config->no_clients_resize;
 	b->force_no_compression = config->force_no_compression;
+	b->redirect_clipboard = config->redirect_clipboard;
+	b->redirect_audio_playback = config->redirect_audio_playback;
+	b->redirect_audio_capture = config->redirect_audio_capture;
+	b->rdp_monitor_refresh_rate = config->rdp_monitor_refresh_rate * 1000;
 
 	wl_list_init(&b->output_list);
 	wl_list_init(&b->head_list);
@@ -2228,18 +2217,7 @@ rdp_backend_create(struct weston_compositor *compositor,
 	}
 	rdp_debug_clipboard(b, "RDP backend: WESTON_RDP_DEBUG_CLIPBOARD_LEVEL: %d\n", b->debugClipboardLevel);
 
-	s = getenv("WESTON_RDP_MONITOR_REFRESH_RATE");
-	if (s) {
-		if (!safe_strtoint(s, &b->rdp_monitor_refresh_rate) ||
-			b->rdp_monitor_refresh_rate == 0) {
-			b->rdp_monitor_refresh_rate = RDP_MODE_FREQ;
-		} else {
-			b->rdp_monitor_refresh_rate *= 1000;
-		}
-	} else {
-		b->rdp_monitor_refresh_rate = RDP_MODE_FREQ;
-	}
-	rdp_debug(b, "RDP backend: WESTON_RDP_MONITOR_REFRESH_RATE: %d\n", b->rdp_monitor_refresh_rate);
+	rdp_debug(b, "RDP backend: rdp_monitor_refresh_rate: %d\n", b->rdp_monitor_refresh_rate);
 
 	clock_getres(CLOCK_MONOTONIC, &ts);
 	rdp_debug(b, "RDP backend: timer resolution tv_sec:%ld tv_nsec:%ld\n", (intmax_t)ts.tv_sec, ts.tv_nsec);
@@ -2294,7 +2272,7 @@ rdp_backend_create(struct weston_compositor *compositor,
 	if (rdp_head_create(compositor, TRUE, NULL) == NULL)
 		goto err_compositor;
 
-	if (rdp_rail_backend_create(b) < 0)
+	if (rdp_rail_backend_create(b, config) < 0)
 		goto err_output;
 
 	compositor->capabilities |= WESTON_CAP_ARBITRARY_MODES;
@@ -2378,6 +2356,21 @@ config_init_to_defaults(struct weston_rdp_backend_config *config)
 	config->env_socket = 0;
 	config->no_clients_resize = 0;
 	config->force_no_compression = 0;
+	config->redirect_clipboard = false;
+	config->redirect_audio_playback = false;
+	config->redirect_audio_capture = false;
+	config->rdp_monitor_refresh_rate = WESTON_RDP_MODE_FREQ;
+	config->rail_config.use_rdpapplist = false;
+	config->rail_config.use_shared_memory = false;
+	config->rail_config.enable_hi_dpi_support = false;
+	config->rail_config.enable_fractional_hi_dpi_support = false;
+	config->rail_config.enable_fractional_hi_dpi_roundup = false;
+	config->rail_config.debug_desktop_scaling_factor = 0;
+	config->rail_config.enable_window_zorder_sync = false;
+	config->rail_config.enable_window_snap_arrange = false;
+	config->rail_config.enable_distro_name_title = false;
+	config->rail_config.enable_copy_warning_title = false;
+	config->rail_config.enable_display_power_by_screenupdate = false;
 }
 
 WL_EXPORT int

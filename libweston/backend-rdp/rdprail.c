@@ -1910,7 +1910,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 				}
 #ifdef HAVE_FREERDP_GFXREDIR_H
 				/* this is for debugging only */
-				if (b->enable_copy_warning_title) {
+				if (!b->use_gfxredir && b->enable_copy_warning_title) {
 					if (snprintf(window_title_mod,
 						sizeof window_title_mod,
 						"[WARN:COPY MODE] %s (%s)",
@@ -2625,7 +2625,7 @@ rdp_rail_output_repaint(struct weston_output *output, pixman_region32_t *damage)
 			rdp_rail_sync_window_zorder(b->compositor);
 			peerCtx->is_window_zorder_dirty = false;
 		}
-		if (iter_data.isUpdatePending && b->keep_display_power_by_screenupdate) {
+		if (iter_data.isUpdatePending && b->enable_display_power_by_screenupdate) {
 			/* By default, compositor won't update idle timer by screen activity,
 			   thus, here manually call wake function to postpone idle timer when
 			   RDP backend sends frame to client. */
@@ -2697,8 +2697,9 @@ rdp_rail_peer_activate(freerdp_peer* client)
 		RAIL_HANDSHAKE_EX_ORDER handshakeEx = {};
 		UINT32 railHandshakeFlags =
 			(TS_RAIL_ORDER_HANDSHAKEEX_FLAGS_HIDEF
-			 | TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_EXTENDED_SPI_SUPPORTED
-			/* | TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_SNAP_ARRANGE_SUPPORTED */);
+			 | TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_EXTENDED_SPI_SUPPORTED);
+		if (b->enable_window_snap_arrange)
+			railHandshakeFlags |= TS_RAIL_ORDER_HANDSHAKE_EX_FLAGS_SNAP_ARRANGE_SUPPORTED;
 		handshakeEx.buildNumber = 0;
 		handshakeEx.railHandshakeFlags = railHandshakeFlags;
 		if (peerCtx->rail_server_context->ServerHandshakeEx(peerCtx->rail_server_context, &handshakeEx) != CHANNEL_RC_OK)
@@ -3959,7 +3960,7 @@ struct weston_rdprail_api rdprail_api = {
 };
 
 int
-rdp_rail_backend_create(struct rdp_backend *b)
+rdp_rail_backend_create(struct rdp_backend *b, struct weston_rdp_backend_config *config)
 {
 	char *s;
 	int ret = weston_plugin_api_register(b->compositor, WESTON_RDPRAIL_API_NAME,
@@ -3970,15 +3971,7 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	}
 
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
-	bool use_rdpapplist = true;
-
-	s = getenv("WESTON_RDP_DISABLE_APPLIST");
-	if (s) {
-		rdp_debug(b, "WESTON_RDP_DISABLE_APPLIST is set to %s.\n", s);
-		if (strcmp(s, "true") == 0)
-			use_rdpapplist = false;
-	}
-
+	bool use_rdpapplist = config->rail_config.use_rdpapplist;
 	if (use_rdpapplist) {
 		use_rdpapplist = false;
 
@@ -4008,22 +4001,17 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	}
 
 	b->use_rdpapplist = use_rdpapplist;
-	rdp_debug(b, "RDP backend: use_rdpapplist = %d\n", b->use_rdpapplist);
+#else
+	b->use_rdpapplist = false
 #endif // HAVE_FREERDP_RDPAPPLIST_H
+	rdp_debug(b, "RDP backend: use_rdpapplist = %d\n", b->use_rdpapplist);
 
 #ifdef HAVE_FREERDP_GFXREDIR_H
-	bool use_gfxredir = true;
-
-	s = getenv("WESTON_RDP_DISABLE_SHARED_MEMORY");
-	if (s) {
-		rdp_debug(b, "WESTON_RDP_DISABLE_SHARED_MEMORY is set to %s.\n", s);
-		if (strcmp(s, "true") == 0)
-			use_gfxredir = false;
-	}
-
+	bool use_gfxredir = config->rail_config.use_shared_memory;
 	/* check if shared memory mount path is set */
 	if (use_gfxredir) {
 		use_gfxredir = false;
+		/* shared memory mounth point path is always given as environment variable from WSL */
 		s = getenv("WSL2_SHARED_MEMORY_MOUNT_POINT");
 		if (s) {
 			b->shared_memory_mount_path = s;
@@ -4075,106 +4063,39 @@ rdp_rail_backend_create(struct rdp_backend *b)
 	}
 
 	b->use_gfxredir = use_gfxredir;
-	rdp_debug(b, "RDP backend: use_gfxredir = %d\n", b->use_gfxredir);
+#else
+	b->use_gfxredir = false;
 #endif // HAVE_FREERDP_GFXREDIR_H
+	rdp_debug(b, "RDP backend: use_gfxredir = %d\n", b->use_gfxredir);
 
-	/*
-	 * Configure HI-DPI scaling.
-	 */
-	b->enable_hi_dpi_support = true;
-	s = getenv("WESTON_RDP_DISABLE_HI_DPI_SCALING");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			b->enable_hi_dpi_support = false;
-		else if (strcmp(s, "false") == 0)
-			b->enable_hi_dpi_support = true;
-	}
+	b->enable_hi_dpi_support = config->rail_config.enable_hi_dpi_support;
 	rdp_debug(b, "RDP backend: enable_hi_dpi_support = %d\n", b->enable_hi_dpi_support);
 
-	b->enable_fractional_hi_dpi_support = false;
-	if (b->enable_hi_dpi_support) {
-		/* Disable by default for now. b->enable_fractional_hi_dpi_support = true; */
-		s = getenv("WESTON_RDP_DISABLE_FRACTIONAL_HI_DPI_SCALING");
-		if (s) {
-			if (strcmp(s, "true") == 0)
-				b->enable_fractional_hi_dpi_support = false;
-			else if (strcmp(s, "false") == 0)
-				b->enable_fractional_hi_dpi_support = true;
-		}
-	}
+	b->enable_fractional_hi_dpi_support = config->rail_config.enable_fractional_hi_dpi_support;
 	rdp_debug(b, "RDP backend: enable_fractional_hi_dpi_support = %d\n", b->enable_fractional_hi_dpi_support);
 
-	b->enable_fractional_hi_dpi_roundup = false;
-	if (b->enable_hi_dpi_support) {
-		if (b->enable_fractional_hi_dpi_support) {
-			/* if fractional support is enabled, no round up */
-			b->enable_fractional_hi_dpi_roundup = false;
-		} else {
-			s = getenv("WESTON_RDP_DISABLE_FRACTIONAL_HI_DPI_SCALING_ROUNDUP");
-			if (s) {
-				if (strcmp(s, "true") == 0)
-					b->enable_fractional_hi_dpi_roundup = false;
-				else if (strcmp(s, "false") == 0)
-					b->enable_fractional_hi_dpi_roundup = true;
-			}
-		}
-	}
+	b->enable_fractional_hi_dpi_roundup = config->rail_config.enable_fractional_hi_dpi_roundup;
 	rdp_debug(b, "RDP backend: enable_fractional_hi_dpi_roundup = %d\n", b->enable_fractional_hi_dpi_roundup);
 
-	b->debug_desktop_scaling_factor = 0;
-	if (b->enable_hi_dpi_support) {
-		char *debug_desktop_scaling_factor = getenv("WESTON_RDP_DEBUG_DESKTOP_SCALING_FACTOR");
-		if (debug_desktop_scaling_factor) {
-			if (!safe_strtoint(debug_desktop_scaling_factor, &b->debug_desktop_scaling_factor) ||
-			    (b->debug_desktop_scaling_factor < 100 || b->debug_desktop_scaling_factor > 500)) {
-				b->debug_desktop_scaling_factor = 0;
-				rdp_debug(b, "WESTON_RDP_DEBUG_DESKTOP_SCALING_FACTOR = %s is invalid and ignored.\n",
-					  debug_desktop_scaling_factor);
-			} else {
-				rdp_debug(b, "WESTON_RDP_DEBUG_DESKTOP_SCALING_FACTOR = %d is set.\n",
-					  b->debug_desktop_scaling_factor);
-			}
-		}
-	}
+	b->debug_desktop_scaling_factor = config->rail_config.debug_desktop_scaling_factor;
 	rdp_debug(b, "RDP backend: debug_desktop_scaling_factor = %d\n", b->debug_desktop_scaling_factor);
 
-	b->enable_window_zorder_sync = true;
-	s = getenv("WESTON_RDP_DISABLE_WINDOW_ZORDER_SYNC");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			b->enable_window_zorder_sync = false;
-	}
+	b->enable_window_zorder_sync = config->rail_config.enable_window_zorder_sync;
 	rdp_debug(b, "RDP backend: enable_window_zorder_sync = %d\n", b->enable_window_zorder_sync);
 
-	b->keep_display_power_by_screenupdate = false;
-	s = getenv("WESTON_RDP_ENABLE_DISPLAY_POWER_BY_SCREENUPDATE");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			b->keep_display_power_by_screenupdate = true;
-	}
-	rdp_debug(b, "RDP backend: keep_display_power_by_screenupdate = %d\n", b->keep_display_power_by_screenupdate);
+	b->enable_window_snap_arrange = config->rail_config.enable_window_snap_arrange;
+	rdp_debug(b, "RDP backend: enable_window_snap_arrange = %d\n", b->enable_window_snap_arrange);
 
-	b->rdprail_shell_name = NULL;
+	b->enable_display_power_by_screenupdate = config->rail_config.enable_display_power_by_screenupdate;
+	rdp_debug(b, "RDP backend: enable_display_power_by_screenupdate = %d\n", b->enable_display_power_by_screenupdate);
 
-	b->enable_distro_name_title = true;
-	s = getenv("WESTON_RDP_DISABLE_APPEND_DISTRONAME_TITLE");
-	if (s) {
-		if (strcmp(s, "true") == 0)
-			b->enable_distro_name_title = false;
-	}
+	b->enable_distro_name_title = config->rail_config.enable_distro_name_title;
 	rdp_debug(b, "RDP backend: enable_distro_name_title = %d\n", b->enable_distro_name_title);
 
-	b->enable_copy_warning_title = false;
-	if (b->debugLevel >= RDP_DEBUG_LEVEL_WARN &&
-            !b->use_gfxredir) {
-		b->enable_copy_warning_title = true;
-		s = getenv("WESTON_RDP_DISABLE_COPY_WARNING_TITLE");
-		if (s) {
-			if (strcmp(s, "true") == 0)
-				b->enable_copy_warning_title = false;
-		}
-	}
+	b->enable_copy_warning_title = config->rail_config.enable_copy_warning_title; 
 	rdp_debug(b, "RDP backend: enable_copy_warning_title = %d\n", b->enable_copy_warning_title);
+
+	b->rdprail_shell_name = NULL;
 
 	/* M to dump all outstanding monitor info */
 	b->debug_binding_M = weston_compositor_add_debug_binding(b->compositor, KEY_M,
