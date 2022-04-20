@@ -1483,6 +1483,7 @@ Exit:
 	return;
 }
 
+#ifdef HAVE_FREERDP_GFXREDIR_H
 static void
 rdp_destroy_shared_buffer(struct weston_surface *surface)
 {
@@ -1517,6 +1518,7 @@ rdp_destroy_shared_buffer(struct weston_surface *surface)
 
 	rail_state->surfaceBuffer = NULL;
 }
+#endif // HAVE_FREERDP_GFXREDIR_H
 
 static void
 rdp_rail_destroy_window(struct wl_listener *listener, void *data)
@@ -2792,8 +2794,11 @@ rdp_rail_peer_activate(freerdp_peer* client)
 
 	/* wait graphics channel (and optionally graphics redir channel) reponse from client */
 	waitRetry = 0;
-	while (!peerCtx->activationGraphicsCompleted ||
-		(gfxredir_server_opened && !peerCtx->activationGraphicsRedirectionCompleted)) {
+	while (!peerCtx->activationGraphicsCompleted
+#ifdef HAVE_FREERDP_GFXREDIR_H
+		|| (gfxredir_server_opened && !peerCtx->activationGraphicsRedirectionCompleted)
+#endif // HAVE_FREERDP_GFXREDIR_H
+		) {
 		if (++waitRetry > 10000) // timeout after 100 sec.
 			goto error_exit;
 		USleep(10000); // wait 0.01 sec.
@@ -3962,7 +3967,6 @@ struct weston_rdprail_api rdprail_api = {
 int
 rdp_rail_backend_create(struct rdp_backend *b, struct weston_rdp_backend_config *config)
 {
-	char *s;
 	int ret = weston_plugin_api_register(b->compositor, WESTON_RDPRAIL_API_NAME,
 					&rdprail_api, sizeof(rdprail_api));
 	if (ret < 0) {
@@ -4001,10 +4005,8 @@ rdp_rail_backend_create(struct rdp_backend *b, struct weston_rdp_backend_config 
 	}
 
 	b->use_rdpapplist = use_rdpapplist;
-#else
-	b->use_rdpapplist = false
-#endif // HAVE_FREERDP_RDPAPPLIST_H
 	rdp_debug(b, "RDP backend: use_rdpapplist = %d\n", b->use_rdpapplist);
+#endif // HAVE_FREERDP_RDPAPPLIST_H
 
 #ifdef HAVE_FREERDP_GFXREDIR_H
 	bool use_gfxredir = config->rail_config.use_shared_memory;
@@ -4012,7 +4014,7 @@ rdp_rail_backend_create(struct rdp_backend *b, struct weston_rdp_backend_config 
 	if (use_gfxredir) {
 		use_gfxredir = false;
 		/* shared memory mounth point path is always given as environment variable from WSL */
-		s = getenv("WSL2_SHARED_MEMORY_MOUNT_POINT");
+		char *s = getenv("WSL2_SHARED_MEMORY_MOUNT_POINT");
 		if (s) {
 			b->shared_memory_mount_path = s;
 			b->shared_memory_mount_path_size = strlen(b->shared_memory_mount_path);
@@ -4063,10 +4065,8 @@ rdp_rail_backend_create(struct rdp_backend *b, struct weston_rdp_backend_config 
 	}
 
 	b->use_gfxredir = use_gfxredir;
-#else
-	b->use_gfxredir = false;
-#endif // HAVE_FREERDP_GFXREDIR_H
 	rdp_debug(b, "RDP backend: use_gfxredir = %d\n", b->use_gfxredir);
+#endif // HAVE_FREERDP_GFXREDIR_H
 
 	b->enable_hi_dpi_support = config->rail_config.enable_hi_dpi_support;
 	rdp_debug(b, "RDP backend: enable_hi_dpi_support = %d\n", b->enable_hi_dpi_support);

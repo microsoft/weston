@@ -120,6 +120,7 @@ void assert_not_compositor_thread(struct rdp_backend *b)
 }
 #endif // ENABLE_RDP_THREAD_CHECK
 
+#ifdef HAVE_FREERDP_GFXREDIR_H
 BOOL
 rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *shared_memory)
 {
@@ -225,6 +226,7 @@ rdp_free_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *s
 		shared_memory->fd = -1;
 	}
 }
+#endif // HAVE_FREERDP_GFXREDIR_H
 
 BOOL
 rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 high_limit)

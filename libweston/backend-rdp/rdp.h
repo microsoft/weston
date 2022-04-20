@@ -395,8 +395,10 @@ void rdp_debug_print(struct weston_log_scope *log_scope, bool cont, char *fmt, .
 void assert_compositor_thread(struct rdp_backend *b);
 void assert_not_compositor_thread(struct rdp_backend *b);
 #endif // ENABLE_RDP_THREAD_CHECK
+#ifdef HAVE_FREERDP_GFXREDIR_H
 BOOL rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *shared_memory);
 void rdp_free_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *shared_memory);
+#endif // HAVE_FREERDP_GFXREDIR_H
 BOOL rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 high_limit);
 void rdp_id_manager_free(struct rdp_id_manager *id_manager);
 void rdp_id_manager_lock(struct rdp_id_manager *id_manager);
