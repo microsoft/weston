@@ -610,8 +610,8 @@ struct disp_schedule_monitor_layout_change_data {
 	DISPLAY_CONTROL_MONITOR_LAYOUT_PDU displayControl;
 };
 
-static int
-disp_monitor_layout_change_callback(int fd, uint32_t mask, void* dataIn)
+static void
+disp_monitor_layout_change_callback(bool freeOnly, void* dataIn)
 {
 	struct disp_schedule_monitor_layout_change_data *data = wl_container_of(dataIn, data, _base);
 	DispServerContext* context = data->context;
@@ -620,12 +620,12 @@ disp_monitor_layout_change_callback(int fd, uint32_t mask, void* dataIn)
 
 	ASSERT_COMPOSITOR_THREAD(peerCtx->rdpBackend);
 
-	if (fd >= 0)
+	if (!freeOnly)
 		disp_monitor_layout_change(context, &data->displayControl);
 
 	free(data);
 
-	return 0;
+	return;
 }
 
 UINT

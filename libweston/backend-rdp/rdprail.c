@@ -90,16 +90,9 @@ struct rdp_rail_dispatch_data {
 		} \
 	}
 
-#define RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, dispatch_data) \
-	{ \
-		ASSERT_COMPOSITOR_THREAD(peerCtx->rdpBackend); \
-		free(dispatch_data); \
-		return 0; \
-	}
-
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
-static int
-applist_client_Caps_callback(int fd, uint32_t mask, void *arg)
+static void
+applist_client_Caps_callback(bool freeOnly, void *arg)
 {
 	struct rdp_rail_dispatch_data* data = wl_container_of(arg, data, task_base);
 	const RDPAPPLIST_CLIENT_CAPS_PDU* caps = &data->u_appListCaps;
@@ -112,7 +105,7 @@ applist_client_Caps_callback(int fd, uint32_t mask, void *arg)
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
-	if (fd >= 0 &&
+	if (!freeOnly &&
 		b->rdprail_shell_api &&
 		b->rdprail_shell_api->start_app_list_update) {
 
@@ -125,7 +118,7 @@ applist_client_Caps_callback(int fd, uint32_t mask, void *arg)
 				clientLanguageId);
 	}
 
-	RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, data);
+	free(data);
 }
 
 static UINT
@@ -163,8 +156,8 @@ rail_ClientExec_destroy(struct wl_listener *listener, void *data)
 	peerCtx->clientExec = NULL;
 }
 
-static int
-rail_client_Exec_callback(int fd, uint32_t mask, void *arg)
+static void
+rail_client_Exec_callback(bool freeOnly, void *arg)
 {
 	struct rdp_rail_dispatch_data* data = wl_container_of(arg, data, task_base);
 	const RAIL_EXEC_ORDER* exec = &data->u_exec;
@@ -183,7 +176,7 @@ rail_client_Exec_callback(int fd, uint32_t mask, void *arg)
 
 	ASSERT_COMPOSITOR_THREAD(peerCtx->rdpBackend);
 
-	if (fd >= 0 &&
+	if (!freeOnly &&
 		exec->RemoteApplicationProgram) {
 		if (!utf8_string_to_rail_string(exec->RemoteApplicationProgram, &orderResult.exeOrFile))
 			goto send_result;
@@ -224,7 +217,7 @@ rail_client_Exec_callback(int fd, uint32_t mask, void *arg)
 
 send_result:
 
-	if (fd >= 0) {
+	if (!freeOnly) {
 		orderResult.flags = exec->flags;
 		orderResult.execResult = result;
 		orderResult.rawResult = 0;
@@ -242,7 +235,7 @@ send_result:
 	if (exec->RemoteApplicationArguments)
 		free(exec->RemoteApplicationArguments);
 
-	RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, data);
+	free(data);
 }
 
 static UINT
@@ -281,8 +274,8 @@ Exit_Error:
 	return CHANNEL_RC_NO_BUFFER;
 }
 
-static int
-rail_client_Activate_callback(int fd, uint32_t mask, void *arg)
+static void
+rail_client_Activate_callback(bool freeOnly, void *arg)
 {
 	struct rdp_rail_dispatch_data* data = wl_container_of(arg, data, task_base);
 	const RAIL_ACTIVATE_ORDER* activate = &data->u_activate;
@@ -295,7 +288,7 @@ rail_client_Activate_callback(int fd, uint32_t mask, void *arg)
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
-	if (fd >= 0 &&
+	if (!freeOnly &&
 		b->rdprail_shell_api &&
 		b->rdprail_shell_api->request_window_activate &&
 		b->rdprail_shell_context) {
@@ -307,7 +300,7 @@ rail_client_Activate_callback(int fd, uint32_t mask, void *arg)
 		b->rdprail_shell_api->request_window_activate(b->rdprail_shell_context, peerCtx->item.seat, surface);
 	}
 
-	RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, data);
+	free(data);
 }
 
 static UINT
@@ -317,8 +310,8 @@ rail_client_Activate(RailServerContext* context, const RAIL_ACTIVATE_ORDER* arg)
 	return CHANNEL_RC_OK;
 }
 
-static int
-rail_client_SnapArrange_callback(int fd, uint32_t mask, void *arg)
+static void
+rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 {
 	struct rdp_rail_dispatch_data* data = wl_container_of(arg, data, task_base);
 	const RAIL_SNAP_ARRANGE* snap = &data->u_snapArrange;
@@ -339,7 +332,7 @@ rail_client_SnapArrange_callback(int fd, uint32_t mask, void *arg)
 	ASSERT_COMPOSITOR_THREAD(b);
 
 	surface = NULL;
-	if (fd >= 0)
+	if (!freeOnly)
 		surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, snap->windowId);
 	if (surface) {
 		rail_state = (struct weston_surface_rail_state *)surface->backend_state;
@@ -363,7 +356,7 @@ rail_client_SnapArrange_callback(int fd, uint32_t mask, void *arg)
 		rdp_rail_schedule_update_window(NULL, (void*)surface);
 	}
 
-	RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, data);
+	free(data);
 }
 
 static UINT
@@ -373,8 +366,8 @@ rail_client_SnapArrange(RailServerContext* context, const RAIL_SNAP_ARRANGE* arg
 	return CHANNEL_RC_OK;
 }
 
-static int
-rail_client_WindowMove_callback(int fd, uint32_t mask, void *arg)
+static void
+rail_client_WindowMove_callback(bool freeOnly, void *arg)
 {
 	struct rdp_rail_dispatch_data* data = wl_container_of(arg, data, task_base);
 	const RAIL_WINDOW_MOVE_ORDER* windowMove = &data->u_windowMove;
@@ -394,7 +387,7 @@ rail_client_WindowMove_callback(int fd, uint32_t mask, void *arg)
 	ASSERT_COMPOSITOR_THREAD(b);
 
 	surface = NULL;
-	if (fd >= 0)
+	if (!freeOnly)
 		surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, windowMove->windowId);
 	if (surface) {
 		if (b->rdprail_shell_api &&
@@ -415,7 +408,7 @@ rail_client_WindowMove_callback(int fd, uint32_t mask, void *arg)
 		}
 	}
 
-	RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, data);
+	free(data);
 }
 
 static UINT 
@@ -425,8 +418,8 @@ rail_client_WindowMove(RailServerContext* context, const RAIL_WINDOW_MOVE_ORDER*
 	return CHANNEL_RC_OK;
 }
 
-static int
-rail_client_Syscommand_callback(int fd, uint32_t mask, void *arg)
+static void
+rail_client_Syscommand_callback(bool freeOnly, void *arg)
 {
 	struct rdp_rail_dispatch_data* data = wl_container_of(arg, data, task_base);
 	const RAIL_SYSCOMMAND_ORDER* syscommand = &data->u_sysCommand;
@@ -438,7 +431,7 @@ rail_client_Syscommand_callback(int fd, uint32_t mask, void *arg)
 	ASSERT_COMPOSITOR_THREAD(b);
 
 	surface = NULL;
-	if (fd >= 0)
+	if (!freeOnly)
 		surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, syscommand->windowId);
 	if (!surface) {
 		rdp_debug_error(b, "Client: ClientSyscommand: WindowId:0x%x is not found.\n", syscommand->windowId);
@@ -492,7 +485,7 @@ rail_client_Syscommand_callback(int fd, uint32_t mask, void *arg)
 		 syscommand->windowId, surface, commandString, syscommand->command);
 
 Exit:
-	RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, data);
+	free(data);
 }
 
 static UINT
@@ -502,8 +495,8 @@ rail_client_Syscommand(RailServerContext* context, const RAIL_SYSCOMMAND_ORDER* 
 	return CHANNEL_RC_OK;
 }
 
-static int
-rail_client_ClientSysparam_callback(int fd, uint32_t mask, void *arg)
+static void
+rail_client_ClientSysparam_callback(bool freeOnly, void *arg)
 {
 	struct rdp_rail_dispatch_data* data = wl_container_of(arg, data, task_base);
 	const RAIL_SYSPARAM_ORDER* sysparam = &data->u_sysParam;
@@ -586,8 +579,8 @@ rail_client_ClientSysparam_callback(int fd, uint32_t mask, void *arg)
 		rdp_debug(b, "Client: ClientSysparam: setScreenSaveSecure:%d\n", sysparam->setScreenSaveSecure);
 	}
 
-	if (sysparam->params & SPI_MASK_SET_WORK_AREA) {
-		if (fd >= 0 &&
+	if (!freeOnly) {
+		if (sysparam->params & SPI_MASK_SET_WORK_AREA &&
 			b->rdprail_shell_api &&
 			b->rdprail_shell_api->set_desktop_workarea) {
 			workareaRectClient.x = (INT32)(INT16)sysparam->workArea.left;
@@ -618,7 +611,7 @@ rail_client_ClientSysparam_callback(int fd, uint32_t mask, void *arg)
 		}
 	}
 
-	RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, data);
+	free(data);
 }
 
 static UINT
@@ -628,8 +621,8 @@ rail_client_ClientSysparam(RailServerContext* context, const RAIL_SYSPARAM_ORDER
 	return CHANNEL_RC_OK;
 }
 
-static int
-rail_client_ClientGetAppidReq_callback(int fd, uint32_t mask, void *arg)
+static void
+rail_client_ClientGetAppidReq_callback(bool freeOnly, void *arg)
 {
 	struct rdp_rail_dispatch_data* data = wl_container_of(arg, data, task_base);
 	const RAIL_GET_APPID_REQ_ORDER* getAppidReq = &data->u_getAppidReq;
@@ -647,7 +640,7 @@ rail_client_ClientGetAppidReq_callback(int fd, uint32_t mask, void *arg)
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
-	if (fd >= 0 &&
+	if (!freeOnly &&
 		b->rdprail_shell_api &&
 		b->rdprail_shell_api->get_window_app_id) {
 
@@ -688,7 +681,7 @@ rail_client_ClientGetAppidReq_callback(int fd, uint32_t mask, void *arg)
 	}
 
 Exit:
-	RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, data);
+	free(data);
 }
 
 static UINT
@@ -807,8 +800,8 @@ languageGuid_to_string(const GUID *guid)
 		return "Unknown GUID";
 }
 
-static int
-rail_client_LanguageImeInfo_callback(int fd, uint32_t mask, void *arg)
+static void
+rail_client_LanguageImeInfo_callback(bool freeOnly, void *arg)
 {
 	struct rdp_rail_dispatch_data* data = wl_container_of(arg, data, task_base);
 	const RAIL_LANGUAGEIME_INFO_ORDER* languageImeInfo = &data->u_languageImeInfo;
@@ -843,7 +836,7 @@ rail_client_LanguageImeInfo_callback(int fd, uint32_t mask, void *arg)
 			languageGuid_to_string(&languageImeInfo->ProfileGUID));
 	rdp_debug(b, "Client: LanguageImeInfo: KeyboardLayout: 0x%x\n", languageImeInfo->KeyboardLayout);
 
-	if (fd >= 0) {
+	if (!freeOnly) {
 		if (languageImeInfo->ProfileType == TF_PROFILETYPE_KEYBOARDLAYOUT) {
 			new_keyboard_layout = languageImeInfo->KeyboardLayout;
 		} else if (languageImeInfo->ProfileType == TF_PROFILETYPE_INPUTPROCESSOR) {
@@ -905,7 +898,7 @@ rail_client_LanguageImeInfo_callback(int fd, uint32_t mask, void *arg)
 		}
 	}
 
-	RDP_DISPATCH_DISPLAY_LOOP_COMPLETED(peerCtx, data);
+	free(data);
 }
 
 static UINT

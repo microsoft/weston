@@ -376,7 +376,7 @@ rdp_event_loop_add_fd(struct wl_event_loop *loop, int fd, uint32_t mask, wl_even
 }
 
 void
-rdp_dispatch_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, struct rdp_loop_task *task)
+rdp_dispatch_task_to_display_loop(RdpPeerContext *peerCtx, rdp_loop_task_func_t func, struct rdp_loop_task *task)
 {
 	/* this function is ONLY used to queue the task from FreeRDP thread,
 	   and the task to be processed at wayland display loop thread. */
@@ -415,8 +415,9 @@ rdp_dispatch_task(int fd, uint32_t mask, void *arg)
 	pthread_mutex_unlock(&peerCtx->loop_task_list_mutex);
 
 	/* Dispatch and task will be freed by caller. */
-	assert(fd >= 0);
-	return task->func(fd, mask, task);
+	task->func(false, task);
+
+	return 0;
 }
 
 bool
@@ -478,7 +479,7 @@ rdp_destroy_dispatch_task_event_source(RdpPeerContext *peerCtx)
 		wl_list_remove(&task->link);
 		/* inform caller task is not really scheduled prior to context destruction,
 		   inform them to clean them up. */
-		task->func(-1, 0, task);
+		task->func(true /* freeOnly */, task);
 	}
 	assert(wl_list_empty(&peerCtx->loop_task_list));
 

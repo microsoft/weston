@@ -1213,8 +1213,8 @@ clipboard_data_source_cancel(struct weston_data_source *base)
 \**********************************/
 
 /* Publish client's available clipboard formats to compositor (make them visible to applications in server) */
-static int
-clipboard_data_source_publish(int fd, uint32_t mask, void *arg)
+static void
+clipboard_data_source_publish(bool freeOnly, void *arg)
 {
 	struct rdp_clipboard_data_source *source = wl_container_of(arg, source, task_base);
 	freerdp_peer *client = (freerdp_peer*)source->context;
@@ -1230,7 +1230,7 @@ clipboard_data_source_publish(int fd, uint32_t mask, void *arg)
 	/* here is going to publish new data, if previous data from client is still referenced,
 	   unref it after selection */
 	source_prev = peerCtx->clipboard_client_data_source;
-	if (fd >= 0) {
+	if (!freeOnly) {
 		peerCtx->clipboard_client_data_source = source;
 		source->transfer_event_source = NULL;
 		source->base.accept = clipboard_data_source_accept;
@@ -1239,7 +1239,6 @@ clipboard_data_source_publish(int fd, uint32_t mask, void *arg)
 		source->state = RDP_CLIPBOARD_SOURCE_PUBLISHED;
 		weston_seat_set_selection(peerCtx->item.seat, &source->base,
 					wl_display_next_serial(b->compositor->wl_display));
-
 	} else {
 		peerCtx->clipboard_client_data_source = NULL;
 		clipboard_data_source_unref(source);
@@ -1247,12 +1246,12 @@ clipboard_data_source_publish(int fd, uint32_t mask, void *arg)
 	if (source_prev)
 		clipboard_data_source_unref(source_prev);
 
-	return 0;
+	return;
 }
 
 /* Request the specified clipboard data from data-device at server side */
-static int
-clipboard_data_source_request(int fd, uint32_t mask, void *arg)
+static void
+clipboard_data_source_request(bool freeOnly, void *arg)
 {
 	struct rdp_clipboard_data_request *request = wl_container_of(arg, request, task_base);
 	RdpPeerContext *peerCtx = request->peerCtx;
@@ -1268,7 +1267,7 @@ clipboard_data_source_request(int fd, uint32_t mask, void *arg)
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
-	if (fd < 0)
+	if (freeOnly)
 		goto error_exit_free_request;
 
 	index = request->requested_format_index;
@@ -1335,7 +1334,7 @@ clipboard_data_source_request(int fd, uint32_t mask, void *arg)
 
 	free(request);
 
-	return 0;
+	return;
 
 error_exit_free_source:
 	assert(source->refcount == 1);
@@ -1347,7 +1346,7 @@ error_exit_response_fail:
 error_exit_free_request:
 	free(request);
 
-	return 0;
+	return;
 }
 
 /*************************************\
