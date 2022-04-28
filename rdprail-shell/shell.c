@@ -4078,6 +4078,7 @@ shell_destroy(struct wl_listener *listener, void *data)
 	if (shell->debug)
 		weston_log_scope_destroy(shell->debug);
 
+	free(shell->client);
 	free(shell);
 }
 
