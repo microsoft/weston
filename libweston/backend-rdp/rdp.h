@@ -261,7 +261,6 @@ struct rdp_peer_context {
 	// list of outstanding event_source sent from FreeRDP thread to display loop.
 	int loop_task_event_source_fd;
 	struct wl_event_source *loop_task_event_source;
-	bool loop_task_list_mutex_initialized;
 	pthread_mutex_t loop_task_list_mutex;
 	struct wl_list loop_task_list; // struct rdp_loop_task::link
 

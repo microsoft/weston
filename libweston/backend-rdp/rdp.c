@@ -850,7 +850,6 @@ rdp_peer_context_new(freerdp_peer* client, RdpPeerContext* context)
 
 	context->loop_task_event_source_fd = -1;
 	context->loop_task_event_source = NULL;
-	context->loop_task_list_mutex_initialized = false;
 	wl_list_init(&context->loop_task_list);
 
 	context->rfx_context = rfx_context_new(TRUE);
@@ -1945,10 +1944,10 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 		peerCtx->events[i] = 0;
 
 	if (!rdp_initialize_dispatch_task_event_source(peerCtx))
-		goto error_peer_initialize;
+		goto error_dispatch_initialize;
 
 	if (!rdp_rail_peer_init(client, peerCtx))
-		goto error_peer_initialize;
+		goto error_rail_initialize;
 
 	/* This tracks the single peer connected. This field only used for RAIL mode
 	   and, with RAIL mode, there can be only one peer per backend, and that
@@ -1962,8 +1961,10 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 		wl_list_insert(&b->output_default->peers, &peerCtx->item.link);
 	return 0;
 
-error_peer_initialize:
+error_rail_initialize:
 	rdp_destroy_dispatch_task_event_source(peerCtx);
+
+error_dispatch_initialize:
 	for (i = 0; i < ARRAY_LENGTH(peerCtx->events); i++) {
 		if (peerCtx->events[i]) {
 			wl_event_source_remove(peerCtx->events[i]);

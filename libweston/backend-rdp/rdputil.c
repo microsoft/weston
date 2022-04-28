@@ -425,18 +425,16 @@ rdp_initialize_dispatch_task_event_source(RdpPeerContext *peerCtx)
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	struct wl_event_loop *loop;
 
-	assert(peerCtx->loop_task_list_mutex_initialized == false);
 	if (pthread_mutex_init(&peerCtx->loop_task_list_mutex, NULL) == -1) {
 		rdp_debug_error(b, "%s: pthread_mutex_init failed. %s\n", __func__, strerror(errno));
-		return false;
+		goto error_mutex;
 	}
-	peerCtx->loop_task_list_mutex_initialized = true;
 
 	assert(peerCtx->loop_task_event_source_fd == -1);
 	peerCtx->loop_task_event_source_fd = eventfd(0, EFD_SEMAPHORE | EFD_CLOEXEC);
 	if (peerCtx->loop_task_event_source_fd == -1) {
 		rdp_debug_error(b, "%s: eventfd(EFD_SEMAPHORE) failed. %s\n", __func__, strerror(errno));
-		return false;
+		goto error_event_source_fd;
 	}
 
 	assert(wl_list_empty(&peerCtx->loop_task_list));
@@ -447,12 +445,20 @@ rdp_initialize_dispatch_task_event_source(RdpPeerContext *peerCtx)
 		loop, peerCtx->loop_task_event_source_fd, WL_EVENT_READABLE,
 		rdp_dispatch_task, peerCtx, &peerCtx->loop_task_event_source)) {
 		rdp_debug_error(b, "%s: rdp_event_loop_add_fd() failed\n", __func__);
-		close(peerCtx->loop_task_event_source_fd);
-		peerCtx->loop_task_event_source_fd = -1;
-		return false;
+		goto error_event_loop_add_fd;
 	}
 
 	return true;
+
+error_event_loop_add_fd:
+	close(peerCtx->loop_task_event_source_fd);
+	peerCtx->loop_task_event_source_fd = -1;
+
+error_event_source_fd:
+	pthread_mutex_destroy(&peerCtx->loop_task_list_mutex);
+
+error_mutex:
+	return false;
 }
 
 void
@@ -481,9 +487,6 @@ rdp_destroy_dispatch_task_event_source(RdpPeerContext *peerCtx)
 		peerCtx->loop_task_event_source_fd = -1;
 	}
 
-	if (peerCtx->loop_task_list_mutex_initialized) {
-		pthread_mutex_destroy(&peerCtx->loop_task_list_mutex);
-		peerCtx->loop_task_list_mutex_initialized = false;
-	}
+	pthread_mutex_destroy(&peerCtx->loop_task_list_mutex);
 }
 
