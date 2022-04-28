@@ -605,7 +605,7 @@ Exit:
 }
 
 struct disp_schedule_monitor_layout_change_data {
-	struct rdp_loop_event_source _base_event_source;
+	struct rdp_loop_task _base;
 	DispServerContext* context;
 	DISPLAY_CONTROL_MONITOR_LAYOUT_PDU displayControl;
 };
@@ -613,22 +613,17 @@ struct disp_schedule_monitor_layout_change_data {
 static int
 disp_monitor_layout_change_callback(int fd, uint32_t mask, void* dataIn)
 {
-	struct disp_schedule_monitor_layout_change_data *data = (struct disp_schedule_monitor_layout_change_data *)dataIn;
+	struct disp_schedule_monitor_layout_change_data *data = wl_container_of(dataIn, data, _base);
 	DispServerContext* context = data->context;
 	freerdp_peer *client = (freerdp_peer*)context->custom;
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 
 	ASSERT_COMPOSITOR_THREAD(peerCtx->rdpBackend);
 
-	rdp_defer_rdp_task_done(peerCtx);
-	assert(data->_base_event_source.event_source);
-	wl_event_source_remove(data->_base_event_source.event_source);
-	pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex);
-	wl_list_remove(&data->_base_event_source.link);
-	pthread_mutex_unlock(&peerCtx->loop_event_source_list_mutex);
+	if (fd >= 0)
+		disp_monitor_layout_change(context, &data->displayControl);
 
-	disp_monitor_layout_change(context, &data->displayControl);
-	free(dataIn);
+	free(data);
 
 	return 0;
 }
@@ -658,18 +653,7 @@ disp_client_monitor_layout_change(DispServerContext* context, const DISPLAY_CONT
 	memcpy(data->displayControl.Monitors, displayControl->Monitors,
 		sizeof(DISPLAY_CONTROL_MONITOR_LAYOUT) * displayControl->NumMonitors);
 
-	pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex);
-	wl_list_insert(&peerCtx->loop_event_source_list, &data->_base_event_source.link);
-	pthread_mutex_unlock(&peerCtx->loop_event_source_list_mutex);
-	if (!rdp_defer_rdp_task_to_display_loop(
-			peerCtx, disp_monitor_layout_change_callback,
-			data, &data->_base_event_source.event_source)) {
-		pthread_mutex_lock(&peerCtx->loop_event_source_list_mutex);
-		wl_list_remove(&data->_base_event_source.link);
-		pthread_mutex_unlock(&peerCtx->loop_event_source_list_mutex);
-		free(data);
-		return ERROR_INTERNAL_ERROR;  
-	}
+	rdp_dispatch_task_to_display_loop(peerCtx, disp_monitor_layout_change_callback, &data->_base);
 
 	return 0;
 }

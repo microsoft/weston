@@ -848,7 +848,10 @@ rdp_peer_context_new(freerdp_peer* client, RdpPeerContext* context)
 	context->item.peer = client;
 	context->item.flags = RDP_PEER_OUTPUT_ENABLED;
 
-	context->loop_event_source_fd = -1;
+	context->loop_task_event_source_fd = -1;
+	context->loop_task_event_source = NULL;
+	context->loop_task_list_mutex_initialized = false;
+	wl_list_init(&context->loop_task_list);
 
 	context->rfx_context = rfx_context_new(TRUE);
 	if (!context->rfx_context)
@@ -886,9 +889,6 @@ rdp_peer_context_free(freerdp_peer* client, RdpPeerContext* context)
 
 	wl_list_remove(&context->item.link);
 
-	if (context->loop_event_source_fd != -1)
-		close(context->loop_event_source_fd);
-
 	for (i = 0; i < ARRAY_LENGTH(context->events); i++) {
 		if (context->events[i])
 			wl_event_source_remove(context->events[i]);
@@ -906,6 +906,8 @@ rdp_peer_context_free(freerdp_peer* client, RdpPeerContext* context)
 
 	if (context->vcm)
 		WTSCloseServer(context->vcm);
+
+	rdp_destroy_dispatch_task_event_source(context);
 
 	/* clear the peer, in RAIL mode, this allows new peer to connect */
 	if (context->rdpBackend->rdp_peer == client)
@@ -1942,8 +1944,7 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 	for ( ; i < ARRAY_LENGTH(peerCtx->events); i++)
 		peerCtx->events[i] = 0;
 
-	peerCtx->loop_event_source_fd = eventfd(0, EFD_SEMAPHORE | EFD_CLOEXEC);
-	if (peerCtx->loop_event_source_fd == -1)
+	if (!rdp_initialize_dispatch_task_event_source(peerCtx))
 		goto error_peer_initialize;
 
 	if (!rdp_rail_peer_init(client, peerCtx))
@@ -1962,10 +1963,7 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 	return 0;
 
 error_peer_initialize:
-	if (peerCtx->loop_event_source_fd != -1) {
-		close(peerCtx->loop_event_source_fd);
-		peerCtx->loop_event_source_fd = -1;
-	}
+	rdp_destroy_dispatch_task_event_source(peerCtx);
 	for (i = 0; i < ARRAY_LENGTH(peerCtx->events); i++) {
 		if (peerCtx->events[i]) {
 			wl_event_source_remove(peerCtx->events[i]);

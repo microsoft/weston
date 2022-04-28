@@ -84,11 +84,6 @@ struct rdp_id_manager {
 	struct hash_table *hash_table;
 };
 
-struct rdp_loop_event_source {
-	struct wl_list link;
-	struct wl_event_source *event_source;
-};
-
 struct rdp_backend {
 	struct weston_backend base;
 	struct weston_compositor *compositor;
@@ -262,10 +257,14 @@ struct rdp_peer_context {
 	struct wl_client *clientExec;
 	struct wl_listener clientExec_destroy_listener;
 	struct weston_surface *cursorSurface;
+
 	// list of outstanding event_source sent from FreeRDP thread to display loop.
-	int loop_event_source_fd;
-	pthread_mutex_t loop_event_source_list_mutex;
-	struct wl_list loop_event_source_list;
+	int loop_task_event_source_fd;
+	struct wl_event_source *loop_task_event_source;
+	bool loop_task_list_mutex_initialized;
+	pthread_mutex_t loop_task_list_mutex;
+	struct wl_list loop_task_list; // struct rdp_loop_task::link
+
 	// RAIL power management.
 	struct wl_listener idle_listener;
 	struct wl_listener wake_listener;
@@ -314,14 +313,18 @@ struct rdp_peer_context {
 	struct rdp_clipboard_data_source* clipboard_inflight_client_data_source;
 
 	struct wl_listener clipboard_selection_listener;
-	struct wl_event_source *clipboard_data_request_event_source;
-	UINT32 clipboard_last_requested_format_index;
 
 	// Application List support
 	BOOL isAppListEnabled;
 };
 
 typedef struct rdp_peer_context RdpPeerContext;
+
+struct rdp_loop_task {
+	struct wl_list link;
+	RdpPeerContext *peerCtx;
+	wl_event_loop_fd_func_t func;
+};
 
 #define RDP_RAIL_MARKER_WINDOW_ID  0xFFFFFFFE
 #define RDP_RAIL_DESKTOP_WINDOW_ID 0xFFFFFFFF
@@ -410,6 +413,10 @@ void rdp_id_manager_free_id(struct rdp_id_manager *id_manager, UINT32 id);
 void dump_id_manager_state(FILE *fp, struct rdp_id_manager *id_manager, char* title);
 bool rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, void *data, struct wl_event_source **event_source);
 void rdp_defer_rdp_task_done(RdpPeerContext *peerCtx);
+bool rdp_event_loop_add_fd(struct wl_event_loop *loop, int fd, uint32_t mask, wl_event_loop_fd_func_t func, void *data, struct wl_event_source **event_source);
+void rdp_dispatch_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, struct rdp_loop_task *task);
+bool rdp_initialize_dispatch_task_event_source(RdpPeerContext *peerCtx);
+void rdp_destroy_dispatch_task_event_source(RdpPeerContext *peerCtx);
 
 // rdprail.c
 int rdp_rail_backend_create(struct rdp_backend *b, struct weston_rdp_backend_config *config);
