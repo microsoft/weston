@@ -368,8 +368,10 @@ bool
 rdp_event_loop_add_fd(struct wl_event_loop *loop, int fd, uint32_t mask, wl_event_loop_fd_func_t func, void *data, struct wl_event_source **event_source)
 {
 	*event_source = wl_event_loop_add_fd(loop, fd, 0, func, data);
-	if (!*event_source)
+	if (!*event_source) {
+		weston_log("%s: wl_event_loop_add_fd failed.\n", __func__);
 		return false;
+	}
 
 	wl_event_source_fd_update(*event_source, mask);
 	return true;
@@ -445,7 +447,6 @@ rdp_initialize_dispatch_task_event_source(RdpPeerContext *peerCtx)
 	if (!rdp_event_loop_add_fd(
 		loop, peerCtx->loop_task_event_source_fd, WL_EVENT_READABLE,
 		rdp_dispatch_task, peerCtx, &peerCtx->loop_task_event_source)) {
-		rdp_debug_error(b, "%s: rdp_event_loop_add_fd() failed\n", __func__);
 		goto error_event_loop_add_fd;
 	}
 
