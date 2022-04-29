@@ -2137,8 +2137,11 @@ desktop_surface_removed(struct weston_desktop_surface *desktop_surface,
 		return;
 
 	/* if this is focus proxy, reset to NULL */
-	if (shell->focus_proxy_surface == surface)
+	if (shell->focus_proxy_surface == surface) {
 		shell->focus_proxy_surface = NULL;
+		if (shell->rdprail_api->notify_window_proxy_surface)
+			shell->rdprail_api->notify_window_proxy_surface(NULL);
+	}
 
 	wl_list_for_each_safe(shsurf_child, tmp, &shsurf->children_list, children_link) {
 		wl_list_remove(&shsurf_child->children_link);
@@ -3420,9 +3423,7 @@ activate(struct desktop_shell *shell, struct weston_view *view,
 	shell_surface_update_layer(shsurf);
 
 	if (shell->rdprail_api->notify_window_zorder_change)
-		shell->rdprail_api->notify_window_zorder_change(
-			shell->compositor,
-			shell->focus_proxy_surface == es ? NULL : es);
+		shell->rdprail_api->notify_window_zorder_change(shell->compositor);
 }
 
 /* no-op func for checking black surface */
@@ -3510,12 +3511,7 @@ shell_backend_request_window_activate(void *shell_context, struct weston_seat *s
 		surface = shell->focus_proxy_surface;
 	}
 	if (!surface) {
-		/* if no proxy window provided, force set marker window to focus at backend */
-		if (shell->rdprail_api->notify_window_zorder_change) {
-			shell->rdprail_api->notify_window_zorder_change(shell->compositor, NULL);
-			/* schedule repaint to force send z order */
-			weston_compositor_schedule_repaint(shell->compositor);
-		}
+		/* if no proxy window provided, nothing here can do */
 		return;
 	}
 
@@ -3801,6 +3797,8 @@ desktop_shell_set_focus_proxy(struct wl_client *client,
 		return;
 	}
 
+	if (shell->rdprail_api->notify_window_proxy_surface)
+		shell->rdprail_api->notify_window_proxy_surface(surface);
 	shell->focus_proxy_surface = surface;
 
 	/* Update the surface’s layer. This brings it to the top of the stacking

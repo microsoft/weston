@@ -165,8 +165,11 @@ struct weston_rdprail_api {
 
 	/** Update window zorder
 	 */
-	void (*notify_window_zorder_change)(struct weston_compositor *compositor,
-		struct weston_surface *surface);
+	void (*notify_window_zorder_change)(struct weston_compositor *compositor);
+
+	/** Notify window proxy surface
+	 */
+	void (*notify_window_proxy_surface)(struct weston_surface *proxy_surface);
 };
 
 static inline const struct weston_rdprail_api *

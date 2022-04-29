@@ -1603,9 +1603,6 @@ rdp_rail_destroy_window(struct wl_listener *listener, void *data)
 		 creation/destruction of certain type of window, such as dropdown menu
 		 (popup in Wayland, override_redirect in X), thus do it here. */
 	peerCtx->is_window_zorder_dirty = true;
-	if (peerCtx->active_surface == surface) {
-		peerCtx->active_surface = NULL;
-	}
 
 	if (rail_state->repaint_listener.notify) {
 		wl_list_remove(&rail_state->repaint_listener.link);
@@ -2543,7 +2540,7 @@ rdp_rail_sync_window_zorder(struct weston_compositor *compositor)
 	if (!b->enable_window_zorder_sync)
 		return;
 
-	numWindowId = peerCtx->windowId.id_used + 1; // +1 for marker window.
+	numWindowId = peerCtx->windowId.id_used + 1; // +1 for marker window (aka proxy_surface)
 	windowIdArray = zalloc(numWindowId * sizeof(UINT32));
 	if (!windowIdArray) {
 		rdp_debug_error(b, "%s: zalloc(%ld bytes) failed\n", __func__, numWindowId * sizeof(UINT32)); 
@@ -2551,26 +2548,20 @@ rdp_rail_sync_window_zorder(struct weston_compositor *compositor)
 	}
 
 	rdp_debug_verbose(b, "Dump Window Z order\n");
-	if (!peerCtx->active_surface) {
-		/* if no active window, put marker window top as client window has focus. */
-		rdp_debug_verbose(b, "    window[%d]: %x: %s\n", iCurrent, RDP_RAIL_MARKER_WINDOW_ID, "marker window");
-		windowIdArray[iCurrent++] = RDP_RAIL_MARKER_WINDOW_ID;
-	}
 	/* walk windows in z-order */
 	struct weston_layer *layer;
 	wl_list_for_each(layer, &compositor->layer_list, link) {
 		struct weston_view *view;
 		wl_list_for_each(view, &layer->view_list.link, layer_link.link) {
-			iCurrent = rdp_insert_window_zorder_array(view, windowIdArray, numWindowId, iCurrent);
-			if (iCurrent == UINT_MAX)
-				goto Exit;
+			if (view->surface == b->proxy_surface) {
+				rdp_debug_verbose(b, "    window[%d]: %x: %s\n", iCurrent, RDP_RAIL_MARKER_WINDOW_ID, "marker window");
+				windowIdArray[iCurrent++] = RDP_RAIL_MARKER_WINDOW_ID;
+			} else {
+				iCurrent = rdp_insert_window_zorder_array(view, windowIdArray, numWindowId, iCurrent);
+				if (iCurrent == UINT_MAX)
+					goto Exit;
+			}
 		}
-	}
-	if (peerCtx->active_surface) {
-		/* TODO: marker window better be placed correct place relative to client window, not always bottom */
-		/*       In order to do that, dummpy window to be created to track where is the highest client window. */
-		rdp_debug_verbose(b, "    window[%d]: %x: %s\n", iCurrent, RDP_RAIL_MARKER_WINDOW_ID, "marker window");
-		windowIdArray[iCurrent++] = RDP_RAIL_MARKER_WINDOW_ID;
 	}
 	assert(iCurrent <= numWindowId);
 	assert(iCurrent > 0);
@@ -2885,16 +2876,23 @@ rdp_rail_wake_handler(struct wl_listener *listener, void *data)
 }
 
 static void
-rdp_rail_notify_window_zorder_change(struct weston_compositor *compositor, struct weston_surface *active_surface)
+rdp_rail_notify_window_proxy_surface(struct weston_surface *proxy_surface)
 {
-	struct rdp_backend *b = to_rdp_backend(compositor);
-	freerdp_peer* client = b->rdp_peer;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = to_rdp_backend(proxy_surface->compositor);
 
 	ASSERT_COMPOSITOR_THREAD(b);
 
-	/* active_surface is NULL while client window has focus */
-	peerCtx->active_surface = active_surface;
+	b->proxy_surface = proxy_surface;
+}
+
+static void
+rdp_rail_notify_window_zorder_change(struct weston_compositor *compositor)
+{
+	struct rdp_backend *b = to_rdp_backend(compositor);
+	RdpPeerContext *peerCtx = (RdpPeerContext *)b->rdp_peer->context;
+
+	ASSERT_COMPOSITOR_THREAD(b);
+
 	/* z order will be sent to client at next repaint */
 	peerCtx->is_window_zorder_dirty = true;
 }
@@ -3940,6 +3938,7 @@ struct weston_rdprail_api rdprail_api = {
 #endif // HAVE_FREERDP_RDPAPPLIST_H
 	.get_primary_output = rdp_rail_get_primary_output,
 	.notify_window_zorder_change = rdp_rail_notify_window_zorder_change,
+	.notify_window_proxy_surface = rdp_rail_notify_window_proxy_surface,
 };
 
 int

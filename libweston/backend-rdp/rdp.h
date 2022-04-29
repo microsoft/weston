@@ -139,6 +139,8 @@ struct rdp_backend {
 
 	int rdp_monitor_refresh_rate;
 
+	struct weston_surface *proxy_surface;
+
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
 	/* import from libfreerdp-server2.so */
 	RdpAppListServerContext* (*rdpapplist_server_context_new)(HANDLE vcm);
@@ -269,7 +271,6 @@ struct rdp_peer_context {
 	struct wl_listener wake_listener;
 
 	bool is_window_zorder_dirty;
-	struct weston_surface *active_surface;
 
 	// Multiple monitor support (monitor topology)
 	pixman_region32_t regionClientHeads;
