@@ -1278,6 +1278,7 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 	WINDOW_STATE_ORDER window_state_order = {};
 	struct weston_rdp_rail_window_pos pos = {.x = 0, .y = 0, .width = surface->width, .height = surface->height};
 	struct weston_rdp_rail_window_pos clientPos = {.x = 0, .y = 0, .width = surface->width, .height = surface->height};
+	struct weston_geometry windowGeometry = {.x = 0, .y = 0, .width = surface->width, .height = surface->height};
 	RECTANGLE_16 window_rect = { 0, 0, surface->width, surface->height };
 	RECTANGLE_16 window_vis = { 0, 0, surface->width, surface->height };
 	int numViews;
@@ -1370,6 +1371,16 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 	if (numViews == 0) {
 		view = NULL;
 		rdp_debug_verbose(b, "%s: surface has no view (windowId:0x%x)\n", __func__, rail_state->window_id);
+	}
+
+	if (!b->enable_window_shadow_remoting &&
+		b->rdprail_shell_api &&
+		b->rdprail_shell_api->get_window_geometry) {
+		b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
+		clientPos.x += windowGeometry.x;
+		clientPos.y += windowGeometry.y;
+		clientPos.width = windowGeometry.width;
+		clientPos.height = windowGeometry.height;
 	}
 
 	/* apply global to output transform, and translate to client coordinate */
@@ -1679,6 +1690,8 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 	WINDOW_STATE_ORDER window_state_order = {};
 	struct weston_rdp_rail_window_pos newPos = {.x = 0, .y = 0, .width = surface->width, .height = surface->height};
 	struct weston_rdp_rail_window_pos newClientPos = {.x = 0, .y = 0, .width = surface->width, .height = surface->height};
+	struct weston_geometry windowGeometry = {.x = 0, .y = 0, .width = surface->width, .height = surface->height};
+	struct weston_geometry contentBufferWindowGeometry;
 	RECTANGLE_16 window_rect;
 	RECTANGLE_16 window_vis;
 	int numViews;
@@ -1802,6 +1815,17 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 		view = NULL;
 		rdp_debug_verbose(b, "%s: surface has no view (windowId:0x%x)\n", __func__, rail_state->window_id);
 	}
+
+	if (!b->enable_window_shadow_remoting &&
+		b->rdprail_shell_api &&
+		b->rdprail_shell_api->get_window_geometry) {
+		b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
+		newClientPos.x += windowGeometry.x;
+		newClientPos.y += windowGeometry.y;
+		newClientPos.width = windowGeometry.width;
+		newClientPos.height = windowGeometry.height;
+	}
+	contentBufferWindowGeometry = windowGeometry;
 
 	/* apply global to output transform, and translate to client coordinate */
 	if (surface->output)
@@ -2055,9 +2079,10 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 	/* update window buffer contents */
 	{
 		BOOL isBufferSizeChanged = FALSE;
-		float scaleWidth = 1.0f, scaleHeight = 1.0f;
+		float scaleFactorWidth = 1.0f, scaleFactorHeight = 1.0f;
 		int damageWidth, damageHeight;
 		int copyBufferStride, copyBufferSize;
+		int copyBufferWidth, copyBufferHeight;
 		int clientBufferWidth, clientBufferHeight;
 		int contentBufferStride, contentBufferSize;
 		int contentBufferWidth, contentBufferHeight;
@@ -2066,37 +2091,47 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 		pixman_box32_t damageBox = *pixman_region32_extents(&rail_state->damage);
 		long page_size = sysconf(_SC_PAGESIZE);
 
+		/* clientBuffer represents Windows size on client desktop */
+		/* this size is adjusted on whether including or excluding window shadow */
 		clientBufferWidth = newClientPos.width;
 		clientBufferHeight = newClientPos.height;
 
+		/* contentBuffer represents buffer from Linux application. */
+		/* this size could be larger than it's window size for native HI-DPI rendering */
 		weston_surface_get_content_size(surface, &contentBufferWidth, &contentBufferHeight);
 		contentBufferStride = contentBufferWidth * bufferBpp;
 		contentBufferSize = contentBufferStride * contentBufferHeight;
 
-		copyBufferSize = (contentBufferSize + page_size - 1) & ~(page_size - 1);
-		copyBufferStride = contentBufferStride;
+		/* scale window geometry to content buffer base */
+		rdp_matrix_transform_position(&surface->surface_to_buffer_matrix,
+			&contentBufferWindowGeometry.x, &contentBufferWindowGeometry.y);
+		rdp_matrix_transform_position(&surface->surface_to_buffer_matrix,
+			&contentBufferWindowGeometry.width, &contentBufferWindowGeometry.height);
 
-		if (contentBufferWidth && contentBufferHeight) {
+		/* copy buffer represents the buffer allocated to share with RDP client. */
+		/* this can be shared memory buffer or grfx channel surface */
+		copyBufferWidth = contentBufferWindowGeometry.width;
+		copyBufferHeight = contentBufferWindowGeometry.height;
+		copyBufferStride = copyBufferWidth * bufferBpp;
+		copyBufferSize = ((copyBufferStride * copyBufferHeight) + page_size - 1) & ~(page_size - 1);
 
+		if (copyBufferWidth && copyBufferWidth) {
 #ifdef HAVE_FREERDP_GFXREDIR_H
 			if (b->use_gfxredir) {
-				scaleWidth = 1.0f; // scaling is done by client.
-				scaleHeight = 1.0f; // scaling is done by client.
+				scaleFactorWidth = 1.0f; // scaling is done by client.
+				scaleFactorHeight = 1.0f; // scaling is done by client.
 
-				if (rail_state->bufferWidth != contentBufferWidth ||
-					rail_state->bufferHeight != contentBufferHeight)
-					isBufferSizeChanged = TRUE;
 			} else {
 #else
 			{
 #endif // HAVE_FREERDP_GFXREDIR_H
-				scaleWidth = (float)clientBufferWidth / contentBufferWidth;
-				scaleHeight = (float)clientBufferHeight / contentBufferHeight;
-
-				if (rail_state->bufferWidth != contentBufferWidth ||
-					rail_state->bufferHeight != contentBufferHeight)
-					isBufferSizeChanged = TRUE;
+				scaleFactorWidth = (float)surface->width / contentBufferWidth;
+				scaleFactorHeight = (float)surface->height / contentBufferHeight;
 			}
+
+			if (rail_state->bufferWidth != copyBufferWidth ||
+				rail_state->bufferHeight != copyBufferHeight)
+				isBufferSizeChanged = TRUE;
 
 			if (isBufferSizeChanged || rail_state->forceRecreateSurface ||
 				(rail_state->surfaceBuffer == NULL && rail_state->surface_id == 0)) {
@@ -2137,17 +2172,17 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 									createBuffer.poolId = openPool.poolId;
 									createBuffer.bufferId = new_buffer_id;
 									createBuffer.offset = 0;
-									createBuffer.stride = contentBufferStride;
-									createBuffer.width = contentBufferWidth;
-									createBuffer.height = contentBufferHeight;
+									createBuffer.stride = copyBufferStride;
+									createBuffer.width = copyBufferWidth;
+									createBuffer.height = copyBufferHeight;
 									createBuffer.format = GFXREDIR_BUFFER_PIXEL_FORMAT_ARGB_8888;
 									if (peerCtx->gfxredir_server_context->CreateBuffer(
 										peerCtx->gfxredir_server_context, &createBuffer) == 0) {
 										rail_state->surfaceBuffer = rail_state->shared_memory.addr;
 										rail_state->buffer_id = createBuffer.bufferId;
 										rail_state->pool_id = openPool.poolId;
-										rail_state->bufferWidth = contentBufferWidth;
-										rail_state->bufferHeight = contentBufferHeight;
+										rail_state->bufferWidth = copyBufferWidth;
+										rail_state->bufferHeight = copyBufferHeight;
 									}
 								}
 							}
@@ -2164,24 +2199,24 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 						RDPGFX_CREATE_SURFACE_PDU createSurface = {};
 						/* create surface */
 						rdp_debug_verbose(b, "CreateSurface(surfaceId:0x%x - (%d, %d) size:%d for windowsId:0x%x)\n",
-							new_surface_id, contentBufferWidth, contentBufferHeight, contentBufferSize, window_id);
+							new_surface_id, copyBufferWidth, copyBufferHeight, copyBufferSize, window_id);
 						createSurface.surfaceId = (UINT16)new_surface_id;
-						createSurface.width = contentBufferWidth;
-						createSurface.height = contentBufferHeight;
+						createSurface.width = copyBufferWidth;
+						createSurface.height = copyBufferHeight;
 						/* regardless buffer as alpha or not, always use alpha to avoid mstsc bug */
 						createSurface.pixelFormat = GFX_PIXEL_FORMAT_ARGB_8888;
 						if (peerCtx->rail_grfx_server_context->CreateSurface(peerCtx->rail_grfx_server_context, &createSurface) == 0) {
 							/* store new surface id */
 							old_surface_id = rail_state->surface_id;
 							rail_state->surface_id = new_surface_id;
-							rail_state->bufferWidth = contentBufferWidth;
-							rail_state->bufferHeight = contentBufferHeight;
+							rail_state->bufferWidth = copyBufferWidth;
+							rail_state->bufferHeight = copyBufferHeight;
 						}
 					}
 				}
 				rail_state->forceRecreateSurface = false;
 
-				/* When creating a new surface we need to upload it's entire content, expand damage */
+				/* make entire content buffer damaged */
 				damageBox.x1 = 0;
 				damageBox.y1 = 0;
 				damageBox.x2 = contentBufferWidth;
@@ -2198,34 +2233,47 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 			damageBox.x2 = 0;
 			damageBox.y2 = 0;
 		}
-
-		damageWidth = damageBox.x2 - damageBox.x1;
-		if (damageWidth > contentBufferWidth) {
-			rdp_debug(b, "damageWidth (%d) is larger than content width(%d), clamp to avoid protocol error.\n",
-				damageWidth, contentBufferWidth);
-			damageBox.x1 = 0;
-			damageBox.x2 = contentBufferWidth;
-			damageWidth = contentBufferWidth;
+		/* damageBox represents damaged area in contentBuffer */
+		/* if it's not remoting window shadow, exclude the area from damageBox */
+		if (!b->enable_window_shadow_remoting) {
+			if (damageBox.x1 < contentBufferWindowGeometry.x)
+				damageBox.x1 = contentBufferWindowGeometry.x;
+			if (damageBox.x2 > contentBufferWindowGeometry.x + contentBufferWindowGeometry.width)
+				damageBox.x2 = contentBufferWindowGeometry.x + contentBufferWindowGeometry.width;
+			if (damageBox.y1 < contentBufferWindowGeometry.y)
+				damageBox.y1 = contentBufferWindowGeometry.y;
+			if (damageBox.y2 > contentBufferWindowGeometry.y + contentBufferWindowGeometry.height)
+				damageBox.y2 = contentBufferWindowGeometry.y + contentBufferWindowGeometry.height;
+			damageWidth = damageBox.x2 - damageBox.x1;
+			damageHeight = damageBox.y2 - damageBox.y1;
+		} else {
+			damageWidth = damageBox.x2 - damageBox.x1;
+			if (damageWidth > contentBufferWidth) {
+				rdp_debug(b, "damageWidth (%d) is larger than content width(%d), clamp to avoid protocol error.\n",
+					damageWidth, contentBufferWidth);
+				damageBox.x1 = 0;
+				damageBox.x2 = contentBufferWidth;
+				damageWidth = contentBufferWidth;
+			}
+			damageHeight = damageBox.y2 - damageBox.y1;
+			if (damageHeight > contentBufferHeight) {
+				rdp_debug(b, "damageHeight (%d) is larger than content height(%d), clamp to avoid protocol error.\n",
+					damageHeight, contentBufferHeight);
+				damageBox.y1 = 0;
+				damageBox.y2 = contentBufferHeight;
+				damageHeight = contentBufferHeight;
+			}
 		}
-		damageHeight = damageBox.y2 - damageBox.y1;
-		if (damageHeight > contentBufferHeight) {
-			rdp_debug(b, "damageHeight (%d) is larger than content height(%d), clamp to avoid protocol error.\n",
-				damageHeight, contentBufferHeight);
-			damageBox.y1 = 0;
-			damageBox.y2 = contentBufferHeight;
-			damageHeight = contentBufferHeight;
-		}
-
 		/* Check to see if we have any content update to send to the new surface */
 		if (damageWidth > 0 && damageHeight > 0) {
 #ifdef HAVE_FREERDP_GFXREDIR_H
 			if (b->use_gfxredir &&
 				rail_state->surfaceBuffer) {
 
-				int copyDamageX1 = (float)damageBox.x1 * scaleWidth;
-				int copyDamageY1 = (float)damageBox.y1 * scaleHeight;
-				int copyDamageWidth = (float)damageWidth * scaleWidth;
-				int copyDamageHeight = (float)damageHeight * scaleHeight;
+				int copyDamageX1 = (float)damageBox.x1 * scaleFactorWidth;
+				int copyDamageY1 = (float)damageBox.y1 * scaleFactorHeight;
+				int copyDamageWidth = (float)damageWidth * scaleFactorWidth;
+				int copyDamageHeight = (float)damageHeight * scaleFactorHeight;
 				int copyStartOffset = copyDamageX1*bufferBpp + copyDamageY1*copyBufferStride;
 				BYTE *copyBufferBits = (BYTE*)(rail_state->surfaceBuffer) + copyStartOffset;
 
@@ -2233,8 +2281,8 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 					damageBox.x1, damageBox.y1, damageWidth, damageHeight);
 				rdp_debug_verbose(b, "copy target: x:%d, y:%d, width:%d, height:%d, stride:%d\n",
 					copyDamageX1, copyDamageY1, copyDamageWidth, copyDamageHeight, copyBufferStride);
-				rdp_debug_verbose(b, "copy scale: scaleWidth:%5.3f, scaleHeight:%5.3f\n",
-					scaleWidth, scaleHeight);
+				rdp_debug_verbose(b, "copy scale: scaleFactorWidth:%5.3f, scaleFactorHeight:%5.3f\n",
+					scaleFactorWidth, scaleFactorHeight);
 
 				if (weston_surface_copy_content(surface,
 					copyBufferBits, copyBufferSize, copyBufferStride,
@@ -2373,10 +2421,10 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 				surfaceCommand.surfaceId = rail_state->surface_id;
 				surfaceCommand.contextId = 0;
 				surfaceCommand.format = PIXEL_FORMAT_BGRA32;
-				surfaceCommand.left = damageBox.x1;
-				surfaceCommand.top = damageBox.y1;
-				surfaceCommand.right = damageBox.x2;
-				surfaceCommand.bottom = damageBox.y2;
+				surfaceCommand.left = damageBox.x1 - contentBufferWindowGeometry.x;
+				surfaceCommand.top = damageBox.y1 - contentBufferWindowGeometry.y;
+				surfaceCommand.right = damageBox.x2 - contentBufferWindowGeometry.x;
+				surfaceCommand.bottom = damageBox.y2 - contentBufferWindowGeometry.y;
 				surfaceCommand.width = damageWidth;
 				surfaceCommand.height = damageHeight;
 				surfaceCommand.extra = NULL;
@@ -2419,7 +2467,9 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 #else
 		{
 #endif // HAVE_FREERDP_GFXREDIR_H
-			if (new_surface_id || rail_state->bufferScaleWidth != scaleWidth || rail_state->bufferScaleHeight != scaleHeight) {
+			if (new_surface_id ||
+				rail_state->bufferScaleFactorWidth != scaleFactorWidth ||
+				rail_state->bufferScaleFactorHeight != scaleFactorHeight) {
 				/* map surface to window */
 				assert(new_surface_id == 0 || (new_surface_id == rail_state->surface_id));
 				rdp_debug_verbose(b, "MapSurfaceToWindow(surfaceId:0x%x - windowsId:%x)\n",
@@ -2433,13 +2483,13 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 				RDPGFX_MAP_SURFACE_TO_SCALED_WINDOW_PDU mapSurfaceToScaledWindow = {};
 				mapSurfaceToScaledWindow.surfaceId = (UINT16)rail_state->surface_id;
 				mapSurfaceToScaledWindow.windowId = window_id;
-				mapSurfaceToScaledWindow.mappedWidth = contentBufferWidth;
-				mapSurfaceToScaledWindow.mappedHeight = contentBufferHeight;
-				mapSurfaceToScaledWindow.targetWidth = newClientPos.width;
-				mapSurfaceToScaledWindow.targetHeight = newClientPos.height;
+				mapSurfaceToScaledWindow.mappedWidth = copyBufferWidth;
+				mapSurfaceToScaledWindow.mappedHeight = copyBufferHeight;
+				mapSurfaceToScaledWindow.targetWidth = clientBufferWidth;
+				mapSurfaceToScaledWindow.targetHeight = clientBufferHeight;
 				peerCtx->rail_grfx_server_context->MapSurfaceToScaledWindow(peerCtx->rail_grfx_server_context, &mapSurfaceToScaledWindow);
-				rail_state->bufferScaleWidth = scaleWidth;
-				rail_state->bufferScaleHeight = scaleHeight;
+				rail_state->bufferScaleFactorWidth = scaleFactorWidth;
+				rail_state->bufferScaleFactorHeight = scaleFactorHeight;
 			}
 
 			/* destroy old surface */
@@ -3437,12 +3487,18 @@ rdp_rail_dump_window_iter(void *element, void *data)
 	struct weston_surface *surface = (struct weston_surface *)element;
 	struct weston_surface_rail_state *rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 	struct rdp_rail_dump_window_context *context = (struct rdp_rail_dump_window_context *)data;
+	struct rdp_backend *b = context->peerCtx->rdpBackend;
 	assert(rail_state); // this iter is looping from window hash table, thus it must have rail_state initialized.
 	FILE *fp = context->fp;
 	char label[256] = {};
+	struct weston_geometry windowGeometry = {};
 	struct weston_view *view;
 	int contentBufferWidth, contentBufferHeight;
 	weston_surface_get_content_size(surface, &contentBufferWidth, &contentBufferHeight);
+
+	if (b->rdprail_shell_api &&
+		b->rdprail_shell_api->get_window_geometry)
+		b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
 
 	rdp_rail_dump_window_label(surface, label, sizeof(label));
 	fprintf(fp,"    %s\n", label);
@@ -3450,23 +3506,24 @@ rdp_rail_dump_window_iter(void *element, void *data)
 		rail_state->window_id, rail_state->surface_id);
 	fprintf(fp,"    PoolId:0x%x, BufferId:0x%x\n",
 		rail_state->pool_id, rail_state->buffer_id);
-	fprintf(fp,"    Position x:%d, y:%d\n",
-		rail_state->pos.x, rail_state->pos.y);
-	fprintf(fp,"    width:%d, height:%d\n",
+	fprintf(fp,"    Position x:%d, y:%d width:%d height:%d\n",
+		rail_state->pos.x, rail_state->pos.y,
 		rail_state->pos.width, rail_state->pos.height);
-	fprintf(fp,"    RDP client position x:%d, y:%d\n",
-		rail_state->clientPos.x, rail_state->clientPos.y);
-	fprintf(fp,"    RDP client width:%d, height:%d\n",
+	fprintf(fp,"    RDP client position x:%d, y:%d width:%d height:%d\n",
+		rail_state->clientPos.x, rail_state->clientPos.y,
 		rail_state->clientPos.width, rail_state->clientPos.height);
-	fprintf(fp,"    bufferWidth:%d, bufferHeight:%d\n",
-		rail_state->bufferWidth, rail_state->bufferHeight);
-	fprintf(fp,"    bufferScaleWidth:%.2f, bufferScaleHeight:%.2f\n",
-		rail_state->bufferScaleWidth, rail_state->bufferScaleHeight);
-	fprintf(fp,"    contentBufferWidth:%d, contentBufferHeight:%d\n",
-		contentBufferWidth, contentBufferHeight);
+	fprintf(fp,"    Window geometry x:%d, y:%d, width:%d height:%d\n",
+		windowGeometry.x, windowGeometry.y,
+		windowGeometry.width, windowGeometry.height);
 	fprintf(fp,"    input extents: x1:%d, y1:%d, x2:%d, y2:%d\n",
 		surface->input.extents.x1, surface->input.extents.y1,
 		surface->input.extents.x2, surface->input.extents.y2);
+	fprintf(fp,"    bufferWidth:%d, bufferHeight:%d\n",
+		rail_state->bufferWidth, rail_state->bufferHeight);
+	fprintf(fp,"    bufferScaleFactorWidth:%.2f, bufferScaleFactorHeight:%.2f\n",
+		rail_state->bufferScaleFactorWidth, rail_state->bufferScaleFactorHeight);
+	fprintf(fp,"    contentBufferWidth:%d, contentBufferHeight:%d\n",
+		contentBufferWidth, contentBufferHeight);
 	fprintf(fp,"    is_opaque:%d\n", surface->is_opaque);
 	if (!surface->is_opaque && pixman_region32_not_empty(&surface->opaque)) {
 		int numRects = 0;
@@ -4062,6 +4119,9 @@ rdp_rail_backend_create(struct rdp_backend *b, struct weston_rdp_backend_config 
 
 	b->enable_window_snap_arrange = config->rail_config.enable_window_snap_arrange;
 	rdp_debug(b, "RDP backend: enable_window_snap_arrange = %d\n", b->enable_window_snap_arrange);
+
+	b->enable_window_shadow_remoting = config->rail_config.enable_window_shadow_remoting;
+	rdp_debug(b, "RDP backend: enable_window_shadow_remoting = %d\n", b->enable_window_shadow_remoting);
 
 	b->enable_display_power_by_screenupdate = config->rail_config.enable_display_power_by_screenupdate;
 	rdp_debug(b, "RDP backend: enable_display_power_by_screenupdate = %d\n", b->enable_display_power_by_screenupdate);

@@ -112,6 +112,10 @@ struct weston_rdprail_shell_api {
 	/** Request launch shell process
 	  */
 	struct wl_client* (*request_launch_shell_process)(void *shell_context, char *exec_name);
+
+	/** Query window geometry
+	  */
+	void (*get_window_geometry)(struct weston_surface *surface, struct weston_geometry *geometry);
 };
 
 #define WESTON_RDPRAIL_API_NAME "weston_rdprail_api_v1"
@@ -206,8 +210,8 @@ struct weston_surface_rail_state {
 	struct weston_rdp_rail_window_pos clientPos;
 	int bufferWidth;
 	int bufferHeight;
-	float bufferScaleWidth;
-	float bufferScaleHeight;
+	float bufferScaleFactorWidth;
+	float bufferScaleFactorHeight;
 	pixman_region32_t damage;
 	struct weston_output *output;
 	struct weston_surface *parent_surface;
@@ -263,6 +267,7 @@ struct weston_rdp_backend_config {
 		int debug_desktop_scaling_factor;
 		bool enable_window_zorder_sync;
 		bool enable_window_snap_arrange;
+		bool enable_window_shadow_remoting;
 		bool enable_distro_name_title;
 		bool enable_copy_warning_title;
 		bool enable_display_power_by_screenupdate;

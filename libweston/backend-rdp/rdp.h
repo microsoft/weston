@@ -129,6 +129,7 @@ struct rdp_backend {
 
 	bool enable_window_zorder_sync;
 	bool enable_window_snap_arrange;
+	bool enable_window_shadow_remoting;
 
 	bool enable_display_power_by_screenupdate;
 

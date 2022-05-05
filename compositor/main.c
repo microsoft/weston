@@ -2716,6 +2716,7 @@ weston_rdp_backend_config_init(struct weston_rdp_backend_config *config)
 	config->rail_config.debug_desktop_scaling_factor = 0;
 	config->rail_config.enable_window_zorder_sync = false;
 	config->rail_config.enable_window_snap_arrange = false;
+	config->rail_config.enable_window_shadow_remoting = false;
 	config->rail_config.enable_distro_name_title = false;
 	config->rail_config.enable_copy_warning_title = false;
 	config->rail_config.enable_display_power_by_screenupdate = false;
@@ -2825,6 +2826,7 @@ load_rdp_backend(struct weston_compositor *c,
 
 	config.rail_config.enable_window_zorder_sync = read_rdp_config_bool("WESTON_RDP_WINDOW_ZORDER_SYNC", true);
 	config.rail_config.enable_window_snap_arrange = read_rdp_config_bool("WESTON_RDP_WINDOW_SNAP_ARRANGE", false);
+	config.rail_config.enable_window_shadow_remoting = read_rdp_config_bool("WESTON_RDP_WINDOW_SHADOW_REMOTING", false);
 
 	config.rail_config.enable_display_power_by_screenupdate =
 		read_rdp_config_bool("WESTON_RDP_DISPLAY_POWER_BY_SCREENUPDATE", false);

@@ -4355,6 +4355,21 @@ shell_backend_launch_shell_process(void *shell_context, char *exec_name)
 	return weston_client_start(shell->compositor, exec_name);
 }
 
+static void
+shell_backend_get_window_geometry(struct weston_surface *surface, struct weston_geometry *geometry)
+{
+	struct weston_desktop_surface *desktop_surface =
+		weston_surface_get_desktop_surface(surface);
+	if (desktop_surface) {
+		*geometry = weston_desktop_surface_get_geometry(desktop_surface);
+	} else {
+		geometry->x = 0;
+		geometry->y = 0;
+		geometry->width = surface->width;
+		geometry->height = surface->height;
+	}
+}
+
 static const struct weston_rdprail_shell_api rdprail_shell_api = {
 	.request_window_restore = shell_backend_request_window_restore,
 	.request_window_minimize = shell_backend_request_window_minimize,
@@ -4369,6 +4384,7 @@ static const struct weston_rdprail_shell_api rdprail_shell_api = {
 	.stop_app_list_update = shell_backend_stop_app_list_update,
 	.request_window_icon = shell_backend_request_window_icon,
 	.request_launch_shell_process = shell_backend_launch_shell_process,
+	.get_window_geometry = shell_backend_get_window_geometry,
 };
 
 WL_EXPORT int
