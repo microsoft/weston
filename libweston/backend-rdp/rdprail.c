@@ -2270,8 +2270,8 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 			if (b->use_gfxredir &&
 				rail_state->surfaceBuffer) {
 
-				int copyDamageX1 = (float)damageBox.x1 * scaleFactorWidth;
-				int copyDamageY1 = (float)damageBox.y1 * scaleFactorHeight;
+				int copyDamageX1 = (float)(damageBox.x1 - contentBufferWindowGeometry.x) * scaleFactorWidth;
+				int copyDamageY1 = (float)(damageBox.y1 - contentBufferWindowGeometry.y) * scaleFactorHeight;
 				int copyDamageWidth = (float)damageWidth * scaleFactorWidth;
 				int copyDamageHeight = (float)damageHeight * scaleFactorHeight;
 				int copyStartOffset = copyDamageX1*bufferBpp + copyDamageY1*copyBufferStride;
