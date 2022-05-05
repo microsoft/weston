@@ -4362,6 +4362,15 @@ shell_backend_get_window_geometry(struct weston_surface *surface, struct weston_
 		weston_surface_get_desktop_surface(surface);
 	if (desktop_surface) {
 		*geometry = weston_desktop_surface_get_geometry(desktop_surface);
+		/* clamp geometry to surface size */
+		if (geometry->x < 0)
+			geometry->x = 0;
+		if (geometry->y < 0)
+			geometry->y = 0;
+		if (geometry->width > (geometry->x + surface->width))
+			geometry->width = (geometry->x + surface->width);
+		if (geometry->height > (geometry->y + surface->height))
+			geometry->height = (geometry->y + surface->height);
 	} else {
 		geometry->x = 0;
 		geometry->y = 0;

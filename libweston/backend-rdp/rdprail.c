@@ -321,6 +321,7 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 	struct weston_surface *surface;
 	struct weston_surface_rail_state *rail_state;
 	pixman_rectangle32_t snapArrangeRect;
+	struct weston_geometry windowGeometry;
 
 	rdp_debug(b, "Client: SnapArrange: WindowId:0x%x at (%d, %d) %dx%d\n", 
 		snap->windowId,
@@ -337,7 +338,7 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 	if (surface) {
 		rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 		if (b->rdprail_shell_api &&
-			b->rdprail_shell_api->request_window_move) {
+			b->rdprail_shell_api->request_window_snap) {
 			snapArrangeRect.x = snap->left;
 			snapArrangeRect.y = snap->top;
 			snapArrangeRect.width = snap->right - snap->left;
@@ -345,6 +346,16 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 			to_weston_coordinate(peerCtx,
 				&snapArrangeRect.x, &snapArrangeRect.y,
 				&snapArrangeRect.width, &snapArrangeRect.height);
+			if (!b->enable_window_shadow_remoting &&
+				b->rdprail_shell_api &&
+				b->rdprail_shell_api->get_window_geometry) {
+				/* window_geometry here is last commited geometry */
+				b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
+				snapArrangeRect.x -= windowGeometry.x;
+				snapArrangeRect.y -= windowGeometry.y;
+				snapArrangeRect.width += (surface->width - windowGeometry.width);
+				snapArrangeRect.height += (surface->height - windowGeometry.height);
+			}
 			b->rdprail_shell_api->request_window_snap(surface, 
 				snapArrangeRect.x,
 				snapArrangeRect.y,
@@ -376,6 +387,7 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	struct weston_surface *surface;
 	pixman_rectangle32_t windowMoveRect;
+	struct weston_geometry windowGeometry;
 
 	rdp_debug(b, "Client: WindowMove: WindowId:0x0x at (%d, %d) %dx%d\n", 
 		windowMove->windowId,
@@ -399,6 +411,16 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 			to_weston_coordinate(peerCtx,
 				&windowMoveRect.x, &windowMoveRect.y,
 				&windowMoveRect.width, &windowMoveRect.height);
+			if (!b->enable_window_shadow_remoting &&
+				b->rdprail_shell_api &&
+				b->rdprail_shell_api->get_window_geometry) {
+				/* window_geometry here is last commited geometry */
+				b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
+				windowMoveRect.x -= windowGeometry.x;
+				windowMoveRect.y -= windowGeometry.y;
+				windowMoveRect.width += (surface->width - windowGeometry.width);
+				windowMoveRect.height += (surface->height - windowGeometry.height);
+			}
 			b->rdprail_shell_api->request_window_move(surface, 
 				windowMoveRect.x,
 				windowMoveRect.y,
@@ -2084,7 +2106,6 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 		int copyBufferStride, copyBufferSize;
 		int copyBufferWidth, copyBufferHeight;
 		int clientBufferWidth, clientBufferHeight;
-		int contentBufferStride, contentBufferSize;
 		int contentBufferWidth, contentBufferHeight;
 		int bufferBpp = 4; // Bytes Per Pixel.
 		bool hasAlpha = view ? !weston_view_is_opaque(view, &view->transform.boundingbox) : false;
@@ -2099,8 +2120,6 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 		/* contentBuffer represents buffer from Linux application. */
 		/* this size could be larger than it's window size for native HI-DPI rendering */
 		weston_surface_get_content_size(surface, &contentBufferWidth, &contentBufferHeight);
-		contentBufferStride = contentBufferWidth * bufferBpp;
-		contentBufferSize = contentBufferStride * contentBufferHeight;
 
 		/* scale window geometry to content buffer base */
 		rdp_matrix_transform_position(&surface->surface_to_buffer_matrix,
