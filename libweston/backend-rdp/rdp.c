@@ -2367,6 +2367,7 @@ config_init_to_defaults(struct weston_rdp_backend_config *config)
 	config->rail_config.debug_desktop_scaling_factor = 0;
 	config->rail_config.enable_window_zorder_sync = false;
 	config->rail_config.enable_window_snap_arrange = false;
+	config->rail_config.enable_window_shadow_remoting = false;
 	config->rail_config.enable_distro_name_title = false;
 	config->rail_config.enable_copy_warning_title = false;
 	config->rail_config.enable_display_power_by_screenupdate = false;
