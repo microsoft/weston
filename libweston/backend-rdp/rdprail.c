@@ -2134,7 +2134,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 		copyBufferStride = copyBufferWidth * bufferBpp;
 		copyBufferSize = ((copyBufferStride * copyBufferHeight) + page_size - 1) & ~(page_size - 1);
 
-		if (copyBufferWidth && copyBufferWidth) {
+		if (copyBufferWidth && copyBufferHeight) {
 #ifdef HAVE_FREERDP_GFXREDIR_H
 			if (b->use_gfxredir) {
 				scaleFactorWidth = 1.0f; // scaling is done by client.
@@ -2245,43 +2245,41 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 				rdp_matrix_transform_position(&surface->surface_to_buffer_matrix, &damageBox.x1, &damageBox.y1);
 				rdp_matrix_transform_position(&surface->surface_to_buffer_matrix, &damageBox.x2, &damageBox.y2);
 			}
+			/* damageBox represents damaged area in contentBuffer */
+			/* if it's not remoting window shadow, exclude the area from damageBox */
+			if (!b->enable_window_shadow_remoting) {
+				if (damageBox.x1 < contentBufferWindowGeometry.x)
+					damageBox.x1 = contentBufferWindowGeometry.x;
+				if (damageBox.x2 > contentBufferWindowGeometry.x + contentBufferWindowGeometry.width)
+					damageBox.x2 = contentBufferWindowGeometry.x + contentBufferWindowGeometry.width;
+				if (damageBox.y1 < contentBufferWindowGeometry.y)
+					damageBox.y1 = contentBufferWindowGeometry.y;
+				if (damageBox.y2 > contentBufferWindowGeometry.y + contentBufferWindowGeometry.height)
+					damageBox.y2 = contentBufferWindowGeometry.y + contentBufferWindowGeometry.height;
+				damageWidth = damageBox.x2 - damageBox.x1;
+				damageHeight = damageBox.y2 - damageBox.y1;
+			} else {
+				damageWidth = damageBox.x2 - damageBox.x1;
+				if (damageWidth > contentBufferWidth) {
+					rdp_debug(b, "damageWidth (%d) is larger than content width(%d), clamp to avoid protocol error.\n",
+						damageWidth, contentBufferWidth);
+					damageBox.x1 = 0;
+					damageBox.x2 = contentBufferWidth;
+					damageWidth = contentBufferWidth;
+				}
+				damageHeight = damageBox.y2 - damageBox.y1;
+				if (damageHeight > contentBufferHeight) {
+					rdp_debug(b, "damageHeight (%d) is larger than content height(%d), clamp to avoid protocol error.\n",
+						damageHeight, contentBufferHeight);
+					damageBox.y1 = 0;
+					damageBox.y2 = contentBufferHeight;
+					damageHeight = contentBufferHeight;
+				}
+			}
 		} else {
 			/* no content buffer bound, thus no damage */
-			damageBox.x1 = 0;
-			damageBox.y1 = 0;
-			damageBox.x2 = 0;
-			damageBox.y2 = 0;
-		}
-		/* damageBox represents damaged area in contentBuffer */
-		/* if it's not remoting window shadow, exclude the area from damageBox */
-		if (!b->enable_window_shadow_remoting) {
-			if (damageBox.x1 < contentBufferWindowGeometry.x)
-				damageBox.x1 = contentBufferWindowGeometry.x;
-			if (damageBox.x2 > contentBufferWindowGeometry.x + contentBufferWindowGeometry.width)
-				damageBox.x2 = contentBufferWindowGeometry.x + contentBufferWindowGeometry.width;
-			if (damageBox.y1 < contentBufferWindowGeometry.y)
-				damageBox.y1 = contentBufferWindowGeometry.y;
-			if (damageBox.y2 > contentBufferWindowGeometry.y + contentBufferWindowGeometry.height)
-				damageBox.y2 = contentBufferWindowGeometry.y + contentBufferWindowGeometry.height;
-			damageWidth = damageBox.x2 - damageBox.x1;
-			damageHeight = damageBox.y2 - damageBox.y1;
-		} else {
-			damageWidth = damageBox.x2 - damageBox.x1;
-			if (damageWidth > contentBufferWidth) {
-				rdp_debug(b, "damageWidth (%d) is larger than content width(%d), clamp to avoid protocol error.\n",
-					damageWidth, contentBufferWidth);
-				damageBox.x1 = 0;
-				damageBox.x2 = contentBufferWidth;
-				damageWidth = contentBufferWidth;
-			}
-			damageHeight = damageBox.y2 - damageBox.y1;
-			if (damageHeight > contentBufferHeight) {
-				rdp_debug(b, "damageHeight (%d) is larger than content height(%d), clamp to avoid protocol error.\n",
-					damageHeight, contentBufferHeight);
-				damageBox.y1 = 0;
-				damageBox.y2 = contentBufferHeight;
-				damageHeight = contentBufferHeight;
-			}
+			damageWidth = 0;
+			damageHeight = 0;
 		}
 		/* Check to see if we have any content update to send to the new surface */
 		if (damageWidth > 0 && damageHeight > 0) {
