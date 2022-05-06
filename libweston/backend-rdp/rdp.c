@@ -1100,19 +1100,6 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{0x00000000, 0, 0},
 };
 
-/* taken from 2.2.7.1.6 Input Capability Set (TS_INPUT_CAPABILITYSET) */
-static const char *rdp_keyboard_types[] = {
-	"",	/* 0: unused */
-	"", /* 1: IBM PC/XT or compatible (83-key) keyboard */
-	"", /* 2: Olivetti "ICO" (102-key) keyboard */
-	"", /* 3: IBM PC/AT (84-key) or similar keyboard */
-	"pc102",/* 4: IBM enhanced (101- or 102-key) keyboard */
-	"", /* 5: Nokia 1050 and similar keyboards */
-	"",	/* 6: Nokia 9140 and similar keyboards */
-	"jp106",/* 7: Japanese keyboard */ /* alternative ja106 */
-	"pc102" /* 8: Korean keyboard which is based on pc101, + 2 special Korean keys */
-};
-
 void
 convert_rdp_keyboard_to_xkb_rule_names(
 	UINT32 KeyboardType,
@@ -1122,8 +1109,7 @@ convert_rdp_keyboard_to_xkb_rule_names(
 {
 	int i;
 	memset(xkbRuleNames, 0, sizeof(*xkbRuleNames));
-	if (KeyboardType <= ARRAY_LENGTH(rdp_keyboard_types))
-		xkbRuleNames->model = rdp_keyboard_types[KeyboardType];
+	xkbRuleNames->model = "pc105";
 	for (i = 0; rdp_keyboards[i].rdpLayoutCode; i++) {
 		if (rdp_keyboards[i].rdpLayoutCode == KeyboardLayout) {
 			xkbRuleNames->layout = rdp_keyboards[i].xkbLayout;
@@ -1136,7 +1122,7 @@ convert_rdp_keyboard_to_xkb_rule_names(
 	if (KeyboardType == 8 && ((KeyboardLayout & 0xFFFF) == 0x412)) {
 		/* TODO: PC/AT 101 Enhanced Korean Keyboard (Type B) and (Type C) is not supported yet
 			 because default Xkb settings for Korean layout doesn't have corresponding
-			 configuration.
+			 configuration, thus here only supports Type A.
 			 (Type B): KeyboardSubType:4: rctrl_hangul/ratl_hanja
 			 (Type C): KeyboardSubType:5: shift_space_hangul/crtl_space_hanja */
 		if (KeyboardSubType == 0 ||
@@ -1151,10 +1137,6 @@ convert_rdp_keyboard_to_xkb_rule_names(
 		   use "us" layout, since the "jp" layout in xkb expects Japanese 106/109 keyboard layout. */
 		xkbRuleNames->layout = "us";
 		xkbRuleNames->variant = 0;
-	}
-	/* Brazilian ABNT2 keyboard */
-	else if (KeyboardLayout == KBD_PORTUGUESE_BRAZILIAN_ABNT2) {
-		xkbRuleNames->model = "pc105";
 	}
 
 	weston_log("%s: matching model=%s layout=%s variant=%s options=%s\n", __FUNCTION__,
