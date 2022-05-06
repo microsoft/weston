@@ -654,6 +654,26 @@ get_modifier(char *modifier)
 		return 0; // default to no binding-modifier.
 }
 
+static bool
+read_rdpshell_config_bool(char *config_name, bool default_value)
+{
+	char *s;
+
+	s = getenv(config_name);
+	if (s) {
+		if (strcmp(s, "true") == 0)
+			return true;
+		else if (strcmp(s, "false") == 0)
+			return false;
+		else if (strcmp(s, "1") == 0)
+			return true;
+		else if (strcmp(s, "0") == 0)
+			return false;
+	}
+
+	return default_value;
+}
+
 static void
 shell_configuration(struct desktop_shell *shell)
 {
@@ -673,21 +693,63 @@ shell_configuration(struct desktop_shell *shell)
 	/* default to not allow zap */
 	weston_config_section_get_bool(section,
 				       "allow-zap", &allow_zap, false);
-	if (!allow_zap) {
-		s = getenv("WESTON_RDPRAIL_SHELL_ALLOW_ZAP");
-		allow_zap = (s && (strcmp(s, "true") == 0));
-	}
+	allow_zap = read_rdpshell_config_bool("WESTON_RDPRAIL_SHELL_ALLOW_ZAP", allow_zap);
 	shell->allow_zap = allow_zap;
+	shell_rdp_debug(shell, "RDPRAIL-shell: allow-zap:%d\n", shell->allow_zap);
 
 	/* set "none" to default to disable optional key-bindings */
 	weston_config_section_get_string(section,
 					 "binding-modifier", &s, "none");
 	shell->binding_modifier = get_modifier(s);
+	shell_rdp_debug(shell, "RDPRAIL-shell: binding-modifier:%s\n", s);
 	free(s);
 
+	/* default to disable local move (not fully supported yet */
 	weston_config_section_get_bool(section,
 				       "local-move", &is_localmove_supported, false);
+	is_localmove_supported = read_rdpshell_config_bool(
+		"WESTON_RDPRAIL_SHELL_LOCAL_MOVE", is_localmove_supported);
 	shell->is_localmove_supported = is_localmove_supported;
+	shell_rdp_debug(shell, "RDPRAIL-shell: local-move:%d\n", shell->is_localmove_supported);
+
+	/* distro name is provided from WSL via enviromment variable */
+	shell->distroNameLength = 0;
+	shell->distroName = getenv("WSL2_DISTRO_NAME");
+	if (!shell->distroName)
+		shell->distroName = getenv("WSL_DISTRO_NAME");
+	if (shell->distroName)
+		shell->distroNameLength = strlen(shell->distroName);
+	shell_rdp_debug(shell, "RDPRAIL-shell: distro name:%s (len:%ld)\n",
+		shell->distroName, shell->distroNameLength);
+
+	/* default icon path is provided from WSL via enviromment variable */
+	s = getenv("WSL2_DEFAULT_APP_ICON");
+	if (s && (strcmp(s, "disabled") != 0))
+		shell->image_default_app_icon = load_icon_image(shell, s);
+	shell_rdp_debug(shell, "RDPRAIL-shell: WSL2_DEFAULT_APP_ICON:%s (loaded:%s)\n",
+		s, shell->image_default_app_icon ? "yes" : "no");
+
+	/* default overlay icon path is provided from WSL via enviromment variable */
+	s = getenv("WSL2_DEFAULT_APP_OVERLAY_ICON");
+	if (s && (strcmp(s, "disabled") != 0))
+		shell->image_default_app_overlay_icon = load_icon_image(shell, s);
+	shell_rdp_debug(shell, "RDPRAIL-shell: WSL2_DEFAULT_APP_OVERLAY_ICON:%s (loaded:%s)\n",
+		s, shell->image_default_app_overlay_icon ? "yes" : "no");
+
+	shell->is_appid_with_distro_name = read_rdpshell_config_bool(
+		"WESTON_RDPRAIL_SHELL_APPEND_DISTRONAME_STARTMENU", true);
+	shell_rdp_debug(shell, "RDPRAIL-shell: WESTON_RDPRAIL_SHELL_APPEND_DISTRONAME_STARTMEN:%d\n",
+		shell->is_appid_with_distro_name);
+
+	shell->is_blend_overlay_icon_app_list = read_rdpshell_config_bool(
+		"WESTON_RDPRAIL_SHELL_BLEND_OVERLAY_ICON_APPLIST", true);
+	shell_rdp_debug(shell, "RDPRAIL-shell: WESTON_RDPRAIL_SHELL_BLEND_OVERLAY_ICON_APPLIST:%d\n",
+		shell->is_blend_overlay_icon_app_list);
+
+	shell->is_blend_overlay_icon_taskbar = read_rdpshell_config_bool(
+		"WESTON_RDPRAIL_SHELL_BLEND_OVERLAY_ICON_TASKBAR", true);
+	shell_rdp_debug(shell, "RDPRAIL-shell: WESTON_RDPRAIL_SHELL_BLEND_OVERLAY_ICON_TASKBAR:%d\n",
+		shell->is_blend_overlay_icon_taskbar);
 
 	shell->workspaces.num = 1;
 }
@@ -4381,7 +4443,6 @@ wet_shell_init(struct weston_compositor *ec,
 	unsigned int i;
 	struct wl_event_loop *loop;
 	char *debug_level;
-	char *icon_path;
 
 	shell = zalloc(sizeof *shell);
 	if (shell == NULL)
@@ -4476,46 +4537,6 @@ wet_shell_init(struct weston_compositor *ec,
 	shell_add_bindings(ec, shell);
 
 	clock_gettime(CLOCK_MONOTONIC, &shell->startup_time);
-
-	shell->distroName = getenv("WSL2_DISTRO_NAME");
-	if (!shell->distroName)
-		shell->distroName = getenv("WSL_DISTRO_NAME");
-	if (shell->distroName) {
-		shell->distroNameLength = strlen(shell->distroName);
-		shell_rdp_debug(shell, "%s: distro name %s (%ld)\n",
-			__func__, shell->distroName, shell->distroNameLength);
-	}
-
-	if (getenv("WESTON_RDPRAIL_SHELL_DISABLE_APPEND_DISTRONAME_STARTMENU"))
-		shell->is_appid_with_distro_name = false;
-	else
-		shell->is_appid_with_distro_name = true;
-	shell_rdp_debug(shell, "WESTON_RDPRAIL_SHELL_DISABLE_APPEND_DISTRONAME_STARTMEN:%d\n",
-		shell->is_appid_with_distro_name);
-
-	icon_path = getenv("WSL2_DEFAULT_APP_ICON");
-	if (icon_path && (strcmp(icon_path, "disabled") != 0))
-		shell->image_default_app_icon = load_icon_image(shell, icon_path);
-	shell_rdp_debug(shell, "WSL2_DEFAULT_APP_ICON:%s\n", icon_path);
-
-	icon_path = getenv("WSL2_DEFAULT_APP_OVERLAY_ICON");
-	if (icon_path && (strcmp(icon_path, "disabled") != 0))
-		shell->image_default_app_overlay_icon = load_icon_image(shell, icon_path);
-	shell_rdp_debug(shell, "WSL2_DEFAULT_APP_OVERLAY_ICON:%s\n", icon_path);
-
-	if (getenv("WESTON_RDPRAIL_SHELL_DISABLE_BLEND_OVERLAY_ICON_TASKBAR"))
-		shell->is_blend_overlay_icon_taskbar = false;
-	else
-		shell->is_blend_overlay_icon_taskbar = true;
-	shell_rdp_debug(shell, "WESTON_RDPRAIL_SHELL_DISABLE_BLEND_OVERLAY_ICON_TASKBAR:%d\n",
-		shell->is_blend_overlay_icon_taskbar);
-
-	if (getenv("WESTON_RDPRAIL_SHELL_DISABLE_BLEND_OVERLAY_ICON_APPLIST"))
-		shell->is_blend_overlay_icon_app_list = false;
-	else
-		shell->is_blend_overlay_icon_app_list = true;
-	shell_rdp_debug(shell, "WESTON_RDPRAIL_SHELL_DISABLE_BLEND_OVERLAY_ICON_APPLIST:%d\n",
-		shell->is_blend_overlay_icon_app_list);
 
 	if (shell->rdprail_api->shell_initialize_notify)
 		shell->rdp_backend = shell->rdprail_api->shell_initialize_notify(ec, &rdprail_shell_api, (void*)shell, shell->distroName);
