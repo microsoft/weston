@@ -2134,7 +2134,8 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 		copyBufferStride = copyBufferWidth * bufferBpp;
 		copyBufferSize = ((copyBufferStride * copyBufferHeight) + page_size - 1) & ~(page_size - 1);
 
-		if (copyBufferWidth && copyBufferHeight) {
+		if (contentBufferWidth && contentBufferHeight &&
+			copyBufferWidth && copyBufferHeight) {
 #ifdef HAVE_FREERDP_GFXREDIR_H
 			if (b->use_gfxredir) {
 				scaleFactorWidth = 1.0f; // scaling is done by client.
@@ -2306,7 +2307,11 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 					copyDamageWidth, copyDamageHeight,
 					damageBox.x1, damageBox.y1, damageWidth, damageHeight,
 					false /* y-flip */, true /* is_argb */) < 0) {
-					rdp_debug_error(b, "weston_surface_copy_content failed for windowId:0x%x\n",window_id);
+					rdp_debug_error(b,
+						"weston_surface_copy_content failed for windowId:0x%x, copyBuffer:%dx%d %d, damage:(%d,%d) %dx%d, content:%dx%d\n",
+						window_id, copyDamageWidth, copyDamageHeight, copyBufferSize,
+						damageBox.x1, damageBox.y1, damageWidth, damageHeight,
+						contentBufferWidth, contentBufferHeight);
 					return -1;
 				}
 
@@ -2382,7 +2387,9 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 					data, damageSize, 0, 0, 0,
 					damageBox.x1, damageBox.y1, damageWidth, damageHeight,
 					false /* y-flip */, true /* is_argb */) < 0) {
-					rdp_debug_error(b, "weston_surface_copy_content failed for cursor shape\n");
+					rdp_debug_error(b,
+						"weston_surface_copy_content failed for windowId:0x%x, damageSize:%d, damage:(%d,%d) %dx%d, content:%dx%d\n",
+						window_id, damageSize, damageBox.x1, damageBox.y1, damageWidth, damageHeight, contentBufferWidth, contentBufferHeight);
 					free(data);
 					free(alpha);
 					return -1;
