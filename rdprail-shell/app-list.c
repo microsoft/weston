@@ -436,8 +436,10 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 	entry->name = g_key_file_get_locale_string(key_file, GROUP_DESKTOP_ENTRY, "Name", lang_id, NULL);
 	if (!entry->name) {
 		/* name is required */
+		shell_rdp_debug(shell, "desktop file: %s is missing Name key\n", entry->file);
 		goto exit;
-	} if (shell->is_appid_with_distro_name) {
+	}
+	if (shell->is_appid_with_distro_name) {
 		char *t;
 		size_t len = strlen(entry->name);
 		/* 4 = ' ' + '(' + ')' + null */
