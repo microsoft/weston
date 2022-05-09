@@ -376,7 +376,6 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	char *lang_id = context->lang_info.currentClientLanguageId;
 	char *s;
-	char *icon_file;
 	GKeyFile *key_file;
 
 	key_file = g_key_file_new();
@@ -466,10 +465,8 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 	entry->icon = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "Icon", NULL);
 	if (entry->icon) {
 		attach_app_list_namespace(shell);
-		icon_file = find_icon_file(entry->icon);
+		entry->icon_file = find_icon_file(entry->icon);
 		detach_app_list_namespace(shell);
-		if (icon_file)
-			entry->icon_file = icon_file;
 	}
 	g_key_file_free(key_file);
 
