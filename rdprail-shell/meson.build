@@ -12,6 +12,10 @@ if get_option('shell-rdprail')
 	if dep_librsvg.found()
 		config_h.set('HAVE_LIBRSVG2', '1')
 	endif
+	dep_glib = dependency('glib-2.0', version : '>= 2.0.0', required: false)
+	if dep_glib.found()
+		config_h.set('HAVE_GLIB', 1)
+	endif
 	srcs_shell_rdprail = [
 		'shell.c',
 		'input-panel.c',
@@ -30,6 +34,7 @@ if get_option('shell-rdprail')
 		dep_libweston_public,
 		dep_librsvg,
 		dep_winpr,
+		dep_glib,
 	]
 	plugin_shell_rdprail = shared_library(
 		'rdprail-shell',

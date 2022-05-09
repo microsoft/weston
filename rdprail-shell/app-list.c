@@ -50,7 +50,11 @@
 #include "shell.h"
 #include "shared/helpers.h"
 
-#ifdef HAVE_WINPR
+#if HAVE_GLIB
+#include <glib.h>
+#endif
+
+#if HAVE_WINPR
 #include <winpr/version.h>
 #include <winpr/crt.h>
 #include <winpr/tchar.h>
@@ -58,6 +62,11 @@
 #include <winpr/synch.h>
 #include <winpr/thread.h>
 #include <winpr/file.h>
+#endif
+
+#define GROUP_DESKTOP_ENTRY "Desktop Entry"
+
+#if HAVE_GLIB && HAVE_WINPR
 
 #define NUM_CONTROL_EVENT 5
 
@@ -345,7 +354,7 @@ send_app_entry(struct desktop_shell *shell, char *key, struct app_entry *entry,
 		pixman_image_unref(app_list_data.appIcon);
 }
 
-static char *
+static void
 trim_command_exec(char *s)
 {
 	/* https://specifications.freedesktop.org/desktop-entry-spec/desktop-entry-spec-1.1.html
@@ -359,47 +368,6 @@ trim_command_exec(char *s)
 			*(p+1) == 'F' || *(p+1) == 'U')
 			*p = '\0';
 	}
-	return s;
-}
-
-static int
-app_list_config_section_get_string_by_language_id(
-	struct weston_config_section *section,
-	const char *base_key,
-	char **value,
-	const char *default_value,
-	const char *lang_id)
-{
-	char key[32];
-	char *patch;
-
-	if (lang_id && *lang_id != '\0') {
-		/* append language code and contry code to base key, such as Key[zh_TW] */
-		copy_string(key, sizeof key, base_key);
-		append_string(key, sizeof key, "[");
-		append_string(key, sizeof key, lang_id);
-		append_string(key, sizeof key, "]");
-
-		/* first, try language code and country code, such as Key[zh_CN] */
-		if (weston_config_section_get_string(section,
-				key, value, default_value) == 0)
-			return 0;
-
-		/* second, try language code only, such as Key[ja] */
-		if (strchr(lang_id, '_')) {
-			patch = strrchr(key, '_');
-			assert(patch);
-			*patch++ = ']';
-			*patch = '\0';
-			if (weston_config_section_get_string(section,
-					key, value, default_value) == 0)
-				return 0;
-		}
-	}
-
-	/* finally try with base key only without language/country code */
-	return weston_config_section_get_string(section,
-		base_key, value, default_value);
 }
 
 static bool
@@ -407,122 +375,118 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 {
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	char *lang_id = context->lang_info.currentClientLanguageId;
-	struct weston_config *config;
-	struct weston_config_section *section;
 	char *s;
 	char *icon_file;
-	bool is_terminal, is_no_display;
+	GKeyFile *key_file;
+
+	key_file = g_key_file_new();
+	if (!key_file)
+		return false;
 
 	entry->shell = shell;
 
 	entry->file = strdup(file);
 	if (!entry->file)
-		return false;
+		goto exit;
 
 	attach_app_list_namespace(shell);
-	config = weston_config_parse(file);
+	if (!g_key_file_load_from_file(key_file, file, G_KEY_FILE_NONE, NULL)) {
+		shell_rdp_debug(shell, "desktop file: %s is failed to be loaded\n", entry->file);
+		detach_app_list_namespace(shell);
+		goto exit;
+	}
 	detach_app_list_namespace(shell);
 
-	if (config) {
-		section = weston_config_get_section(config,
-			 "Desktop Entry", NULL, NULL);
-		if (!section)
-			return false;
-		if (weston_config_section_get_string(section,
-			 "Type", &s, NULL) == 0) {
-			if (strcmp(s, "Application") != 0) {
-				shell_rdp_debug(shell, "desktop file: %s is not app (%s)\n", entry->file, s);
-				free(s);
-				return false; // not application.
-			}
-			free(s);
-		}
-		if (weston_config_section_get_bool(section,
-			 "NoDisplay", &is_no_display, false) == 0) {
-			if (is_no_display) {
-				shell_rdp_debug(shell, "desktop file: %s has NoDisplay specified\n", entry->file);
-				return false; // terminal based app is not included.
-			}
-		}
-		if (weston_config_section_get_bool(section,
-			 "Terminal", &is_terminal, false) == 0) {
-			if (is_terminal) {
-				shell_rdp_debug(shell, "desktop file: %s is terminal based app\n", entry->file);
-				return false; // terminal based app is not included.
-			}
-		}
-		/*TODO: OnlyShowIn/NotShowIn support for WSL environment. */
-		/*      Need $XDG_CURRENT_DESKTOP keyword for WSL GUI environment */
-		if (weston_config_section_get_string(section,
-			 "OnlyShowIn", &s, NULL) == 0) {
-			shell_rdp_debug(shell, "desktop file: %s has OnlyShowIn %s\n", entry->file, s);
-			free(s);
-			return false; // terminal based app is not included.
-		}
-		if (app_list_config_section_get_string_by_language_id(section,
-			 "Name", &s, NULL, lang_id) == 0) {
-			if (shell->is_appid_with_distro_name) {
-				char *t;
-				size_t len = strlen(s);
-				/* 4 = ' ' + '(' + ')' + null */
-				len += (4 + shell->distroNameLength);
-				t = zalloc(len);
-				if (t) {
-					copy_string(t, len, s);
-					append_string(t, len, " (");
-					append_string(t, len, shell->distroName);
-					append_string(t, len, ")");
-					entry->name = t;
-					free(s);
-				} else {
-					entry->name = s;
-				}
-			} else {
-				entry->name = s;
-			}
-		} else {
-			/* name is required */
-			return false;
-		}
-		if (weston_config_section_get_string(section,
-			 "Exec", &s, NULL) == 0) {
-			entry->exec = trim_command_exec(s);
-		} else {
-			/* exec is required */
-			return false;
-		}
-		if (weston_config_section_get_string(section,
-			 "TryExec", &s, NULL) == 0) {
-			entry->try_exec = trim_command_exec(s);
-		}
-		if (weston_config_section_get_string(section,
-			 "Path", &s, NULL) == 0) {
-			entry->working_dir = s;
-		}
-		if (weston_config_section_get_string(section,
-			 "Icon", &s, NULL) == 0) {
-			entry->icon = s;
-
-			attach_app_list_namespace(shell);
-			icon_file = find_icon_file(s);
-			detach_app_list_namespace(shell);
-
-			if (icon_file)
-				entry->icon_file = icon_file;
-		}
-		weston_config_destroy(config);
-
-		shell_rdp_debug(shell, "desktop file: %s\n", entry->file);
-		shell_rdp_debug(shell, "    Name[%s]:%s\n", lang_id, entry->name);
-		shell_rdp_debug(shell, "    Exec:%s\n", entry->exec);
-		shell_rdp_debug(shell, "    TryExec:%s\n", entry->try_exec);
-		shell_rdp_debug(shell, "    WorkingDir:%s\n", entry->working_dir);
-		shell_rdp_debug(shell, "    Icon name:%s\n", entry->icon);
-		shell_rdp_debug(shell, "    Icon file:%s\n", entry->icon_file);
-
-		return true;
+	if (!g_key_file_has_group(key_file, GROUP_DESKTOP_ENTRY)) {
+		shell_rdp_debug(shell, "desktop file: %s is missing %s section\n",
+			entry->file, GROUP_DESKTOP_ENTRY);
+		goto exit;
 	}
 
+	if (g_key_file_get_boolean(key_file, GROUP_DESKTOP_ENTRY, "Hidden", NULL)) {
+		shell_rdp_debug(shell, "desktop file: %s is hidden\n",
+			entry->file);
+		goto exit;
+	}
+
+	s = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "Type", NULL);
+	if (s) {
+		if (strcmp(s, "Application") != 0) {
+			shell_rdp_debug(shell, "desktop file: %s is not app (%s)\n", entry->file, s);
+			free(s);
+			goto exit;
+		}
+		free(s);
+	}
+	if (g_key_file_get_boolean(key_file, GROUP_DESKTOP_ENTRY, "NoDisplay", NULL)) {
+		shell_rdp_debug(shell, "desktop file: %s has NoDisplay specified\n", entry->file);
+		goto exit; // NoDisplay app is not included.
+	}
+	if (g_key_file_get_boolean(key_file, GROUP_DESKTOP_ENTRY, "Terminal", NULL)) {
+		shell_rdp_debug(shell, "desktop file: %s is terminal based app\n", entry->file);
+		goto exit; // terminal based app is not included.
+	}
+	/*TODO: OnlyShowIn/NotShowIn support for WSL environment. */
+	/*      Need $XDG_CURRENT_DESKTOP keyword for WSL GUI environment */
+	s = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "OnlyShowIn", NULL);
+	if (s) {
+		shell_rdp_debug(shell, "desktop file: %s has OnlyShowIn %s\n", entry->file, s);
+		free(s);
+		goto exit;
+	}
+	entry->name = g_key_file_get_locale_string(key_file, GROUP_DESKTOP_ENTRY, "Name", lang_id, NULL);
+	if (!entry->name) {
+		/* name is required */
+		goto exit;
+	} if (shell->is_appid_with_distro_name) {
+		char *t;
+		size_t len = strlen(entry->name);
+		/* 4 = ' ' + '(' + ')' + null */
+		len += (4 + shell->distroNameLength);
+		t = zalloc(len);
+		if (t) {
+			copy_string(t, len, entry->name);
+			append_string(t, len, " (");
+			append_string(t, len, shell->distroName);
+			append_string(t, len, ")");
+			free(entry->name);
+			entry->name = t;
+		}
+	}
+	entry->exec = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "Exec", NULL);
+	if (!entry->exec) {
+		shell_rdp_debug(shell, "desktop file: %s is missing Exec key\n", entry->file);
+		goto exit;
+	}
+	trim_command_exec(entry->exec);
+	entry->try_exec = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "TryExec", NULL);
+	if (entry->try_exec)
+		trim_command_exec(entry->try_exec);
+	entry->working_dir = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "Path", NULL);
+	entry->icon = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "Icon", NULL);
+	if (entry->icon) {
+		attach_app_list_namespace(shell);
+		icon_file = find_icon_file(entry->icon);
+		detach_app_list_namespace(shell);
+		if (icon_file)
+			entry->icon_file = icon_file;
+	}
+	g_key_file_free(key_file);
+
+	shell_rdp_debug(shell, "desktop file: %s\n", entry->file);
+	shell_rdp_debug(shell, "    Name[%s]:%s\n", lang_id, entry->name);
+	shell_rdp_debug(shell, "    Exec:%s\n", entry->exec);
+	shell_rdp_debug(shell, "    TryExec:%s\n", entry->try_exec);
+	shell_rdp_debug(shell, "    WorkingDir:%s\n", entry->working_dir);
+	shell_rdp_debug(shell, "    Icon name:%s\n", entry->icon);
+	shell_rdp_debug(shell, "    Icon file:%s\n", entry->icon_file);
+
+	return true;
+
+exit:
+	g_key_file_free(key_file);
+
+	/* caller will clean up partially filled entry upon returning false */
 	return false;
 }
 
@@ -1181,11 +1145,11 @@ stop_app_list_monitor(struct desktop_shell *shell)
 	assert(context->weston_pidfd <= 0);
 	assert(context->app_list_pidfd <= 0);
 }
-#endif // HAVE_WINPR
+#endif // HAVE_WINPR && HAVE_GLIB
 
 pixman_image_t* app_list_load_icon_file(struct desktop_shell *shell, const char *key)
 {
-#ifdef HAVE_WINPR
+#if HAVE_WINPR && HAVE_GLIB
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	pixman_image_t* image = NULL;
 
@@ -1213,7 +1177,7 @@ pixman_image_t* app_list_load_icon_file(struct desktop_shell *shell, const char 
 
 void app_list_find_image_name(struct desktop_shell *shell, pid_t pid, char *image_name, size_t image_name_size, bool is_wayland)
 {
-#ifdef HAVE_WINPR
+#if HAVE_WINPR && HAVE_GLIB
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 
 	if (context) {
@@ -1242,7 +1206,7 @@ void app_list_find_image_name(struct desktop_shell *shell, pid_t pid, char *imag
 
 bool app_list_start_backend_update(struct desktop_shell *shell, char *clientLanguageId)
 {
-#ifdef HAVE_WINPR
+#if HAVE_WINPR && HAVE_GLIB
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	if (context) {
 		if (!clientLanguageId || *clientLanguageId == '\0')
@@ -1259,7 +1223,7 @@ bool app_list_start_backend_update(struct desktop_shell *shell, char *clientLang
 
 void app_list_stop_backend_update(struct desktop_shell *shell)
 {
-#ifdef HAVE_WINPR
+#if HAVE_WINPR && HAVE_GLIB
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	if (context) {
 		SetEvent(context->stopRdpNotifyEvent);
@@ -1272,7 +1236,7 @@ void app_list_stop_backend_update(struct desktop_shell *shell)
 
 void app_list_init(struct desktop_shell *shell)
 {
-#ifdef HAVE_WINPR
+#if HAVE_WINPR && HAVE_GLIB
 	struct app_list_context *context;
 	wHashTable* table;
 #if WINPR_VERSION_MAJOR >= 3
@@ -1329,12 +1293,12 @@ void app_list_init(struct desktop_shell *shell)
 	start_app_list_monitor(shell);
 #else
 	shell->app_list_context = NULL;
-#endif // HAVE_WINPR
+#endif // HAVE_WINPR && HAVE_GLIB
 }
 
 void app_list_destroy(struct desktop_shell *shell)
 {
-#ifdef HAVE_WINPR
+#if HAVE_WINPR && HAVE_GLIB
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	wHashTable* table;
 	int count;
@@ -1360,5 +1324,5 @@ void app_list_destroy(struct desktop_shell *shell)
 	}
 #else
 	assert(!shell->app_list_context);
-#endif // HAVE_WINPR
+#endif // HAVE_WINPR && HAVE_GLIB
 }
