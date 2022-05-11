@@ -938,8 +938,6 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 	freerdp_peer *client = (freerdp_peer *) source->context;
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = peerCtx->rdpBackend;
-	struct weston_seat *seat = peerCtx->item.seat;
-	struct wl_event_loop *loop = wl_display_get_event_loop(seat->compositor->wl_display);
 	void *data_to_write;
 	size_t data_size;
 	ssize_t size;
@@ -952,10 +950,6 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 	assert(source->data_source_fd == fd);
 	/* this data source must be tracked as inflight */
 	assert(source == peerCtx->clipboard_inflight_client_data_source);
-
-	/* remove event source now, and if write is failed with EAGAIN, queue back to display loop. */ 
-	wl_event_source_remove(source->transfer_event_source);
-	source->transfer_event_source = NULL;
 
 	if (source->is_canceled) {
 		/* if source is being canceled, this must be the last reference */
@@ -989,17 +983,10 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 						__func__, source, clipboard_data_source_state_to_string(source), strerror(errno));
 					break;
 				}
-				/* buffer is full, schedule write for next chunk. */
+				/* buffer is full, wait until data_source_fd is writable again */
 				source->inflight_data_to_write = data_to_write;
 				source->inflight_data_size = data_size;
 				source->inflight_write_count++;
-				if (!rdp_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
-					clipboard_data_source_write, source, &source->transfer_event_source)) {
-					source->state = RDP_CLIPBOARD_SOURCE_FAILED;
-					rdp_debug_clipboard_error(b, "RDP %s (%p:%s) rdp_event_loop_add_fd failed\n",
-						__func__, source, clipboard_data_source_state_to_string(source));
-					break;
-				}
 				return 0;
 			} else {
 				assert(data_size >= (size_t)size);
@@ -1020,8 +1007,13 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 			__func__, source, clipboard_data_source_state_to_string(source));
 	}
 
+	/* Here write is either completed, cancelled or failed, thus close pipe. */
 	close(source->data_source_fd);
 	source->data_source_fd = -1;
+	/* and remove event source. */
+	wl_event_source_remove(source->transfer_event_source);
+	source->transfer_event_source = NULL;
+	/* and reset the inflight transfer state. */
 	source->inflight_write_count = 0;
 	source->inflight_data_to_write = NULL;
 	source->inflight_data_size = 0;
