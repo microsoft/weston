@@ -540,20 +540,6 @@ to_weston_coordinate(RdpPeerContext *peerContext, int32_t *x, int32_t *y, uint32
 	return NULL;
 }
 
-/* TO BE REMOVED */
-static inline int32_t
-to_client_x(RdpPeerContext *peer, int32_t x)
-{
-	return x + peer->regionClientHeads.extents.x1;
-}
-
-/* TO BE REMOVED */
-static inline int32_t
-to_client_y(RdpPeerContext *peer, int32_t y)
-{
-	return y + peer->regionClientHeads.extents.y1;
-}
-
 static inline void
 to_client_scale_only(RdpPeerContext *peer, struct weston_output *output, float scale, int *x, int *y)
 {

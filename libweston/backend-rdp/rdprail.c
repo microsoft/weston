@@ -389,7 +389,7 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 	pixman_rectangle32_t windowMoveRect;
 	struct weston_geometry windowGeometry;
 
-	rdp_debug(b, "Client: WindowMove: WindowId:0x0x at (%d, %d) %dx%d\n", 
+	rdp_debug(b, "Client: WindowMove: WindowId:0x%x at (%d,%d) %dx%d\n", 
 		windowMove->windowId,
 		windowMove->left,
 		windowMove->top,
@@ -426,7 +426,6 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 				windowMoveRect.y,
 				windowMoveRect.width,
 				windowMoveRect.height);
-			rdp_debug(b, "Surface Size (%d, %d)\n", surface->width, surface->height);
 		}
 	}
 
@@ -1356,7 +1355,7 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 	/* windowId can be assigned only after activation completed */
 	if (!rdp_id_manager_allocate_id(&peerCtx->windowId, (void*)surface, &window_id)) {
 		rail_state->error = true;
-		rdp_debug_error(b, "CreateWindow(): fail to insert windowId (windowId:%d surface:%p.\n",
+		rdp_debug_error(b, "CreateWindow(): fail to insert windowId (windowId:0x%x surface:%p).\n",
 				 window_id, surface);
 		return;
 	}
@@ -3099,6 +3098,7 @@ rdp_rail_start_window_move(
 {
 	struct weston_compositor *compositor = surface->compositor;
 	struct weston_surface_rail_state *rail_state = (struct weston_surface_rail_state *)surface->backend_state;
+	struct weston_geometry windowGeometry = {.x = 0, .y = 0, .width = surface->width, .height = surface->height};
 	struct rdp_backend *b = (struct rdp_backend*)compositor->backend;
 	RdpPeerContext *peerCtx = (RdpPeerContext *)b->rdp_peer->context;;
 	RAIL_MINMAXINFO_ORDER minmax_order;
@@ -3125,11 +3125,27 @@ rdp_rail_start_window_move(
 		rdp_debug_verbose(b, "%s: surface has no view (windowId:0x%x)\n", __func__, rail_state->window_id);
 	}
 
-	/* TODO: HI-DPI MULTIMON */
+	if (!b->enable_window_shadow_remoting &&
+		b->rdprail_shell_api &&
+		b->rdprail_shell_api->get_window_geometry) {
+		b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
+		posX += windowGeometry.x;
+		posY += windowGeometry.y;
+	}
+
+	/* apply global to output transform, and translate to client coordinate */
+	if (surface->output) {
+		to_client_coordinate(peerCtx, surface->output,
+			&posX, &posY, &minSize.width, &minSize.height);
+		to_client_coordinate(peerCtx, surface->output,
+			&pointerGrabX, &pointerGrabY, &maxSize.width, &maxSize.height);
+	}
 
 	rdp_debug(b, "====================== StartWindowMove =============================\n");	
-	rdp_debug(b, "WindowsPosition - Pre-move (%d, %d, %d, %d).\n",
-		to_client_x(peerCtx, posX), to_client_y(peerCtx, posY), surface->width, surface->height);
+	rdp_debug(b, "WindowsPosition: Pre-move (%d,%d) at client.\n", posX, posY);
+	rdp_debug(b, "pointerGrab: (%d,%d)\n", pointerGrabX, pointerGrabY);
+	rdp_debug(b, "minSize: (%dx%d)\n", minSize.width, minSize.height);
+	rdp_debug(b, "maxSize: (%dx%d)\n", maxSize.width, maxSize.height);
 
 	/* Inform the RDP client about the minimum/maximum width and height allowed
 	 * on this window.
@@ -3144,11 +3160,12 @@ rdp_rail_start_window_move(
 	minmax_order.maxTrackWidth = maxSize.width;
 	minmax_order.maxTrackHeight = maxSize.height;
 
-	rdp_debug(b, "maxPosX: %d, maxPosY: %d, maxWidth: %d, maxHeight: %d, minTrackWidth: %d, minTrackHeight: %d, maxTrackWidth: %d, maxTrackHeight: %d\n", 
+	rdp_debug(b, "Minmax order: maxPosX:%d, maxPosY:%d, maxWidth:%d, maxHeight:%d\n",
 		minmax_order.maxPosX, 
 		minmax_order.maxPosY,
 		minmax_order.maxWidth,
-		minmax_order.maxHeight,
+		minmax_order.maxHeight);
+	rdp_debug(b, "Minmax order: minTrackWidth:%d, minTrackHeight:%d, maxTrackWidth:%d, maxTrackHeight:%d\n", 
 		minmax_order.minTrackWidth,
 		minmax_order.minTrackHeight,
 		minmax_order.maxTrackWidth,
@@ -3165,10 +3182,17 @@ rdp_rail_start_window_move(
 	move_order.posX = pointerGrabX - posX;
 	move_order.posY = pointerGrabY - posY;
 
-	rdp_debug(b, "posX: %d, posY: %d \n", move_order.posX, move_order.posY);
+	rdp_debug(b, "Move order: windowId:0x%x, isMoveSizeStart:%d, moveType:%d, pos:(%d,%d)\n", 
+		move_order.windowId,
+		move_order.isMoveSizeStart,
+		move_order.moveSizeType,
+		move_order.posX,
+		move_order.posY);
 
 	peerCtx->rail_server_context->ServerLocalMoveSize(
 					peerCtx->rail_server_context, &move_order);
+
+	rdp_debug(b, "====================== StartWindowMove =============================\n");	
 }
 
 void
@@ -3176,6 +3200,7 @@ rdp_rail_end_window_move(struct weston_surface* surface)
 {
 	struct weston_compositor *compositor = surface->compositor;
 	struct weston_surface_rail_state *rail_state = (struct weston_surface_rail_state *)surface->backend_state;
+	struct weston_geometry windowGeometry = {.x = 0, .y = 0, .width = surface->width, .height = surface->height};
 	struct rdp_backend *b = (struct rdp_backend*)compositor->backend;
 	RdpPeerContext *peerCtx = NULL;
 	RAIL_LOCALMOVESIZE_ORDER move_order;
@@ -3194,8 +3219,8 @@ rdp_rail_end_window_move(struct weston_surface* surface)
 	struct weston_view *view;
 	wl_list_for_each(view, &surface->views, surface_link) {
 		numViews++;
-		posX = to_client_x(peerCtx, view->geometry.x);
-		posY = to_client_y(peerCtx, view->geometry.y);
+		posX = view->geometry.x;
+		posY = view->geometry.y;
 		break;
 	}
 	if (numViews == 0) {
@@ -3203,18 +3228,38 @@ rdp_rail_end_window_move(struct weston_surface* surface)
 		rdp_debug_verbose(b, "%s: surface has no view (windowId:0x%x)\n", __func__, rail_state->window_id);
 	}
 
-	/* TODO: HI-DPI MULTIMON */
+	if (!b->enable_window_shadow_remoting &&
+		b->rdprail_shell_api &&
+		b->rdprail_shell_api->get_window_geometry) {
+		b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
+		posX += windowGeometry.x;
+		posY += windowGeometry.y;
+	}
+
+	/* apply global to output transform, and translate to client coordinate */
+	if (surface->output)
+		to_client_coordinate(peerCtx, surface->output,
+			&posX, &posY, NULL, NULL);
+
+	rdp_debug(b, "====================== EndWindowMove =============================\n");
+	rdp_debug(b, "WindowsPosition: Post-move (%d,%d) at client.\n", posX, posY);
 
 	move_order.windowId = rail_state->window_id;
 	move_order.isMoveSizeStart = false;
 	move_order.moveSizeType = RAIL_WMSZ_MOVE;
 	move_order.posX = posX;
-	move_order.posY = posY;	
+	move_order.posY = posY;
+
+	rdp_debug(b, "Move order: windowId:0x%x, isMoveSizeStart:%d, moveType:%d, pos:(%d,%d)\n", 
+		move_order.windowId,
+		move_order.isMoveSizeStart,
+		move_order.moveSizeType,
+		move_order.posX,
+		move_order.posY);
 
 	peerCtx->rail_server_context->ServerLocalMoveSize(
 		peerCtx->rail_server_context, &move_order);
 
-	rdp_debug(b, "WindowsPosition - Post-move (%d, %d, %d, %d).\n", posX, posY, surface->width, surface->height);
 	rdp_debug(b, "====================== EndWindowMove =============================\n");
 }
 
