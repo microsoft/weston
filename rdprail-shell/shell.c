@@ -2744,8 +2744,14 @@ shell_backend_request_window_move(struct weston_surface *surface, int x, int y, 
 	}
 
 	assert(!shsurf->snapped.is_maximized_requested);
+
+	if (surface->width != width || surface->height != height) {
+		//TODO: support window resize (width x height)
+		shell_rdp_debug(shsurf->shell, "%s: surface:%p is resized (%dx%d) -> (%d,%d)\n",
+			__func__, surface, surface->width, surface->height, width, height);
+	}
+
 	weston_view_set_position(view, x, y);
-	//TODO: support window resize (width x height)
 }
 
 static void
@@ -2810,11 +2816,10 @@ shell_backend_request_window_snap(struct weston_surface *surface, int x, int y, 
 			height = min_size.height;
 		else if (max_size.width > 0 && width > max_size.width)
 			width = max_size.width;
-		
-		weston_desktop_surface_set_size(desktop_surface, width, height);
 
-		x -= surface->input.extents.x1;
-		y -= surface->input.extents.y1;
+		shell_rdp_debug(shsurf->shell, "%s: surface:%p is resized (%dx%d) -> (%d,%d)\n",
+			__func__, surface, surface->width, surface->height, width, height);
+		weston_desktop_surface_set_size(desktop_surface, width, height);
 	}
 
 	weston_view_set_position(view, x, y);
