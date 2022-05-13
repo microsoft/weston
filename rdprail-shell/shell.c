@@ -1291,8 +1291,8 @@ resize_grab_motion(struct weston_pointer_grab *grab,
 		width = max_size.width;
 	if (height < min_size.height)
 		height = min_size.height;
-	else if (max_size.width > 0 && width > max_size.width)
-		width = max_size.width;
+	else if (max_size.height > 0 && height > max_size.height)
+		height = max_size.height;
 	weston_desktop_surface_set_size(shsurf->desktop_surface, width, height);
 }
 
@@ -2814,8 +2814,8 @@ shell_backend_request_window_snap(struct weston_surface *surface, int x, int y, 
 			width = max_size.width;
 		if (height < min_size.height)
 			height = min_size.height;
-		else if (max_size.width > 0 && width > max_size.width)
-			width = max_size.width;
+		else if (max_size.height > 0 && height > max_size.height)
+			height = max_size.height;
 
 		shell_rdp_debug(shsurf->shell, "%s: surface:%p is resized (%dx%d) -> (%d,%d)\n",
 			__func__, surface, surface->width, surface->height, width, height);
