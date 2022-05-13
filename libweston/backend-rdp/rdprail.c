@@ -3212,9 +3212,10 @@ rdp_rail_sync_window_status(freerdp_peer* client)
 	}
 }
 
-void
+static void
 rdp_rail_start_window_move(
 	struct weston_surface* surface, 
+	uint32_t resizeEdges,
 	int pointerGrabX, 
 	int pointerGrabY,
 	struct weston_size minSize,
@@ -3266,6 +3267,7 @@ rdp_rail_start_window_move(
 
 	rdp_debug(b, "====================== StartWindowMove =============================\n");	
 	rdp_debug(b, "WindowsPosition: Pre-move (%d,%d) at client.\n", posX, posY);
+	rdp_debug(b, "resizeEdges: (%dx%d)\n", resizeEdges);
 	rdp_debug(b, "pointerGrab: (%d,%d)\n", pointerGrabX, pointerGrabY);
 	rdp_debug(b, "minSize: (%dx%d)\n", minSize.width, minSize.height);
 	rdp_debug(b, "maxSize: (%dx%d)\n", maxSize.width, maxSize.height);
@@ -3301,9 +3303,36 @@ rdp_rail_start_window_move(
 	 */ 
 	move_order.windowId = rail_state->window_id;
 	move_order.isMoveSizeStart = true;
-	move_order.moveSizeType = RAIL_WMSZ_MOVE;
-	move_order.posX = pointerGrabX - posX;
-	move_order.posY = pointerGrabY - posY;
+	if (resizeEdges) {
+		switch (resizeEdges) {
+		case WL_SHELL_SURFACE_RESIZE_TOP:
+			move_order.moveSizeType = RAIL_WMSZ_TOP;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_TOP_LEFT:
+			move_order.moveSizeType = RAIL_WMSZ_TOPLEFT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_TOP_RIGHT:
+			move_order.moveSizeType = RAIL_WMSZ_TOPRIGHT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_BOTTOM:
+			move_order.moveSizeType = RAIL_WMSZ_BOTTOM;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_BOTTOM_LEFT:
+			move_order.moveSizeType = RAIL_WMSZ_BOTTOMLEFT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_BOTTOM_RIGHT:
+			move_order.moveSizeType = RAIL_WMSZ_BOTTOMRIGHT;
+			break;
+		default:
+			assert(false);
+		}
+		move_order.posX = pointerGrabX;
+		move_order.posY = pointerGrabY;
+	} else {
+		move_order.moveSizeType = RAIL_WMSZ_MOVE;
+		move_order.posX = pointerGrabX - posX;
+		move_order.posY = pointerGrabY - posY;
+	}
 
 	rdp_debug(b, "Move order: windowId:0x%x, isMoveSizeStart:%d, moveType:%d, pos:(%d,%d)\n", 
 		move_order.windowId,
@@ -3318,8 +3347,8 @@ rdp_rail_start_window_move(
 	rdp_debug(b, "====================== StartWindowMove =============================\n");	
 }
 
-void
-rdp_rail_end_window_move(struct weston_surface* surface)
+static void
+rdp_rail_end_window_move(struct weston_surface* surface, uint32_t resizeEdges, int pointerGrabX, int pointerGrabY)
 {
 	struct weston_compositor *compositor = surface->compositor;
 	struct weston_surface_rail_state *rail_state = (struct weston_surface_rail_state *)surface->backend_state;
@@ -3359,18 +3388,50 @@ rdp_rail_end_window_move(struct weston_surface* surface)
 	}
 
 	/* apply global to output transform, and translate to client coordinate */
-	if (surface->output)
+	if (surface->output) {
 		to_client_coordinate(peerCtx, surface->output,
 			&posX, &posY, NULL, NULL);
+		to_client_coordinate(peerCtx, surface->output,
+			&pointerGrabX, &pointerGrabY, NULL, NULL);
+	}
 
 	rdp_debug(b, "====================== EndWindowMove =============================\n");
 	rdp_debug(b, "WindowsPosition: Post-move (%d,%d) at client.\n", posX, posY);
+	rdp_debug(b, "resizeEdges: (%dx%d)\n", resizeEdges);
+	rdp_debug(b, "pointerGrab: (%d,%d)\n", pointerGrabX, pointerGrabY);
 
 	move_order.windowId = rail_state->window_id;
 	move_order.isMoveSizeStart = false;
-	move_order.moveSizeType = RAIL_WMSZ_MOVE;
-	move_order.posX = posX;
-	move_order.posY = posY;
+	if (resizeEdges) {
+		switch (resizeEdges) {
+		case WL_SHELL_SURFACE_RESIZE_TOP:
+			move_order.moveSizeType = RAIL_WMSZ_TOP;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_TOP_LEFT:
+			move_order.moveSizeType = RAIL_WMSZ_TOPLEFT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_TOP_RIGHT:
+			move_order.moveSizeType = RAIL_WMSZ_TOPRIGHT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_BOTTOM:
+			move_order.moveSizeType = RAIL_WMSZ_BOTTOM;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_BOTTOM_LEFT:
+			move_order.moveSizeType = RAIL_WMSZ_BOTTOMLEFT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_BOTTOM_RIGHT:
+			move_order.moveSizeType = RAIL_WMSZ_BOTTOMRIGHT;
+			break;
+		default:
+			assert(false);
+		}
+		move_order.posX = pointerGrabX;
+		move_order.posY = pointerGrabY;
+	} else {
+		move_order.moveSizeType = RAIL_WMSZ_MOVE;
+		move_order.posX = posX;
+		move_order.posY = posY;
+	}
 
 	rdp_debug(b, "Move order: windowId:0x%x, isMoveSizeStart:%d, moveType:%d, pos:(%d,%d)\n", 
 		move_order.windowId,

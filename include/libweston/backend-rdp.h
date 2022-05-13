@@ -146,12 +146,13 @@ struct weston_rdprail_api {
 	/** Start a local window move operation
 	 */
 	void (*start_window_move)(struct weston_surface *surface, 
-		int pointerGrabX, int pointerGrabY, 
+		uint32_t resizeEdges, int pointerGrabX, int pointerGrabY, 
 		struct weston_size minSize, struct weston_size maxSize);
 
 	/** End local window move operation
 	 */
-	void (*end_window_move)(struct weston_surface *surface);
+	void (*end_window_move)(struct weston_surface *surface,
+		uint32_t resizeEdges, int pointerGrabX, int pointerGrabY);
 
 	/** Set window icon
 	 */

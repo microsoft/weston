@@ -133,6 +133,8 @@ struct desktop_shell {
 	bool is_localmove_supported;
 	bool is_localmove_pending;
 
+	bool is_localresize_supported;
+
 	void *app_list_context;
 	char *distroName;
 	size_t distroNameLength;

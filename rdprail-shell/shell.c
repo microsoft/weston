@@ -209,6 +209,7 @@ struct shell_seat {
 };
 
 static const struct weston_pointer_grab_interface move_grab_interface;
+static const struct weston_pointer_grab_interface resize_grab_interface;
 
 static void set_unsnap(struct shell_surface *shsurf, int grabX, int grabY);
 
@@ -496,9 +497,10 @@ shell_grab_start(struct shell_grab *grab,
 	shsurf->grabbed = 1;
 	weston_pointer_start_grab(pointer, &grab->grab);
 
-	if (shell->is_localmove_supported &&
-		(interface == &move_grab_interface) && 
-		shell->rdprail_api->start_window_move) {
+	if (shell->rdprail_api->start_window_move &&
+	    shell->rdprail_api->end_window_move &&
+	    ((shell->is_localmove_supported && (interface == &move_grab_interface)) ||
+	     (shell->is_localresize_supported && (interface == &resize_grab_interface)))) {
 
 		struct weston_size min_size;
 		struct weston_size max_size;
@@ -509,15 +511,30 @@ shell_grab_start(struct shell_grab *grab,
 
 		min_size = weston_desktop_surface_get_min_size(shsurf->desktop_surface);
 		max_size = weston_desktop_surface_get_max_size(shsurf->desktop_surface);
-		
+
+		min_size.width = MAX(1, min_size.width);
+		min_size.height = MAX(1, min_size.height);
+
 		shell->is_localmove_pending = true;
 
-		shell->rdprail_api->start_window_move(
-			weston_desktop_surface_get_surface(shsurf->desktop_surface),
-			wl_fixed_to_int(pointer->grab_x),
-			wl_fixed_to_int(pointer->grab_y),
-			min_size,
-			max_size);
+		if (interface == &resize_grab_interface) {
+			assert(shsurf->resize_edges);
+			shell->rdprail_api->start_window_move(
+				weston_desktop_surface_get_surface(shsurf->desktop_surface),
+				shsurf->resize_edges,
+				wl_fixed_to_int(pointer->grab_x),
+				wl_fixed_to_int(pointer->grab_y),
+				min_size,
+				max_size);
+		} else if (interface == &move_grab_interface) {
+			shell->rdprail_api->start_window_move(
+				weston_desktop_surface_get_surface(shsurf->desktop_surface),
+				0,
+				wl_fixed_to_int(pointer->grab_x),
+				wl_fixed_to_int(pointer->grab_y),
+				min_size,
+				max_size);
+		}
 	} else if (grab->shsurf->snapped.is_snapped) {
 		/** Cancel snap state on anything but a move grab
 		 */
@@ -536,14 +553,25 @@ shell_grab_end(struct shell_grab *grab)
 		wl_list_remove(&grab->shsurf_destroy_listener.link);
 		grab->shsurf->grabbed = 0;
 
-		if (shell->is_localmove_supported &&
-			(grab->grab.interface == &move_grab_interface) &&
-			shell->rdprail_api->end_window_move) {
-			
+		if (shell->rdprail_api->start_window_move &&
+		    shell->rdprail_api->end_window_move &&
+        	    ((shell->is_localmove_supported && (grab->grab.interface == &move_grab_interface)) ||
+		     (shell->is_localresize_supported && (grab->grab.interface == &resize_grab_interface)))) {
+
+			assert(shell->is_localmove_pending);
+
 			grab->shsurf->snapped.last_grab_x = wl_fixed_to_int(grab->grab.pointer->x);
 			grab->shsurf->snapped.last_grab_y = wl_fixed_to_int(grab->grab.pointer->y);
-			
-			shell->rdprail_api->end_window_move(surface);
+
+			if (grab->grab.interface == &resize_grab_interface) {
+				assert(grab->shsurf->resize_edges);
+				shell->rdprail_api->end_window_move(surface,
+					grab->shsurf->resize_edges,
+					wl_fixed_to_int(grab->grab.pointer->x),
+					wl_fixed_to_int(grab->grab.pointer->y));
+			} else if (grab->grab.interface == &move_grab_interface) {
+				shell->rdprail_api->end_window_move(surface, 0, 0, 0);
+			}
 		}
 
 		if (grab->shsurf->resize_edges) {
@@ -681,6 +709,7 @@ shell_configuration(struct desktop_shell *shell)
 	char *s, *client;
 	bool allow_zap;
 	bool is_localmove_supported;
+	bool is_localresize_supported;
 
 	section = weston_config_get_section(wet_get_config(shell->compositor),
 					    "shell", NULL, NULL);
@@ -711,6 +740,14 @@ shell_configuration(struct desktop_shell *shell)
 		"WESTON_RDPRAIL_SHELL_LOCAL_MOVE", is_localmove_supported);
 	shell->is_localmove_supported = is_localmove_supported;
 	shell_rdp_debug(shell, "RDPRAIL-shell: local-move:%d\n", shell->is_localmove_supported);
+
+	/* default to disable local resize (not fully supported yet */
+	weston_config_section_get_bool(section,
+				       "local-resize", &is_localresize_supported, false);
+	is_localresize_supported = read_rdpshell_config_bool(
+		"WESTON_RDPRAIL_SHELL_LOCAL_RESIZE", is_localresize_supported);
+	shell->is_localresize_supported = is_localresize_supported;
+	shell_rdp_debug(shell, "RDPRAIL-shell: local-resize:%d\n", shell->is_localresize_supported);
 
 	/* distro name is provided from WSL via enviromment variable */
 	shell->distroNameLength = 0;
@@ -1829,13 +1866,18 @@ set_unsnap(struct shell_surface *shsurf, int grabX, int grabY)
 	 * Reposition the window such that the mouse remain within the 
 	 * new bound of the window after resize.
 	 */
-	/* Need to fix RDP event processing while doing a local move first otherwise this undo the move!
+	/* Need to fix RDP event processing while doing a local move first otherwise this undo the move! */
 	if (grabX - shsurf->view->geometry.x > shsurf->snapped.saved_width) {
 		weston_view_set_position(shsurf->view, grabX - shsurf->snapped.saved_width/2, shsurf->view->geometry.y); 
 	}
 
-	weston_desktop_surface_set_size(shsurf->desktop_surface, shsurf->snapped.saved_width, shsurf->snapped.saved_height);*/
+	weston_desktop_surface_set_size(shsurf->desktop_surface, shsurf->snapped.saved_width, shsurf->snapped.saved_height);
 	shsurf->snapped.is_snapped = false;
+
+	shell_rdp_debug(shsurf->shell, "%s: unsnap surface:%p @(%d,%d) %dx%d\n",
+		__func__, shsurf->view->surface,
+		(int)shsurf->view->geometry.x, (int)shsurf->view->geometry.y,
+		shsurf->snapped.saved_width, shsurf->snapped.saved_height);
 }
 
 static struct desktop_shell *
@@ -2156,6 +2198,8 @@ desktop_surface_added(struct weston_desktop_surface *desktop_surface,
 	shsurf->desktop_surface = desktop_surface;
 	shsurf->view = view;
 	shsurf->fullscreen.black_view = NULL;
+	shsurf->snapped.is_snapped = false;
+	shsurf->snapped.is_maximized_requested = false;
 	wl_list_init(&shsurf->fullscreen.transform.link);
 
 	shell_surface_set_output(
@@ -2736,19 +2780,39 @@ shell_backend_request_window_move(struct weston_surface *surface, int x, int y, 
 	struct shell_surface *shsurf = get_shell_surface(surface);
 
 	view = get_default_view(surface);
-	if (!view)
+	if (!view || !shsurf)
 		return;
 
-	if (shsurf && shsurf->shell->is_localmove_pending) {
-		shsurf->shell->is_localmove_pending = false;
-	}
+	shsurf->shell->is_localmove_pending = false;
 
 	assert(!shsurf->snapped.is_maximized_requested);
 
 	if (surface->width != width || surface->height != height) {
-		//TODO: support window resize (width x height)
+		struct weston_desktop_surface *desktop_surface =
+			weston_surface_get_desktop_surface(surface);
+
+		struct weston_size max_size = weston_desktop_surface_get_max_size(desktop_surface);
+		struct weston_size min_size = weston_desktop_surface_get_min_size(desktop_surface);
+		struct weston_geometry geometry = weston_desktop_surface_get_geometry(shsurf->desktop_surface);
+		/* weston_desktop_surface_set_size() expects the size in window geometry coordinates */
+		width -= (surface->width - geometry.width);
+		height -= (surface->height - geometry.height);
+
+		min_size.width = MAX(1, min_size.width);
+		min_size.height = MAX(1, min_size.height);
+
+		if (width < min_size.width)
+			width = min_size.width;
+		else if (max_size.width > 0 && width > max_size.width)
+			width = max_size.width;
+		if (height < min_size.height)
+			height = min_size.height;
+		else if (max_size.height > 0 && height > max_size.height)
+			height = max_size.height;
+
 		shell_rdp_debug(shsurf->shell, "%s: surface:%p is resized (%dx%d) -> (%d,%d)\n",
 			__func__, surface, surface->width, surface->height, width, height);
+		weston_desktop_surface_set_size(desktop_surface, width, height);
 	}
 
 	weston_view_set_position(view, x, y);
@@ -2767,13 +2831,10 @@ shell_backend_request_window_snap(struct weston_surface *surface, int x, int y, 
 	if (!view || !shsurf)
 		return;
 
-	if (shsurf->shell->is_localmove_pending) {
-		shsurf->shell->is_localmove_pending = false;
-	}
+	shsurf->shell->is_localmove_pending = false;
 
-	if (shsurf->state.maximized) {
+	if (shsurf->state.maximized)
 		return;
-	}
 
 	if (shsurf->snapped.is_maximized_requested) {
 		assert(!shsurf->shell->is_localmove_pending);
