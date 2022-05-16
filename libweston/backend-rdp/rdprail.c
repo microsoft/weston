@@ -3267,7 +3267,7 @@ rdp_rail_start_window_move(
 
 	rdp_debug(b, "====================== StartWindowMove =============================\n");	
 	rdp_debug(b, "WindowsPosition: Pre-move (%d,%d) at client.\n", posX, posY);
-	rdp_debug(b, "resizeEdges: (%dx%d)\n", resizeEdges);
+	rdp_debug(b, "resizeEdges: (%d)\n", resizeEdges);
 	rdp_debug(b, "pointerGrab: (%d,%d)\n", pointerGrabX, pointerGrabY);
 	rdp_debug(b, "minSize: (%dx%d)\n", minSize.width, minSize.height);
 	rdp_debug(b, "maxSize: (%dx%d)\n", maxSize.width, maxSize.height);
@@ -3308,17 +3308,23 @@ rdp_rail_start_window_move(
 		case WL_SHELL_SURFACE_RESIZE_TOP:
 			move_order.moveSizeType = RAIL_WMSZ_TOP;
 			break;
-		case WL_SHELL_SURFACE_RESIZE_TOP_LEFT:
-			move_order.moveSizeType = RAIL_WMSZ_TOPLEFT;
-			break;
-		case WL_SHELL_SURFACE_RESIZE_TOP_RIGHT:
-			move_order.moveSizeType = RAIL_WMSZ_TOPRIGHT;
-			break;
 		case WL_SHELL_SURFACE_RESIZE_BOTTOM:
 			move_order.moveSizeType = RAIL_WMSZ_BOTTOM;
 			break;
+		case WL_SHELL_SURFACE_RESIZE_LEFT:
+			move_order.moveSizeType = RAIL_WMSZ_LEFT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_TOP_LEFT:
+			move_order.moveSizeType = RAIL_WMSZ_TOPLEFT;
+			break;
 		case WL_SHELL_SURFACE_RESIZE_BOTTOM_LEFT:
 			move_order.moveSizeType = RAIL_WMSZ_BOTTOMLEFT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_RIGHT:
+			move_order.moveSizeType = RAIL_WMSZ_RIGHT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_TOP_RIGHT:
+			move_order.moveSizeType = RAIL_WMSZ_TOPRIGHT;
 			break;
 		case WL_SHELL_SURFACE_RESIZE_BOTTOM_RIGHT:
 			move_order.moveSizeType = RAIL_WMSZ_BOTTOMRIGHT;
@@ -3397,7 +3403,7 @@ rdp_rail_end_window_move(struct weston_surface* surface, uint32_t resizeEdges, i
 
 	rdp_debug(b, "====================== EndWindowMove =============================\n");
 	rdp_debug(b, "WindowsPosition: Post-move (%d,%d) at client.\n", posX, posY);
-	rdp_debug(b, "resizeEdges: (%dx%d)\n", resizeEdges);
+	rdp_debug(b, "resizeEdges: (%d)\n", resizeEdges);
 	rdp_debug(b, "pointerGrab: (%d,%d)\n", pointerGrabX, pointerGrabY);
 
 	move_order.windowId = rail_state->window_id;
@@ -3407,17 +3413,23 @@ rdp_rail_end_window_move(struct weston_surface* surface, uint32_t resizeEdges, i
 		case WL_SHELL_SURFACE_RESIZE_TOP:
 			move_order.moveSizeType = RAIL_WMSZ_TOP;
 			break;
-		case WL_SHELL_SURFACE_RESIZE_TOP_LEFT:
-			move_order.moveSizeType = RAIL_WMSZ_TOPLEFT;
-			break;
-		case WL_SHELL_SURFACE_RESIZE_TOP_RIGHT:
-			move_order.moveSizeType = RAIL_WMSZ_TOPRIGHT;
-			break;
 		case WL_SHELL_SURFACE_RESIZE_BOTTOM:
 			move_order.moveSizeType = RAIL_WMSZ_BOTTOM;
 			break;
+		case WL_SHELL_SURFACE_RESIZE_LEFT:
+			move_order.moveSizeType = RAIL_WMSZ_LEFT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_TOP_LEFT:
+			move_order.moveSizeType = RAIL_WMSZ_TOPLEFT;
+			break;
 		case WL_SHELL_SURFACE_RESIZE_BOTTOM_LEFT:
 			move_order.moveSizeType = RAIL_WMSZ_BOTTOMLEFT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_RIGHT:
+			move_order.moveSizeType = RAIL_WMSZ_RIGHT;
+			break;
+		case WL_SHELL_SURFACE_RESIZE_TOP_RIGHT:
+			move_order.moveSizeType = RAIL_WMSZ_TOPRIGHT;
 			break;
 		case WL_SHELL_SURFACE_RESIZE_BOTTOM_RIGHT:
 			move_order.moveSizeType = RAIL_WMSZ_BOTTOMRIGHT;
@@ -3841,6 +3853,11 @@ rdp_rail_dump_window_iter(void *element, void *data)
 		wl_list_for_each(base_head, &surface->output->head_list, output_link)
 			print_rdp_head(fp, to_rdp_head(base_head));
 	}
+	/* force sync with client */
+	fprintf(fp,"force sync window state with client.\n");
+	rail_state->forceUpdateWindowState = 1; /* resent window state */
+	weston_surface_damage(surface); /* resend window content */
+	weston_surface_schedule_repaint(surface);
 	fprintf(fp,"\n");
 }
 

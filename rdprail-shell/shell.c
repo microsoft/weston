@@ -1871,7 +1871,10 @@ set_unsnap(struct shell_surface *shsurf, int grabX, int grabY)
 		weston_view_set_position(shsurf->view, grabX - shsurf->snapped.saved_width/2, shsurf->view->geometry.y); 
 	}
 
-	weston_desktop_surface_set_size(shsurf->desktop_surface, shsurf->snapped.saved_width, shsurf->snapped.saved_height);
+	/* Restore saved size in window geometry coordinate */
+	weston_desktop_surface_set_size(shsurf->desktop_surface,
+		shsurf->snapped.saved_width,
+		shsurf->snapped.saved_height);
 	shsurf->snapped.is_snapped = false;
 
 	shell_rdp_debug(shsurf->shell, "%s: unsnap surface:%p @(%d,%d) %dx%d\n",
@@ -2785,7 +2788,25 @@ shell_backend_request_window_move(struct weston_surface *surface, int x, int y, 
 
 	shsurf->shell->is_localmove_pending = false;
 
-	assert(!shsurf->snapped.is_maximized_requested);
+	if (shsurf->snapped.is_maximized_requested) {
+		assert(!shsurf->shell->is_localmove_pending);
+		
+		shsurf->snapped.is_maximized_requested = false;
+
+		/* We may need to pick a new output for the window
+		 * based on the last position of the mouse when the
+		 * grab event finished.
+		 */
+		struct weston_output *output = get_output_containing(surface->compositor, 
+				shsurf->snapped.last_grab_x, 
+				shsurf->snapped.last_grab_y);
+
+		weston_view_set_output(shsurf->view, output);
+		shell_surface_set_output(shsurf, output);
+
+		shell_backend_request_window_maximize(surface);
+		return;
+	}
 
 	if (surface->width != width || surface->height != height) {
 		struct weston_desktop_surface *desktop_surface =
