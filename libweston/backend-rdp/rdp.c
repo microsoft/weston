@@ -882,9 +882,13 @@ out_error_stream:
 static void
 rdp_peer_context_free(freerdp_peer* client, RdpPeerContext* context)
 {
+	struct rdp_backend *b;
 	unsigned i;
+
 	if (!context)
 		return;
+
+	b = context->rdpBackend;
 
 	wl_list_remove(&context->item.link);
 
@@ -893,9 +897,11 @@ rdp_peer_context_free(freerdp_peer* client, RdpPeerContext* context)
 			wl_event_source_remove(context->events[i]);
 	}
 
-	rdp_audioin_destroy(context);
+	if (context->audio_in_private)
+		b->audio_in_teardown(context->audio_in_private);
 
-	rdp_audio_destroy(context);
+	if (context->audio_out_private)
+		b->audio_out_teardown(context->audio_out_private);
 
 	rdp_clipboard_destroy(context);
 
@@ -1197,8 +1203,8 @@ xf_peer_activate(freerdp_peer* client)
 
 	/* override settings by env variables */
 	settings->RedirectClipboard = b->redirect_clipboard;
-	settings->AudioPlayback = b->redirect_audio_playback;
-	settings->AudioCapture = b->redirect_audio_capture;
+	settings->AudioPlayback = b->audio_out_setup && b->audio_out_teardown;
+	settings->AudioCapture = b->audio_in_setup && b->audio_in_teardown;
 
 	if (settings->RemoteApplicationMode ||
 		settings->RedirectClipboard ||
@@ -1218,13 +1224,12 @@ xf_peer_activate(freerdp_peer* client)
 			if (!rdp_rail_peer_activate(client))
 				goto error_exit;
 
+		/* Audio setup will return NULL on failure, and we'll proceed without audio */
 		if (settings->AudioPlayback)
-			if (rdp_audio_init(peerCtx) != 0)
-				goto error_exit;
+			peerCtx->audio_out_private = b->audio_out_setup(b->compositor, peerCtx->vcm);
 
 		if (settings->AudioCapture)
-			if (rdp_audioin_init(peerCtx) != 0)
-				goto error_exit;
+			peerCtx->audio_in_private = b->audio_in_setup(b->compositor, peerCtx->vcm);
 	}
 
 	if (settings->HiDefRemoteApp) {
@@ -1364,8 +1369,10 @@ xf_peer_activate(freerdp_peer* client)
 error_exit:
 
 	rdp_clipboard_destroy(peerCtx);
-	rdp_audioin_destroy(peerCtx);
-	rdp_audio_destroy(peerCtx);
+	if (settings->AudioPlayback && peerCtx->audio_out_private)
+		b->audio_out_teardown(peerCtx->audio_out_private);
+	if (settings->AudioCapture && peerCtx->audio_in_private)
+		b->audio_in_teardown(peerCtx->audio_in_private);
 	rdp_rail_peer_context_free(client, peerCtx);
 	rdp_drdynvc_destroy(peerCtx);
 
@@ -2153,9 +2160,11 @@ rdp_backend_create(struct weston_compositor *compositor,
 	b->no_clients_resize = config->no_clients_resize;
 	b->force_no_compression = config->force_no_compression;
 	b->redirect_clipboard = config->redirect_clipboard;
-	b->redirect_audio_playback = config->redirect_audio_playback;
-	b->redirect_audio_capture = config->redirect_audio_capture;
 	b->rdp_monitor_refresh_rate = config->rdp_monitor_refresh_rate * 1000;
+	b->audio_in_setup = config->audio_in_setup;
+	b->audio_in_teardown = config->audio_in_teardown;
+	b->audio_out_setup = config->audio_out_setup;
+	b->audio_out_teardown = config->audio_out_teardown;
 
 	wl_list_init(&b->output_list);
 	wl_list_init(&b->head_list);
@@ -2338,8 +2347,6 @@ config_init_to_defaults(struct weston_rdp_backend_config *config)
 	config->no_clients_resize = 0;
 	config->force_no_compression = 0;
 	config->redirect_clipboard = false;
-	config->redirect_audio_playback = false;
-	config->redirect_audio_capture = false;
 	config->rdp_monitor_refresh_rate = WESTON_RDP_MODE_FREQ;
 	config->rail_config.use_rdpapplist = false;
 	config->rail_config.use_shared_memory = false;
@@ -2353,6 +2360,10 @@ config_init_to_defaults(struct weston_rdp_backend_config *config)
 	config->rail_config.enable_distro_name_title = false;
 	config->rail_config.enable_copy_warning_title = false;
 	config->rail_config.enable_display_power_by_screenupdate = false;
+	config->audio_in_setup = NULL;
+	config->audio_in_teardown = NULL;
+	config->audio_out_setup = NULL;
+	config->audio_out_teardown = NULL;
 }
 
 WL_EXPORT int

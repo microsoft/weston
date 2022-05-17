@@ -110,8 +110,10 @@ struct rdp_backend {
 	int no_clients_resize;
 	int force_no_compression;
 	bool redirect_clipboard;
-	bool redirect_audio_playback;
-	bool redirect_audio_capture;
+	rdp_audio_in_setup audio_in_setup;
+	rdp_audio_in_teardown audio_in_teardown;
+	rdp_audio_out_setup audio_out_setup;
+	rdp_audio_out_teardown audio_out_teardown;
 
 	const struct weston_rdprail_shell_api *rdprail_shell_api;
 	void *rdprail_shell_context;
@@ -277,35 +279,8 @@ struct rdp_peer_context {
 	pixman_region32_t regionClientHeads;
 	pixman_region32_t regionWestonHeads;
 
-	// Audio support
-	RdpsndServerContext* rdpsnd_server_context;
-	BOOL audioExitSignal;
-	int pulseAudioSinkListenerFd;
-	int pulseAudioSinkFd;
-	pthread_t pulseAudioSinkThread;
-	int bytesPerFrame;
-	UINT audioBufferSize;
-	BYTE* audioBuffer;
-	BYTE lastBlockSent;
-	UINT64 lastNetworkLatency;
-	UINT64 accumulatedNetworkLatency;
-	UINT accumulatedNetworkLatencyCount;
-	UINT64 lastRenderedLatency;
-	UINT64 accumulatedRenderedLatency;
-	UINT accumulatedRenderedLatencyCount;
-	rdp_audio_block_info blockInfo[256];
-	int nextValidBlock;
-	UINT PAVersion;
-
-	// AudioIn support
-	audin_server_context* audin_server_context;
-	BOOL audioInExitSignal;
-	int pulseAudioSourceListenerFd;
-	int pulseAudioSourceFd;
-	int closeAudioSourceFd;
-	int audioInSem;
-	pthread_t pulseAudioSourceThread;
-	BOOL isAudioInStreamOpened;
+	void *audio_in_private;
+	void *audio_out_private;
 
 	// Clipboard support
 	CliprdrServerContext* clipboard_server_context;
@@ -437,14 +412,6 @@ void rdp_rail_end_window_move(struct weston_surface* surface);
 // rdpdisp.c
 UINT disp_client_monitor_layout_change(DispServerContext* context, const DISPLAY_CONTROL_MONITOR_LAYOUT_PDU* displayControl);
 BOOL xf_peer_adjust_monitor_layout(freerdp_peer* client);
-
-// rdpaudio.c
-int rdp_audio_init(RdpPeerContext *peerCtx);
-void rdp_audio_destroy(RdpPeerContext *peerCtx);
-
-// rdpaudioin.c
-int rdp_audioin_init(RdpPeerContext *peerCtx);
-void rdp_audioin_destroy(RdpPeerContext *peerCtx);
 
 // rdpclip.c
 int rdp_clipboard_init(freerdp_peer* client);

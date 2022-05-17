@@ -64,8 +64,6 @@ endif
 srcs_rdp = [
         'hash.c',
         'rdp.c',
-        'rdpaudio.c',
-        'rdpaudioin.c',
         'rdpdisp.c',
         'rdpclip.c',
         'rdprail.c',

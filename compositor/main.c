@@ -66,6 +66,8 @@
 #include "../remoting/remoting-plugin.h"
 #include "../pipewire/pipewire-plugin.h"
 
+#include <rdpaudio.h>
+
 #define WINDOW_TITLE "Weston Compositor"
 /* flight recorder size (in bytes) */
 #define DEFAULT_FLIGHT_REC_SIZE (5 * 1024 * 1024)
@@ -2705,8 +2707,10 @@ weston_rdp_backend_config_init(struct weston_rdp_backend_config *config)
 	config->no_clients_resize = 0;
 	config->force_no_compression = 0;
 	config->redirect_clipboard = false;
-	config->redirect_audio_playback = false;
-	config->redirect_audio_capture = false;
+	config->audio_in_setup = NULL;
+	config->audio_in_teardown = NULL;
+	config->audio_out_setup = NULL;
+	config->audio_out_teardown = NULL;
 	config->rdp_monitor_refresh_rate = WESTON_RDP_MODE_FREQ;
 	config->rail_config.use_rdpapplist = false;
 	config->rail_config.use_shared_memory = false;
@@ -2763,8 +2767,9 @@ load_rdp_backend(struct weston_compositor *c,
 {
 	struct weston_rdp_backend_config config  = {{ 0, }};
 	int ret = 0;
-
 	struct wet_output_config *parsed_options = wet_init_parsed_options(c);
+	bool audio_tmp;
+
 	if (!parsed_options)
 		return -1;
 
@@ -2788,8 +2793,19 @@ load_rdp_backend(struct weston_compositor *c,
 
 	/* certain configurations are read from environment variables */
 	config.redirect_clipboard = read_rdp_config_bool("WESTON_RDP_CLIPBOARD", true);
-	config.redirect_audio_playback = read_rdp_config_bool("WESTON_RDP_AUDIO_PLAYBACK", true);
-	config.redirect_audio_capture = read_rdp_config_bool("WESTON_RDP_AUDIO_CAPTURE", true);
+
+	audio_tmp = read_rdp_config_bool("WESTON_RDP_AUDIO_PLAYBACK", true);
+	if (audio_tmp) {
+		config.audio_out_setup = rdp_audio_out_init;
+		config.audio_out_teardown = rdp_audio_out_destroy;
+	}
+
+	audio_tmp = read_rdp_config_bool("WESTON_RDP_AUDIO_CAPTURE", true);
+	if (audio_tmp) {
+		config.audio_in_setup = rdp_audio_in_init;
+		config.audio_in_teardown = rdp_audio_in_destroy;
+	}
+
 	config.rdp_monitor_refresh_rate = read_rdp_config_int("WESTON_RDP_MONITOR_REFRESH_RATE", WESTON_RDP_MODE_FREQ);
 
 	config.rail_config.use_rdpapplist = read_rdp_config_bool("WESTON_RDP_APPLIST", true);

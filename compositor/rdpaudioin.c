@@ -38,7 +38,9 @@
 #include <poll.h>
 #include <sys/eventfd.h>
 #include <linux/vm_sockets.h>
-#include "rdp.h"
+#include "rdpaudio.h"
+#include <libweston/libweston.h>
+#include <shared/xalloc.h>
 
 static AUDIO_FORMAT rdp_audioin_supported_audio_formats[] = {
 		{ WAVE_FORMAT_PCM, 1, 44100, 88200, 2, 16, 0, NULL },
@@ -266,9 +268,8 @@ AUDIO_FORMAT_to_String(UINT16 format)
 }
 
 static int
-rdp_audioin_setup_listener(RdpPeerContext *peerCtx)
+rdp_audioin_setup_listener(struct audio_in_private *priv)
 {
-	struct rdp_backend *b = peerCtx->rdpBackend;
 	char *source_socket_path;
 	int fd;
 	struct sockaddr_un s;
@@ -277,14 +278,14 @@ rdp_audioin_setup_listener(RdpPeerContext *peerCtx)
 
 	fd = socket(PF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (fd < 0) {
-		rdp_debug_error(b, "Couldn't create audioin listener socket.\n");
+		weston_log("Couldn't create audioin listener socket.\n");
 		return -1;
 	}
 
 	source_socket_path = getenv("PULSE_AUDIO_RDP_SOURCE");
 	if (source_socket_path == NULL || source_socket_path[0] == '\0') {
 		close(fd);
-		rdp_debug_error(b, "Environment variable PULSE_AUDIO_RDP_SOURCE not set.\n");
+		weston_log("Environment variable PULSE_AUDIO_RDP_SOURCE not set.\n");
 		return -1;
 	}
 
@@ -295,11 +296,11 @@ rdp_audioin_setup_listener(RdpPeerContext *peerCtx)
 
 	remove(s.sun_path);
 
-	rdp_debug(b, "Pulse Audio source listener socket on %s\n", s.sun_path);
+	rdp_audio_debug(priv, "Pulse Audio source listener socket on %s\n", s.sun_path);
 	error = bind(fd, (struct sockaddr *)&s, sizeof(struct sockaddr_un));
 	if (error != 0) {
 		close(fd);
-		rdp_debug_error(b, "Failed to bind to listener socket for audioin (%d).\n", error);
+		weston_log("Failed to bind to listener socket for audioin (%d).\n", error);
 		return -1;
 	}
     
@@ -310,27 +311,26 @@ rdp_audioin_setup_listener(RdpPeerContext *peerCtx)
 static UINT 
 rdp_audioin_client_opening(audin_server_context* context)
 {
-	RdpPeerContext *peerCtx = (RdpPeerContext*)context->data;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	struct audio_in_private *priv = context->data;
 	int format = -1;
 	int i, j;
     
-	rdp_debug(b, "RDP Audio Open: %d audio formats supported.\n", 
+	rdp_audio_debug(priv, "RDP Audio Open: %d audio formats supported.\n",
 			(int)context->num_client_formats);
 
 	for (i = 0; i < (int)context->num_client_formats; i++) {
-		rdp_debug(b, "\t[%d] - Format(%s) - Bits(%d), Channels(%d), Frequency(%d)\n",
-			  i,
-			  AUDIO_FORMAT_to_String(context->client_formats[i].wFormatTag),
-			  context->client_formats[i].wBitsPerSample,
-			  context->client_formats[i].nChannels,
-			  context->client_formats[i].nSamplesPerSec);
+		rdp_audio_debug(priv, "\t[%d] - Format(%s) - Bits(%d), Channels(%d), Frequency(%d)\n",
+				i,
+				AUDIO_FORMAT_to_String(context->client_formats[i].wFormatTag),
+				context->client_formats[i].wBitsPerSample,
+				context->client_formats[i].nChannels,
+				context->client_formats[i].nSamplesPerSec);
 
 		for (j = 0; j < (int)context->num_server_formats; j++) {
 			if ((context->client_formats[i].wFormatTag == context->server_formats[j].wFormatTag) &&
 			    (context->client_formats[i].nChannels == context->server_formats[j].nChannels) &&
 			    (context->client_formats[i].nSamplesPerSec == context->server_formats[j].nSamplesPerSec)) { 
-				rdp_debug(b, "RDPAudioIn - Agreed on format %d.\n", i);
+				rdp_audio_debug(priv, "RDPAudioIn - Agreed on format %d.\n", i);
 				format = i;
 				break;
 			}
@@ -338,12 +338,12 @@ rdp_audioin_client_opening(audin_server_context* context)
 	}
 
 	if (format == -1) {
-		rdp_debug_error(b, "RDPAudioIn - No agreeded format.\n");
+		weston_log("RDPAudioIn - No agreeded format.\n");
 		return ERROR_INVALID_DATA;
 	}
 
 	context->SelectFormat(context, format);
-	peerCtx->isAudioInStreamOpened = TRUE;
+	priv->isAudioInStreamOpened = TRUE;
 
 	return 0;
 }
@@ -353,10 +353,9 @@ rdp_audioin_client_open_result(
 	audin_server_context* context, 
 	UINT32 result)
 {
-	RdpPeerContext *peerCtx = (RdpPeerContext*)context->data;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	struct audio_in_private *priv = context->data;
 
-	rdp_debug(b, "RDP AudioIn Open Result (%d)\n", result);
+	rdp_audio_debug(priv, "RDP AudioIn Open Result (%d)\n", result);
 	return 0;
 }
 
@@ -367,11 +366,10 @@ rdp_audioin_client_receive_samples(
 	wStream* buf,
 	size_t nframes)
 {
-	RdpPeerContext *peerCtx = (RdpPeerContext*)context->data; 
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	struct audio_in_private *priv = context->data;
 
-	if (!peerCtx->isAudioInStreamOpened || peerCtx->pulseAudioSourceFd == -1) {
-		rdp_debug_error(b, "RDPAudioIn - audio stream is not opened.\n");
+	if (!priv->isAudioInStreamOpened || priv->pulseAudioSourceFd == -1) {
+		weston_log("RDPAudioIn - audio stream is not opened.\n");
 		return 0;
 	}
 
@@ -383,15 +381,15 @@ rdp_audioin_client_receive_samples(
 		assert(buf != NULL);
 
 		int bytes = nframes * format->wBitsPerSample / 8;
-		int sent = send(peerCtx->pulseAudioSourceFd, buf->buffer, bytes, 0);
+		int sent = send(priv->pulseAudioSourceFd, buf->buffer, bytes, 0);
 		if (sent != bytes) {
-			rdp_debug(b, "RDP AudioIn source send failed (sent:%d, bytes:%d) %s\n",
+			rdp_audio_debug(priv, "RDP AudioIn source send failed (sent:%d, bytes:%d) %s\n",
 					sent, bytes, strerror(errno));
 
 			/* Unblock worker thread to close pipe to pulseaudio */
 			uint64_t one=1;
-			if (write(peerCtx->closeAudioSourceFd, &one, sizeof(one)) != sizeof(uint64_t)) {
-				rdp_debug_error(b, "RDP AudioIn error at receive_samples while writing to closeAudioSourceFd (%s)\n", strerror(errno));
+			if (write(priv->closeAudioSourceFd, &one, sizeof(one)) != sizeof(uint64_t)) {
+				weston_log("RDP AudioIn error at receive_samples while writing to closeAudioSourceFd (%s)\n", strerror(errno));
 				return ERROR_INTERNAL_ERROR;
 			}
 
@@ -413,182 +411,191 @@ static void signalhandler(int sig) {
 static void*
 rdp_audioin_source_thread(void *context)
 {
-	RdpPeerContext *peerCtx = (RdpPeerContext*)context; 
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	struct audio_in_private *priv = context;
 	struct sigaction act;
 	sigset_t set;
 
 	sigemptyset(&set);
 	if (sigaddset(&set, SIGUSR2) == -1) {
-		rdp_debug_error(b, "AudioIn source thread: sigaddset(SIGUSR2) failed.\n");
+		weston_log("AudioIn source thread: sigaddset(SIGUSR2) failed.\n");
 		return NULL;
 	}
 	if (pthread_sigmask(SIG_UNBLOCK, &set, NULL) != 0) {
-		rdp_debug_error(b, "AudioIn source thread: pthread_sigmask(SIG_UNBLOCK,SIGUSR2) failed.\n");
+		weston_log("AudioIn source thread: pthread_sigmask(SIG_UNBLOCK,SIGUSR2) failed.\n");
 		return NULL;
 	}
 	act.sa_flags = 0;
 	act.sa_mask = set;
 	act.sa_handler = &signalhandler;
 	if (sigaction(SIGUSR2, &act, NULL) == -1) {
-		rdp_debug_error(b, "AudioIn source thread: sigaction(SIGUSR2) failed.\n");
+		weston_log("AudioIn source thread: sigaction(SIGUSR2) failed.\n");
 		return NULL;
 	}
  
-	assert(peerCtx->closeAudioSourceFd != -1);
-	assert(peerCtx->pulseAudioSourceListenerFd != -1); 
+	assert(priv->closeAudioSourceFd != -1);
+	assert(priv->pulseAudioSourceListenerFd != -1); 
     
 	for (;;) {
-		rdp_debug(b, "AudioIn source_thread: Listening for audio in connection.\n");
+		rdp_audio_debug(priv, "AudioIn source_thread: Listening for audio in connection.\n");
 
-		if (peerCtx->audioInExitSignal) {
-			rdp_debug(b, "AudioIn source_thread is asked to exit (accept loop)\n");
+		if (priv->audioInExitSignal) {
+			rdp_audio_debug(priv, "AudioIn source_thread is asked to exit (accept loop)\n");
 			break;
 		}
 
 		/*
 		 * Wait for a connection on our listening socket
 		 */   
-		peerCtx->pulseAudioSourceFd = accept(peerCtx->pulseAudioSourceListenerFd, NULL, NULL);
-		if (peerCtx->pulseAudioSourceFd < 0) {
-			rdp_debug_error(b, "AudioIn source thread: Listener connection error (%s)\n", strerror(errno));
+		priv->pulseAudioSourceFd = accept(priv->pulseAudioSourceListenerFd, NULL, NULL);
+		if (priv->pulseAudioSourceFd < 0) {
+			weston_log("AudioIn source thread: Listener connection error (%s)\n", strerror(errno));
 			continue;
 		} else {
-			rdp_debug(b, "AudioIn connection successful on socket (%d).\n", peerCtx->pulseAudioSourceFd);
-			if (peerCtx->audin_server_context->Open(peerCtx->audin_server_context)) {
-				rdp_debug(b, "RDP AudioIn opened.\n");
+			rdp_audio_debug(priv, "AudioIn connection successful on socket (%d).\n", priv->pulseAudioSourceFd);
+			if (priv->audin_server_context->Open(priv->audin_server_context)) {
+				rdp_audio_debug(priv, "RDP AudioIn opened.\n");
 				/*
 				 * Wait for the connection to be closed
 				 */
 				uint64_t dummy;
-				if (read(peerCtx->closeAudioSourceFd, &dummy, sizeof(dummy)) != sizeof(uint64_t)) {
-					rdp_debug_error(b, "RDP AudioIn wait on eventfd failed. thread exiting. %s\n", strerror(errno));
+				if (read(priv->closeAudioSourceFd, &dummy, sizeof(dummy)) != sizeof(uint64_t)) {
+					weston_log("RDP AudioIn wait on eventfd failed. thread exiting. %s\n", strerror(errno));
 					break;
 				}
-				peerCtx->audin_server_context->Close(peerCtx->audin_server_context);
-				rdp_debug(b, "RDP AudioIn closed.\n");
+				priv->audin_server_context->Close(priv->audin_server_context);
+				rdp_audio_debug(priv, "RDP AudioIn closed.\n");
 			} else {
-				rdp_debug_error(b, "Failed to open audio in connection with RDP client.\n");
+				weston_log("Failed to open audio in connection with RDP client.\n");
 			}
 
-			close(peerCtx->pulseAudioSourceFd);
-			peerCtx->pulseAudioSourceFd = -1;
+			close(priv->pulseAudioSourceFd);
+			priv->pulseAudioSourceFd = -1;
 		}
 	}
 
-	if (peerCtx->audin_server_context->IsOpen(peerCtx->audin_server_context))
-		peerCtx->audin_server_context->Close(peerCtx->audin_server_context);
+	if (priv->audin_server_context->IsOpen(priv->audin_server_context))
+		priv->audin_server_context->Close(priv->audin_server_context);
 
-	if (peerCtx->pulseAudioSourceFd != -1) {
-		close(peerCtx->pulseAudioSourceFd);
-		peerCtx->pulseAudioSourceFd = -1;
+	if (priv->pulseAudioSourceFd != -1) {
+		close(priv->pulseAudioSourceFd);
+		priv->pulseAudioSourceFd = -1;
 	}
 
 	return NULL;
 }
 
-int 
-rdp_audioin_init(RdpPeerContext *peerCtx)
+void *
+rdp_audio_in_init(struct weston_compositor *c, HANDLE vcm)
 {
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	struct audio_in_private *priv;
 
-	peerCtx->audin_server_context = audin_server_context_new(peerCtx->vcm);
-	if (!peerCtx->audin_server_context) {
-		rdp_debug_error(b, "RDPAudioIn - Couldn't initialize audio virtual channel.\n");
-		return 0; // Continue without audio
+	priv = xzalloc(sizeof *priv);
+	priv->audin_server_context = audin_server_context_new(vcm);
+	if (!priv->audin_server_context) {
+		weston_log("RDPAudioIn - Couldn't initialize audio virtual channel.\n");
+		return NULL;
 	}
+        priv->debug = weston_compositor_add_log_scope(c, "rdp-audio-in",
+                                                      "Debug messages for RDP audio input\n",
+                                                      NULL, NULL, NULL);
 
-	peerCtx->audioInExitSignal = FALSE;
-	peerCtx->pulseAudioSourceThread = 0;
-	peerCtx->pulseAudioSourceListenerFd = -1;
-	peerCtx->pulseAudioSourceFd = -1;
-	peerCtx->closeAudioSourceFd = -1;
+	priv->audioInExitSignal = FALSE;
+	priv->pulseAudioSourceThread = 0;
+	priv->pulseAudioSourceListenerFd = -1;
+	priv->pulseAudioSourceFd = -1;
+	priv->closeAudioSourceFd = -1;
 
 	// this will be freed by FreeRDP at audin_server_context_free.
 	AUDIO_FORMAT *audio_formats = malloc(sizeof rdp_audioin_supported_audio_formats);
 	if (!audio_formats) {
-		rdp_debug_error(b, "RDPAudioIn - Couldn't allocate memory for audio formats.\n");
+		weston_log("RDPAudioIn - Couldn't allocate memory for audio formats.\n");
 		goto Error_Exit;
 	}
 	memcpy(audio_formats, rdp_audioin_supported_audio_formats, sizeof rdp_audioin_supported_audio_formats);
 
-	peerCtx->audin_server_context->data = (void*)peerCtx;
-	peerCtx->audin_server_context->Opening = rdp_audioin_client_opening;
-	peerCtx->audin_server_context->OpenResult = rdp_audioin_client_open_result;
-	peerCtx->audin_server_context->ReceiveSamples = rdp_audioin_client_receive_samples;
-	peerCtx->audin_server_context->num_server_formats = ARRAYSIZE(rdp_audioin_supported_audio_formats);
-	peerCtx->audin_server_context->server_formats = audio_formats;
-	peerCtx->audin_server_context->dst_format = &rdp_audioin_supported_audio_formats[0];
-	peerCtx->audin_server_context->frames_per_packet = rdp_audioin_supported_audio_formats[0].nSamplesPerSec / 100; // 10ms per packet
+	priv->audin_server_context->data = (void*)priv;
+	priv->audin_server_context->Opening = rdp_audioin_client_opening;
+	priv->audin_server_context->OpenResult = rdp_audioin_client_open_result;
+	priv->audin_server_context->ReceiveSamples = rdp_audioin_client_receive_samples;
+	priv->audin_server_context->num_server_formats = ARRAYSIZE(rdp_audioin_supported_audio_formats);
+	priv->audin_server_context->server_formats = audio_formats;
+	priv->audin_server_context->dst_format = &rdp_audioin_supported_audio_formats[0];
+	priv->audin_server_context->frames_per_packet = rdp_audioin_supported_audio_formats[0].nSamplesPerSec / 100; // 10ms per packet
 
-	peerCtx->closeAudioSourceFd = eventfd(0, EFD_CLOEXEC);
-	if (peerCtx->closeAudioSourceFd < 0) {
-		rdp_debug_error(b, "RDPAudioIn - Couldn't initialize eventfd.\n");
+	priv->closeAudioSourceFd = eventfd(0, EFD_CLOEXEC);
+	if (priv->closeAudioSourceFd < 0) {
+		weston_log("RDPAudioIn - Couldn't initialize eventfd.\n");
 		goto Error_Exit;
 	}
 
-	peerCtx->pulseAudioSourceListenerFd = rdp_audioin_setup_listener(peerCtx);
-	if (peerCtx->pulseAudioSourceListenerFd < 0) {
-		rdp_debug_error(b, "RDPAudioIn - rdp_audioin_setup_listener failed.\n");
+	priv->pulseAudioSourceListenerFd = rdp_audioin_setup_listener(priv);
+	if (priv->pulseAudioSourceListenerFd < 0) {
+		weston_log("RDPAudioIn - rdp_audioin_setup_listener failed.\n");
 		goto Error_Exit;
 	}
 
-	if (pthread_create(&peerCtx->pulseAudioSourceThread, NULL, rdp_audioin_source_thread, (void*)peerCtx) < 0) {
-		rdp_debug_error(b, "RDPAudioIn - Failed to start Pulse Audio Source Thread. No audio in will be available.\n");
+	if (pthread_create(&priv->pulseAudioSourceThread, NULL, rdp_audioin_source_thread, (void*)priv) < 0) {
+		weston_log("RDPAudioIn - Failed to start Pulse Audio Source Thread. No audio in will be available.\n");
 		goto Error_Exit;
 	}
 
-	return 0;
+	return priv;
 
 Error_Exit:
-	if (peerCtx->pulseAudioSourceListenerFd != -1) {
-		close(peerCtx->pulseAudioSourceListenerFd);
-		peerCtx->pulseAudioSourceListenerFd = -1;
+	if (priv->debug)
+		weston_log_scope_destroy(priv->debug);
+
+	if (priv->pulseAudioSourceListenerFd != -1) {
+		close(priv->pulseAudioSourceListenerFd);
+		priv->pulseAudioSourceListenerFd = -1;
 	}
 
-	if (peerCtx->closeAudioSourceFd != -1) {
-		close(peerCtx->closeAudioSourceFd);
-		peerCtx->closeAudioSourceFd = -1;
+	if (priv->closeAudioSourceFd != -1) {
+		close(priv->closeAudioSourceFd);
+		priv->closeAudioSourceFd = -1;
 	}
 
-	if (peerCtx->audin_server_context) {
-		audin_server_context_free(peerCtx->audin_server_context);
-		peerCtx->audin_server_context = NULL;
+	if (priv->audin_server_context) {
+		audin_server_context_free(priv->audin_server_context);
+		priv->audin_server_context = NULL;
 	}
+	free(priv);
 
-	return 0; // Continue without audio
+	return NULL; // Continue without audio
 }
 
 void
-rdp_audioin_destroy(RdpPeerContext *peerCtx)
+rdp_audio_in_destroy(void *audio_in_private)
 {
-	if (peerCtx->audin_server_context) {
+	struct audio_in_private *priv = audio_in_private;
+	if (priv->audin_server_context) {
 
-		if (peerCtx->pulseAudioSourceThread) {
-			peerCtx->audioInExitSignal = TRUE;
-			shutdown(peerCtx->pulseAudioSourceListenerFd, SHUT_RDWR);
-			shutdown(peerCtx->closeAudioSourceFd, SHUT_RDWR);
-			pthread_kill(peerCtx->pulseAudioSourceThread, SIGUSR2);   
-			pthread_join(peerCtx->pulseAudioSourceThread, NULL);
+		if (priv->pulseAudioSourceThread) {
+			priv->audioInExitSignal = TRUE;
+			shutdown(priv->pulseAudioSourceListenerFd, SHUT_RDWR);
+			shutdown(priv->closeAudioSourceFd, SHUT_RDWR);
+			pthread_kill(priv->pulseAudioSourceThread, SIGUSR2);   
+			pthread_join(priv->pulseAudioSourceThread, NULL);
 
-			if (peerCtx->pulseAudioSourceListenerFd != -1) {
-				close(peerCtx->pulseAudioSourceListenerFd);
-				peerCtx->pulseAudioSourceListenerFd = -1;
+			if (priv->pulseAudioSourceListenerFd != -1) {
+				close(priv->pulseAudioSourceListenerFd);
+				priv->pulseAudioSourceListenerFd = -1;
 			}
 
-			if (peerCtx->closeAudioSourceFd != -1) {
-				close(peerCtx->closeAudioSourceFd);
-				peerCtx->closeAudioSourceFd = -1;
+			if (priv->closeAudioSourceFd != -1) {
+				close(priv->closeAudioSourceFd);
+				priv->closeAudioSourceFd = -1;
 			}
 
-			peerCtx->pulseAudioSourceThread = 0;
+			priv->pulseAudioSourceThread = 0;
 		}
 
-		assert(peerCtx->pulseAudioSourceListenerFd < 0);
-		assert(peerCtx->closeAudioSourceFd < 0);
+		assert(priv->pulseAudioSourceListenerFd < 0);
+		assert(priv->closeAudioSourceFd < 0);
 
-		assert(!peerCtx->audin_server_context->IsOpen(peerCtx->audin_server_context));
-		audin_server_context_free(peerCtx->audin_server_context);
-		peerCtx->audin_server_context = NULL;
+		assert(!priv->audin_server_context->IsOpen(priv->audin_server_context));
+		audin_server_context_free(priv->audin_server_context);
+		priv->audin_server_context = NULL;
 	}
+	free(priv);
 }

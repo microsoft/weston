@@ -244,6 +244,11 @@ struct weston_surface_rail_state {
 
 #define WESTON_RDP_BACKEND_CONFIG_VERSION 3
 
+typedef void *(*rdp_audio_in_setup)(struct weston_compositor *c, void *vcm);
+typedef void (*rdp_audio_in_teardown)(void *audio_private);
+typedef void *(*rdp_audio_out_setup)(struct weston_compositor *c, void *vcm);
+typedef void (*rdp_audio_out_teardown)(void *audio_private);
+
 struct weston_rdp_backend_config {
 	struct weston_backend_config base;
 	char *bind_address;
@@ -255,8 +260,10 @@ struct weston_rdp_backend_config {
 	int no_clients_resize;
 	int force_no_compression;
 	bool redirect_clipboard;
-	bool redirect_audio_playback;
-	bool redirect_audio_capture;
+	rdp_audio_in_setup audio_in_setup;
+	rdp_audio_in_teardown audio_in_teardown;
+	rdp_audio_out_setup audio_out_setup;
+	rdp_audio_out_teardown audio_out_teardown;
 	int rdp_monitor_refresh_rate;
 	struct {
 		bool use_rdpapplist;
