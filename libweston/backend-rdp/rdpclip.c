@@ -124,7 +124,7 @@ struct rdp_clipboard_data_source {
 
 struct rdp_clipboard_data_request {
 	struct rdp_loop_task task_base;
-	RdpPeerContext *peerCtx; 
+	RdpPeerContext *ctx;
 	uint32_t requested_format_index;
 };
 
@@ -1247,9 +1247,9 @@ static void
 clipboard_data_source_request(bool freeOnly, void *arg)
 {
 	struct rdp_clipboard_data_request *request = wl_container_of(arg, request, task_base);
-	RdpPeerContext *peerCtx = request->peerCtx;
-	struct rdp_backend *b = peerCtx->rdpBackend;
-	struct weston_seat *seat = peerCtx->item.seat;
+	RdpPeerContext *ctx = request->ctx;
+	struct rdp_backend *b = ctx->rdpBackend;
+	struct weston_seat *seat = ctx->item.seat;
 	struct weston_data_source *selection_data_source = seat->selection_data_source;
 	struct wl_event_loop *loop = wl_display_get_event_loop(seat->compositor->wl_display);
 	struct rdp_clipboard_data_source *source = NULL;
@@ -1297,7 +1297,7 @@ clipboard_data_source_request(bool freeOnly, void *arg)
 	wl_array_init(&source->base.mime_types);
 	wl_array_init(&source->data_contents);
 	source->is_data_processed = FALSE;
-	source->context = (void*)peerCtx->item.peer;
+	source->context = ctx->item.peer;
 	source->refcount = 1; // decremented when data sent to client.
 	source->data_source_fd = -1;
 	source->format_index = index;
@@ -1334,7 +1334,7 @@ error_exit_free_source:
 	clipboard_data_source_unref(source);
 
 error_exit_response_fail:
-	clipboard_client_send_format_data_response_fail(peerCtx, NULL);
+	clipboard_client_send_format_data_response_fail(ctx, NULL);
 
 error_exit_free_request:
 	free(request);
@@ -1659,7 +1659,7 @@ clipboard_client_format_data_request(CliprdrServerContext* context, const CLIPRD
 			rdp_debug_clipboard_error(b, "zalloc failed\n", __func__);
 			goto error_return;
 		}
-		request->peerCtx = peerCtx;
+		request->ctx = peerCtx;
 		request->requested_format_index = index;
 		rdp_dispatch_task_to_display_loop(peerCtx, clipboard_data_source_request, &request->task_base);
 	} else {
