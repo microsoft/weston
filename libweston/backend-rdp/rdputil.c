@@ -109,16 +109,15 @@ void rdp_debug_print(struct weston_log_scope *log_scope, bool cont, char *fmt, .
 	}
 }
 
-#ifdef ENABLE_RDP_THREAD_CHECK
 void assert_compositor_thread(struct rdp_backend *b)
 {
 	assert(b->compositor_tid == rdp_get_tid());
 }
+
 void assert_not_compositor_thread(struct rdp_backend *b)
 {
 	assert(b->compositor_tid != rdp_get_tid());
 }
-#endif // ENABLE_RDP_THREAD_CHECK
 
 #ifdef HAVE_FREERDP_GFXREDIR_H
 BOOL
@@ -231,7 +230,7 @@ rdp_free_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *s
 BOOL
 rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_manager, UINT32 low_limit, UINT32 high_limit)
 {
-	ASSERT_COMPOSITOR_THREAD(rdp_backend);
+	assert_compositor_thread(rdp_backend);
 
 	assert(id_manager->hash_table == NULL);
 	assert(low_limit > 0);
@@ -257,7 +256,7 @@ rdp_id_manager_init(struct rdp_backend *rdp_backend, struct rdp_id_manager *id_m
 void
 rdp_id_manager_free(struct rdp_id_manager *id_manager)
 {
-	ASSERT_COMPOSITOR_THREAD(id_manager->rdp_backend);
+	assert_compositor_thread(id_manager->rdp_backend);
 
 	if (id_manager->id_used != 0)
 		rdp_debug_error(id_manager->rdp_backend, "%s: possible id leak: %d\n", __func__, id_manager->id_used);
@@ -278,7 +277,7 @@ rdp_id_manager_free(struct rdp_id_manager *id_manager)
 void
 rdp_id_manager_lock(struct rdp_id_manager *id_manager)
 {
-	ASSERT_NOT_COMPOSITOR_THREAD(id_manager->rdp_backend);
+	assert_not_compositor_thread(id_manager->rdp_backend);
 
 	pthread_mutex_lock(&id_manager->mutex);
 	id_manager->mutex_tid = rdp_get_tid();
@@ -287,7 +286,7 @@ rdp_id_manager_lock(struct rdp_id_manager *id_manager)
 void
 rdp_id_manager_unlock(struct rdp_id_manager *id_manager)
 {
-	ASSERT_NOT_COMPOSITOR_THREAD(id_manager->rdp_backend);
+	assert_not_compositor_thread(id_manager->rdp_backend);
 
 	/* At unlock, restore compositor thread as owner */
 	id_manager->mutex_tid = id_manager->rdp_backend->compositor_tid;
@@ -307,7 +306,7 @@ rdp_id_manager_lookup(struct rdp_id_manager *id_manager, UINT32 id)
 void
 rdp_id_manager_for_each(struct rdp_id_manager *id_manager, hash_table_iterator_func_t func, void *data)
 {
-	ASSERT_COMPOSITOR_THREAD(id_manager->rdp_backend);
+	assert_compositor_thread(id_manager->rdp_backend);
 
 	if (!id_manager->hash_table)
 		return;
@@ -320,7 +319,7 @@ rdp_id_manager_allocate_id(struct rdp_id_manager *id_manager, void *object, UINT
 {
 	UINT32 id = 0;
 
-	ASSERT_COMPOSITOR_THREAD(id_manager->rdp_backend);
+	assert_compositor_thread(id_manager->rdp_backend);
 	assert(id_manager->hash_table);
 
 	for(;id_manager->id_used < id_manager->id_total;) {
@@ -343,7 +342,7 @@ rdp_id_manager_allocate_id(struct rdp_id_manager *id_manager, void *object, UINT
 void
 rdp_id_manager_free_id(struct rdp_id_manager *id_manager, UINT32 id)
 {
-	ASSERT_COMPOSITOR_THREAD(id_manager->rdp_backend);
+	assert_compositor_thread(id_manager->rdp_backend);
 	assert(id_manager->hash_table);
 
 	pthread_mutex_lock(&id_manager->mutex);
@@ -382,7 +381,7 @@ rdp_dispatch_task_to_display_loop(RdpPeerContext *peerCtx, rdp_loop_task_func_t 
 {
 	/* this function is ONLY used to queue the task from FreeRDP thread,
 	   and the task to be processed at wayland display loop thread. */
-	ASSERT_NOT_COMPOSITOR_THREAD(peerCtx->rdpBackend);
+	assert_not_compositor_thread(peerCtx->rdpBackend);
 
 	task->peerCtx = peerCtx;
 	task->func = func;
@@ -403,7 +402,7 @@ rdp_dispatch_task(int fd, uint32_t mask, void *arg)
 	eventfd_t dummy;
 
 	/* this must be called back at wayland display loop thread */
-	ASSERT_COMPOSITOR_THREAD(peerCtx->rdpBackend);
+	assert_compositor_thread(peerCtx->rdpBackend);
 
 	eventfd_read(peerCtx->loop_task_event_source_fd, &dummy);
 

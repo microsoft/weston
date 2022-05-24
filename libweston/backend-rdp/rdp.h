@@ -332,16 +332,6 @@ struct rdp_loop_task {
 #define RDP_RAIL_MARKER_WINDOW_ID  0xFFFFFFFE
 #define RDP_RAIL_DESKTOP_WINDOW_ID 0xFFFFFFFF
 
-#define ENABLE_RDP_THREAD_CHECK
-
-#ifdef ENABLE_RDP_THREAD_CHECK
-#define ASSERT_COMPOSITOR_THREAD(b)     assert_compositor_thread(b)
-#define ASSERT_NOT_COMPOSITOR_THREAD(b) assert_not_compositor_thread(b)
-#else
-#define ASSERT_COMPOSITOR_THREAD(b)
-#define ASSERT_NOT_COMPOSITOR_THREAD(b)
-#endif // ENABLE_RDP_THREAD_CHECK
-
 #define RDP_DEBUG_LEVEL_NONE    0
 #define RDP_DEBUG_LEVEL_ERR     1
 #define RDP_DEBUG_LEVEL_WARN    2
@@ -397,10 +387,13 @@ void rdp_head_destroy(struct weston_compositor *compositor, struct rdp_head *hea
 // rdputil.c
 pid_t rdp_get_tid(void);
 void rdp_debug_print(struct weston_log_scope *log_scope, bool cont, char *fmt, ...);
-#ifdef ENABLE_RDP_THREAD_CHECK
-void assert_compositor_thread(struct rdp_backend *b);
-void assert_not_compositor_thread(struct rdp_backend *b);
-#endif // ENABLE_RDP_THREAD_CHECK
+
+void
+assert_compositor_thread(struct rdp_backend *b);
+
+void
+assert_not_compositor_thread(struct rdp_backend *b);
+
 #ifdef HAVE_FREERDP_GFXREDIR_H
 BOOL rdp_allocate_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *shared_memory);
 void rdp_free_shared_memory(struct rdp_backend *b, struct weston_rdp_shared_memory *shared_memory);

@@ -716,17 +716,17 @@ clipboard_data_source_unref(struct rdp_clipboard_data_source *source)
 
 	if (source->transfer_event_source) {
 		/* removing event source must be done from wayland display thread */
-		ASSERT_COMPOSITOR_THREAD(b);
+		assert_compositor_thread(b);
 		wl_event_source_remove(source->transfer_event_source);
 	}
 
 	if (source->data_source_fd != -1) {
-		ASSERT_COMPOSITOR_THREAD(b);
+		assert_compositor_thread(b);
 		close(source->data_source_fd);
 	}
 
 	if (!wl_list_empty(&source->base.destroy_signal.listener_list)) {
-		ASSERT_COMPOSITOR_THREAD(b);
+		assert_compositor_thread(b);
 		wl_signal_emit(&source->base.destroy_signal,
 			       &source->base);
 	}
@@ -810,7 +810,7 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) fd:%d\n",
 		__func__, source, clipboard_data_source_state_to_string(source), fd);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	assert(source->data_source_fd == fd);
 	assert(source->refcount == 1);
@@ -888,7 +888,7 @@ clipboard_data_source_fail(int fd, uint32_t mask, void *arg)
 	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) fd:%d\n", __func__,
 		source, clipboard_data_source_state_to_string(source), fd);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	assert(source->data_source_fd == fd);
 	/* this data source must be tracked as inflight */
@@ -945,7 +945,7 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) fd:%d\n", __func__,
 		source, clipboard_data_source_state_to_string(source), fd);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	assert(source->data_source_fd == fd);
 	/* this data source must be tracked as inflight */
@@ -1058,7 +1058,7 @@ clipboard_data_source_send(struct weston_data_source *base,
 	rdp_debug_clipboard(b, "RDP %s (%p:%s) fd:%d, mime-type:\"%s\"\n",
 		__func__, source, clipboard_data_source_state_to_string(source), fd, mime_type);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (peerCtx->clipboard_inflight_client_data_source) {
 		/* Here means server side (Linux application) request clipboard data,
@@ -1168,7 +1168,7 @@ clipboard_data_source_cancel(struct weston_data_source *base)
 	rdp_debug_clipboard(b, "RDP %s (%p:%s)\n",
 		__func__, source, clipboard_data_source_state_to_string(source));
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (source == peerCtx->clipboard_inflight_client_data_source) {
 		source->is_canceled = TRUE;
@@ -1217,7 +1217,7 @@ clipboard_data_source_publish(bool freeOnly, void *arg)
 	rdp_debug_clipboard(b, "RDP %s (%p:%s)\n",
 		__func__, source, clipboard_data_source_state_to_string(source));
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	/* here is going to publish new data, if previous data from client is still referenced,
 	   unref it after selection */
@@ -1257,7 +1257,7 @@ clipboard_data_source_request(bool freeOnly, void *arg)
 	int index;
 	BOOL found_requested_format;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (freeOnly)
 		goto error_exit_free_request;
@@ -1362,7 +1362,7 @@ clipboard_set_selection(struct wl_listener *listener, void *data)
 
 	rdp_debug_clipboard(b, "RDP %s (base:%p)\n", __func__, selection_data_source);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (selection_data_source == NULL) {
 		return;
@@ -1476,7 +1476,7 @@ clipboard_client_format_list(CliprdrServerContext* context, const CLIPRDR_FORMAT
 	BOOL isPublished = FALSE;
 	char **p, *s;
 
-	ASSERT_NOT_COMPOSITOR_THREAD(b);
+	assert_not_compositor_thread(b);
 
 	rdp_debug_clipboard(b, "Client: %s clipboard format list: numFormats:%d\n", __func__, formatList->numFormats);
 	for (UINT32 i = 0; i < formatList->numFormats; i++) {
@@ -1570,7 +1570,7 @@ clipboard_client_format_data_response(CliprdrServerContext* context, const CLIPR
 		__func__, source, clipboard_data_source_state_to_string(source),
 		formatDataResponse->msgFlags, formatDataResponse->dataLen);
 
-	ASSERT_NOT_COMPOSITOR_THREAD(b);
+	assert_not_compositor_thread(b);
 
 	if (source) {
 		if (source->transfer_event_source || (source->inflight_write_count != 0)) {
@@ -1630,7 +1630,7 @@ clipboard_client_format_list_response(CliprdrServerContext* context, const CLIPR
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	rdp_debug_clipboard(b, "Client: %s msgFlags:0x%x\n", __func__, formatListResponse->msgFlags);
-	ASSERT_NOT_COMPOSITOR_THREAD(b);
+	assert_not_compositor_thread(b);
 	return 0;
 }
 
@@ -1648,7 +1648,7 @@ clipboard_client_format_data_request(CliprdrServerContext* context, const CLIPRD
 			__func__, formatDataRequest->requestedFormatId,
 			clipboard_format_id_to_string(formatDataRequest->requestedFormatId, true));
 
-	ASSERT_NOT_COMPOSITOR_THREAD(b);
+	assert_not_compositor_thread(b);
 
 	/* Make sure clients requested the format we knew */
 	index = clipboard_find_supported_format_by_format_id(formatDataRequest->requestedFormatId);
@@ -1687,7 +1687,7 @@ rdp_clipboard_init(freerdp_peer* client)
 
 	assert(seat);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	peerCtx->clipboard_server_context = cliprdr_server_context_new(peerCtx->vcm);
 	if (!peerCtx->clipboard_server_context) 
@@ -1732,7 +1732,7 @@ rdp_clipboard_destroy(RdpPeerContext *peerCtx)
 	struct rdp_clipboard_data_source* data_source;
 	struct rdp_backend *b = peerCtx->rdpBackend;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (peerCtx->clipboard_selection_listener.notify) {
 		wl_list_remove(&peerCtx->clipboard_selection_listener.link);

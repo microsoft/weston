@@ -93,7 +93,7 @@ disp_start_monitor_layout_change(freerdp_peer *client, struct rdp_monitor_mode *
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = peerCtx->rdpBackend;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	pixman_region32_clear(&peerCtx->regionClientHeads);
 	pixman_region32_clear(&peerCtx->regionWestonHeads);
@@ -138,7 +138,7 @@ disp_end_monitor_layout_change(freerdp_peer *client)
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	struct rdp_head *current, *next;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	/* move output to final location */
 	wl_list_for_each_safe(current, next, &b->head_move_pending_list, link) {
@@ -207,7 +207,7 @@ disp_set_monitor_layout_change(freerdp_peer *client, struct rdp_monitor_mode *mo
 	struct rdp_head *current;
 	BOOL updateMode = FALSE;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (monitorMode->monitorDef.is_primary) {
 		assert(b->head_default);
@@ -536,7 +536,7 @@ disp_monitor_layout_change(DispServerContext* context, const DISPLAY_CONTROL_MON
 	struct rdp_monitor_mode *monitorMode;
 	MONITOR_DEF *resetMonitorDef;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	rdp_debug(b, "Client: DisplayControl: monitor count:0x%x\n", displayControl->NumMonitors);
 
@@ -618,7 +618,7 @@ disp_monitor_layout_change_callback(bool freeOnly, void* dataIn)
 	freerdp_peer *client = (freerdp_peer*)context->custom;
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 
-	ASSERT_COMPOSITOR_THREAD(peerCtx->rdpBackend);
+	assert_compositor_thread(peerCtx->rdpBackend);
 
 	if (!freeOnly)
 		disp_monitor_layout_change(context, &data->displayControl);
@@ -637,7 +637,7 @@ disp_client_monitor_layout_change(DispServerContext* context, const DISPLAY_CONT
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	struct disp_schedule_monitor_layout_change_data *data;
 
-	ASSERT_NOT_COMPOSITOR_THREAD(b);
+	assert_not_compositor_thread(b);
 
 	rdp_debug(b, "Client: DisplayLayoutChange: monitor count:0x%x\n", displayControl->NumMonitors);
 

@@ -81,7 +81,7 @@ struct rdp_rail_dispatch_data {
 		struct rdp_rail_dispatch_data *dispatch_data; \
 		dispatch_data = (struct rdp_rail_dispatch_data *)malloc(sizeof(*dispatch_data)); \
 		if (dispatch_data) { \
-			ASSERT_NOT_COMPOSITOR_THREAD(b); \
+			assert_not_compositor_thread(b); \
 			dispatch_data->client = client; \
 			dispatch_data->u_##arg_type = *(arg); \
 			rdp_dispatch_task_to_display_loop(peerCtx, callback, &dispatch_data->task_base); \
@@ -103,7 +103,7 @@ applist_client_Caps_callback(bool freeOnly, void *arg)
 
 	rdp_debug(b, "Client AppList caps version:%d\n", caps->version);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (!freeOnly &&
 		b->rdprail_shell_api &&
@@ -174,7 +174,7 @@ rail_client_Exec_callback(bool freeOnly, void *arg)
 		 exec->RemoteApplicationWorkingDir,
 		 exec->RemoteApplicationArguments);
 
-	ASSERT_COMPOSITOR_THREAD(peerCtx->rdpBackend);
+	assert_compositor_thread(peerCtx->rdpBackend);
 
 	if (!freeOnly &&
 		exec->RemoteApplicationProgram) {
@@ -286,7 +286,7 @@ rail_client_Activate_callback(bool freeOnly, void *arg)
 
 	rdp_debug_verbose(b, "Client: ClientActivate: WindowId:0x%x, enabled:%d\n", activate->windowId, activate->enabled);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (!freeOnly &&
 		b->rdprail_shell_api &&
@@ -330,7 +330,7 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 		snap->right - snap->left,
 		snap->bottom - snap->top);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	surface = NULL;
 	if (!freeOnly)
@@ -396,7 +396,7 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 		windowMove->right - windowMove->left,
 		windowMove->bottom - windowMove->top);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	surface = NULL;
 	if (!freeOnly)
@@ -449,7 +449,7 @@ rail_client_Syscommand_callback(bool freeOnly, void *arg)
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	struct weston_surface* surface;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	surface = NULL;
 	if (!freeOnly)
@@ -529,7 +529,7 @@ rail_client_ClientSysparam_callback(bool freeOnly, void *arg)
 	struct weston_output *base_output;
 	struct weston_head *base_head_iter;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (sysparam->params & SPI_MASK_SET_DRAG_FULL_WINDOWS) {
 		rdp_debug(b, "Client: ClientSysparam: dragFullWindows:%d\n", sysparam->dragFullWindows);
@@ -659,7 +659,7 @@ rail_client_ClientGetAppidReq_callback(bool freeOnly, void *arg)
 
 	rdp_debug_verbose(b, "Client: ClientGetAppidReq: WindowId:0x%x\n", getAppidReq->windowId);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (!freeOnly &&
 		b->rdprail_shell_api &&
@@ -835,7 +835,7 @@ rail_client_LanguageImeInfo_callback(bool freeOnly, void *arg)
 	struct xkb_rule_names xkbRuleNames;
 	char *s;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	switch (languageImeInfo->ProfileType)
 	{
@@ -1181,7 +1181,7 @@ rdp_rail_create_cursor(struct weston_surface *surface)
 	RdpPeerContext *peerCtx = (RdpPeerContext *)b->rdp_peer->context;
 	struct weston_surface_rail_state *rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	rail_state->clientPos.width = 0; /* triggers force update on next update. */
 	rail_state->clientPos.height = 0;
@@ -1211,7 +1211,7 @@ rdp_rail_update_cursor(struct weston_surface *surface)
 	int contentBufferWidth;
 	int contentBufferHeight;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 	assert(rail_state);
 
 	weston_surface_get_content_size(surface, &contentBufferWidth, &contentBufferHeight);
@@ -1328,7 +1328,7 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 
 	peerCtx = (RdpPeerContext *)b->rdp_peer->context;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (!peerCtx->activationRailCompleted) {
 		rdp_debug_verbose(b, "CreateWindow(): rdp_peer rail is not activated.\n");
@@ -1564,7 +1564,7 @@ rdp_rail_destroy_window(struct wl_listener *listener, void *data)
 
 	assert(b && b->rdp_peer);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	peerCtx = (RdpPeerContext *)b->rdp_peer->context;
 	if (rail_state->isCursor) {
@@ -1669,7 +1669,7 @@ rdp_rail_schedule_update_window(struct wl_listener *listener, void *data)
 	if (!window_id)
 		return;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	/* negative width/height is not allowed */
 	if (surface->width < 0 || surface->height < 0) {
@@ -1726,7 +1726,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 	char window_title_mod[256];
 	char *title = NULL;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (!rail_state || rail_state->error)
 		return 0;
@@ -2608,7 +2608,7 @@ rdp_rail_sync_window_zorder(struct weston_compositor *compositor)
 	MONITORED_DESKTOP_ORDER monitored_desktop_order = {};
 	UINT32 iCurrent = 0;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (!b->enable_window_zorder_sync)
 		return;
@@ -2713,7 +2713,7 @@ rdp_rail_peer_activate(freerdp_peer* client)
 #endif // HAVE_FREERDP_RDPAPPLIST_H
 	UINT waitRetry;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	/* In RAIL mode, client must not be resized */
 	assert(b->no_clients_resize == 0);
@@ -2922,7 +2922,7 @@ rdp_rail_idle_handler(struct wl_listener *listener, void *data)
 		container_of(listener, RdpPeerContext, idle_listener);
 	struct rdp_backend *b = peerCtx->rdpBackend;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	rdp_debug(b, "%s is called on peerCtx:%p\n", __func__, peerCtx);
 
@@ -2939,7 +2939,7 @@ rdp_rail_wake_handler(struct wl_listener *listener, void *data)
 		container_of(listener, RdpPeerContext, wake_listener);
 	struct rdp_backend *b = peerCtx->rdpBackend;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	rdp_debug(b, "%s is called on peerCtx:%p\n", __func__, peerCtx);
 
@@ -2953,7 +2953,7 @@ rdp_rail_notify_window_proxy_surface(struct weston_surface *proxy_surface)
 {
 	struct rdp_backend *b = to_rdp_backend(proxy_surface->compositor);
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	b->proxy_surface = proxy_surface;
 }
@@ -2964,7 +2964,7 @@ rdp_rail_notify_window_zorder_change(struct weston_compositor *compositor)
 	struct rdp_backend *b = to_rdp_backend(compositor);
 	RdpPeerContext *peerCtx = (RdpPeerContext *)b->rdp_peer->context;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	/* z order will be sent to client at next repaint */
 	peerCtx->is_window_zorder_dirty = true;
@@ -2977,7 +2977,7 @@ rdp_rail_sync_window_status(freerdp_peer* client)
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	struct weston_view *view;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	{
 		RAIL_SYSPARAM_ORDER sysParamOrder = {};
@@ -3108,7 +3108,7 @@ rdp_rail_start_window_move(
 			return;
 	}
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 	assert(rail_state);
 
 	int posX=0, posY=0;
@@ -3209,7 +3209,7 @@ rdp_rail_end_window_move(struct weston_surface* surface)
 		return;
 	}
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 	assert(rail_state);
 
 	peerCtx = (RdpPeerContext *)b->rdp_peer->context;
@@ -3341,7 +3341,7 @@ rdp_drdynvc_init(freerdp_peer *client)
 {
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 
-	ASSERT_COMPOSITOR_THREAD(peerCtx->rdpBackend);
+	assert_compositor_thread(peerCtx->rdpBackend);
 
 	/* Open Dynamic virtual channel */
 	peerCtx->drdynvc_server_context = drdynvc_server_context_new(peerCtx->vcm);
@@ -3746,7 +3746,7 @@ rdp_rail_set_window_icon(struct weston_surface *surface, pixman_image_t *icon)
 	if (!b->rdp_peer->settings->HiDefRemoteApp)
 		return;
 
-	ASSERT_COMPOSITOR_THREAD(b);
+	assert_compositor_thread(b);
 
 	if (!rail_state || rail_state->window_id == 0) {
 		rdp_rail_create_window(NULL, (void *)surface);
