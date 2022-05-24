@@ -1727,33 +1727,33 @@ error:
 }
 
 void
-rdp_clipboard_destroy(RdpPeerContext *peerCtx)
+rdp_clipboard_destroy(RdpPeerContext *ctx)
 {
-	struct rdp_clipboard_data_source* data_source;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	struct rdp_clipboard_data_source *data_source;
+	struct rdp_backend *b = ctx->rdpBackend;
 
 	assert_compositor_thread(b);
 
-	if (peerCtx->clipboard_selection_listener.notify) {
-		wl_list_remove(&peerCtx->clipboard_selection_listener.link);
-		peerCtx->clipboard_selection_listener.notify = NULL;
+	if (ctx->clipboard_selection_listener.notify) {
+		wl_list_remove(&ctx->clipboard_selection_listener.link);
+		ctx->clipboard_selection_listener.notify = NULL;
 	}
 
-	if (peerCtx->clipboard_inflight_client_data_source) {
-		data_source = peerCtx->clipboard_inflight_client_data_source;
-		peerCtx->clipboard_inflight_client_data_source = NULL;
+	if (ctx->clipboard_inflight_client_data_source) {
+		data_source = ctx->clipboard_inflight_client_data_source;
+		ctx->clipboard_inflight_client_data_source = NULL;
 		clipboard_data_source_unref(data_source);
 	}
 
-	if (peerCtx->clipboard_client_data_source) {
-		data_source = peerCtx->clipboard_client_data_source;
-		peerCtx->clipboard_client_data_source = NULL;
+	if (ctx->clipboard_client_data_source) {
+		data_source = ctx->clipboard_client_data_source;
+		ctx->clipboard_client_data_source = NULL;
 		clipboard_data_source_unref(data_source);
 	}
 
-	if (peerCtx->clipboard_server_context) {
-		peerCtx->clipboard_server_context->Stop(peerCtx->clipboard_server_context);
-		cliprdr_server_context_free(peerCtx->clipboard_server_context);
-		peerCtx->clipboard_server_context = NULL;
+	if (ctx->clipboard_server_context) {
+		ctx->clipboard_server_context->Stop(ctx->clipboard_server_context);
+		cliprdr_server_context_free(ctx->clipboard_server_context);
+		ctx->clipboard_server_context = NULL;
 	}
 }
