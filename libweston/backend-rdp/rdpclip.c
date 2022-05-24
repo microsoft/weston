@@ -167,8 +167,8 @@ static void *
 clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, BOOL is_send)
 {
 	freerdp_peer *client = (freerdp_peer*)source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	struct wl_array data_contents;
 
 	wl_array_init(&data_contents);
@@ -266,8 +266,8 @@ static void *
 clipboard_process_text_raw(struct rdp_clipboard_data_source *source, BOOL is_send)
 {
 	freerdp_peer *client = (freerdp_peer*)source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 
 	if (!source->is_data_processed) {
 		if (is_send) {
@@ -308,8 +308,8 @@ static void *
 clipboard_process_html(struct rdp_clipboard_data_source *source, BOOL is_send)
 {
 	freerdp_peer *client = (freerdp_peer*)source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	struct wl_array data_contents;
 
 	wl_array_init(&data_contents);
@@ -419,8 +419,8 @@ static void *
 clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 {
 	freerdp_peer *client = (freerdp_peer*)source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	void *ret = NULL;
 	BITMAPFILEHEADER *bmfh = NULL;
 	BITMAPINFOHEADER *bmih = NULL;
@@ -702,8 +702,8 @@ static void
 clipboard_data_source_unref(struct rdp_clipboard_data_source *source)
 {
 	freerdp_peer *client = (freerdp_peer*)source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	char **p;
 
 	assert(source->refcount);
@@ -748,9 +748,9 @@ clipboard_data_source_unref(struct rdp_clipboard_data_source *source)
 
 /* Inform client data request is succeeded with data */
 static UINT
-clipboard_client_send_format_data_response(RdpPeerContext *peerCtx, struct rdp_clipboard_data_source *source, void *data, UINT32 size)
+clipboard_client_send_format_data_response(RdpPeerContext *ctx, struct rdp_clipboard_data_source *source, void *data, UINT32 size)
 {
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	struct rdp_backend *b = ctx->rdpBackend;
 	CLIPRDR_FORMAT_DATA_RESPONSE formatDataResponse = {};
 
 	rdp_debug_clipboard(b, "Client: %s (%p:%s) format_index:%d %s (%d bytes)\n",
@@ -761,7 +761,7 @@ clipboard_client_send_format_data_response(RdpPeerContext *peerCtx, struct rdp_c
 	formatDataResponse.msgFlags = CB_RESPONSE_OK;
 	formatDataResponse.dataLen = size;
 	formatDataResponse.requestedFormatData = data;
-	peerCtx->clipboard_server_context->ServerFormatDataResponse(peerCtx->clipboard_server_context, &formatDataResponse);
+	ctx->clipboard_server_context->ServerFormatDataResponse(ctx->clipboard_server_context, &formatDataResponse);
 	/* if here failed to send response, what can we do ? */
 
 	return 0;
@@ -769,9 +769,9 @@ clipboard_client_send_format_data_response(RdpPeerContext *peerCtx, struct rdp_c
 
 /* Inform client data request is failed */
 static UINT
-clipboard_client_send_format_data_response_fail(RdpPeerContext *peerCtx, struct rdp_clipboard_data_source *source)
+clipboard_client_send_format_data_response_fail(RdpPeerContext *ctx, struct rdp_clipboard_data_source *source)
 {
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	struct rdp_backend *b = ctx->rdpBackend;
 	CLIPRDR_FORMAT_DATA_RESPONSE formatDataResponse = {};
 
 	rdp_debug_clipboard(b, "Client: %s (%p:%s)\n",
@@ -786,7 +786,7 @@ clipboard_client_send_format_data_response_fail(RdpPeerContext *peerCtx, struct 
 	formatDataResponse.msgFlags = CB_RESPONSE_FAIL;
 	formatDataResponse.dataLen = 0;
 	formatDataResponse.requestedFormatData = NULL;
-	peerCtx->clipboard_server_context->ServerFormatDataResponse(peerCtx->clipboard_server_context, &formatDataResponse);
+	ctx->clipboard_server_context->ServerFormatDataResponse(ctx->clipboard_server_context, &formatDataResponse);
 	/* if here failed to send response, what can we do ? */
 
 	return 0;
@@ -802,8 +802,8 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_clipboard_data_source *source = (struct rdp_clipboard_data_source *)arg;
 	freerdp_peer *client = (freerdp_peer*)source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	char *data;
 	int len, size;
 	void *data_to_send;
@@ -848,7 +848,7 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 			data_to_send = source->data_contents.data;
 		/* send clipboard data to client */
 		if (data_to_send)
-			clipboard_client_send_format_data_response(peerCtx, source, data_to_send, source->data_contents.size);
+			clipboard_client_send_format_data_response(ctx, source, data_to_send, source->data_contents.size);
 		else
 			goto error_exit;
 		goto send_exit;
@@ -868,7 +868,7 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 	assert(false);
 
 error_exit:
-	clipboard_client_send_format_data_response_fail(peerCtx, source);
+	clipboard_client_send_format_data_response_fail(ctx, source);
 
 send_exit:
 	/* make sure this is the last reference, so event source is removed at unref */
@@ -883,8 +883,8 @@ clipboard_data_source_fail(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_clipboard_data_source *source = (struct rdp_clipboard_data_source *)arg;
 	freerdp_peer *client = (freerdp_peer *) source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 
 	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) fd:%d\n", __func__,
 		source, clipboard_data_source_state_to_string(source), fd);
@@ -893,7 +893,7 @@ clipboard_data_source_fail(int fd, uint32_t mask, void *arg)
 
 	assert(source->data_source_fd == fd);
 	/* this data source must be tracked as inflight */
-	assert(source == peerCtx->clipboard_inflight_client_data_source);
+	assert(source == ctx->clipboard_inflight_client_data_source);
 
 	/* remove event source now, and if write is failed with EAGAIN, queue back to display loop. */ 
 	wl_event_source_remove(source->transfer_event_source);
@@ -925,7 +925,7 @@ clipboard_data_source_fail(int fd, uint32_t mask, void *arg)
 	close(source->data_source_fd);
 	source->data_source_fd = -1;
 	/* clear inflight data source from client to server. */
-	peerCtx->clipboard_inflight_client_data_source = NULL;
+	ctx->clipboard_inflight_client_data_source = NULL;
 	clipboard_data_source_unref(source);
 
 	return 0;
@@ -937,8 +937,8 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 {
 	struct rdp_clipboard_data_source *source = (struct rdp_clipboard_data_source *)arg;
 	freerdp_peer *client = (freerdp_peer *) source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	void *data_to_write;
 	size_t data_size;
 	ssize_t size;
@@ -950,7 +950,7 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 
 	assert(source->data_source_fd == fd);
 	/* this data source must be tracked as inflight */
-	assert(source == peerCtx->clipboard_inflight_client_data_source);
+	assert(source == ctx->clipboard_inflight_client_data_source);
 
 	if (source->is_canceled) {
 		/* if source is being canceled, this must be the last reference */
@@ -1018,7 +1018,7 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 	source->inflight_write_count = 0;
 	source->inflight_data_to_write = NULL;
 	source->inflight_data_size = 0;
-	peerCtx->clipboard_inflight_client_data_source = NULL;
+	ctx->clipboard_inflight_client_data_source = NULL;
 	clipboard_data_source_unref(source);
 
 	return 0;
@@ -1049,9 +1049,9 @@ clipboard_data_source_send(struct weston_data_source *base,
 {
 	struct rdp_clipboard_data_source *source = (struct rdp_clipboard_data_source *)base;
 	freerdp_peer *client = (freerdp_peer*)source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
-	struct weston_seat *seat = peerCtx->item.seat;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
+	struct weston_seat *seat = ctx->item.seat;
 	struct wl_event_loop *loop = wl_display_get_event_loop(seat->compositor->wl_display);
 	CLIPRDR_FORMAT_DATA_REQUEST formatDataRequest = {};
 	int index;
@@ -1061,19 +1061,19 @@ clipboard_data_source_send(struct weston_data_source *base,
 
 	assert_compositor_thread(b);
 
-	if (peerCtx->clipboard_inflight_client_data_source) {
+	if (ctx->clipboard_inflight_client_data_source) {
 		/* Here means server side (Linux application) request clipboard data,
 		   but server hasn't completed with previous request yet.
 		   If this happens, punt to idle loop and reattempt. */
 		rdp_debug_clipboard_error(b, "\n\n\nRDP %s new (%p:%s:fd %d) vs prev (%p:%s:fd %d): outstanding RDP data request (client to server)\n\n\n",
 			__func__, source, clipboard_data_source_state_to_string(source), fd,
-			peerCtx->clipboard_inflight_client_data_source,
-			clipboard_data_source_state_to_string(peerCtx->clipboard_inflight_client_data_source),
-			peerCtx->clipboard_inflight_client_data_source->data_source_fd);
-		if (source == peerCtx->clipboard_inflight_client_data_source) {
+			ctx->clipboard_inflight_client_data_source,
+			clipboard_data_source_state_to_string(ctx->clipboard_inflight_client_data_source),
+			ctx->clipboard_inflight_client_data_source->data_source_fd);
+		if (source == ctx->clipboard_inflight_client_data_source) {
 			/* when new source and previous source is same, update fd with new one and retry */
 			source->state = RDP_CLIPBOARD_SOURCE_RETRY;
-			peerCtx->clipboard_inflight_client_data_source->data_source_fd = fd;
+			ctx->clipboard_inflight_client_data_source->data_source_fd = fd;
 			goto exit_return;
 		} else {
 			source->state = RDP_CLIPBOARD_SOURCE_FAILED;
@@ -1091,7 +1091,7 @@ clipboard_data_source_send(struct weston_data_source *base,
 	index = clipboard_find_supported_format_by_mime_type(mime_type);
 	if (index >= 0 &&			/* check supported by this RDP bridge */
 		source->client_format_id_table[index]) {	/* check supported by current data source from client */
-		peerCtx->clipboard_inflight_client_data_source = source;
+		ctx->clipboard_inflight_client_data_source = source;
 		source->refcount++; // reference while request inflight.
 		source->data_source_fd = fd;
 		assert(source->inflight_write_count == 0);
@@ -1128,7 +1128,7 @@ clipboard_data_source_send(struct weston_data_source *base,
 				__func__, source, clipboard_data_source_state_to_string(source), mime_type, index,
 				formatDataRequest.requestedFormatId,
 				clipboard_format_id_to_string(formatDataRequest.requestedFormatId, false));
-			if (peerCtx->clipboard_server_context->ServerFormatDataRequest(peerCtx->clipboard_server_context, &formatDataRequest) != 0)
+			if (ctx->clipboard_server_context->ServerFormatDataRequest(ctx->clipboard_server_context, &formatDataRequest) != 0)
 				goto error_return_unref_source;
 		}
 	} else {
@@ -1147,8 +1147,8 @@ error_return_unref_source:
 	assert(source->inflight_write_count == 0);
 	assert(source->inflight_data_to_write == NULL);
 	assert(source->inflight_data_size == 0);
-	assert(peerCtx->clipboard_inflight_client_data_source == source);
-	peerCtx->clipboard_inflight_client_data_source = NULL;
+	assert(ctx->clipboard_inflight_client_data_source == source);
+	ctx->clipboard_inflight_client_data_source = NULL;
 	clipboard_data_source_unref(source);
 
 error_return_close_fd:
@@ -1163,15 +1163,15 @@ clipboard_data_source_cancel(struct weston_data_source *base)
 {
 	struct rdp_clipboard_data_source *source = (struct rdp_clipboard_data_source *) base;
 	freerdp_peer *client = (freerdp_peer*)source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 
 	rdp_debug_clipboard(b, "RDP %s (%p:%s)\n",
 		__func__, source, clipboard_data_source_state_to_string(source));
 
 	assert_compositor_thread(b);
 
-	if (source == peerCtx->clipboard_inflight_client_data_source) {
+	if (source == ctx->clipboard_inflight_client_data_source) {
 		source->is_canceled = TRUE;
 		source->state = RDP_CLIPBOARD_SOURCE_CANCEL_PENDING;
 		rdp_debug_clipboard(b, "RDP %s (%p:%s): still inflight - refcount:%d\n",
@@ -1211,8 +1211,8 @@ clipboard_data_source_publish(bool freeOnly, void *arg)
 {
 	struct rdp_clipboard_data_source *source = wl_container_of(arg, source, task_base);
 	freerdp_peer *client = (freerdp_peer*)source->context;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	struct rdp_clipboard_data_source *source_prev;
 
 	rdp_debug_clipboard(b, "RDP %s (%p:%s)\n",
@@ -1222,18 +1222,18 @@ clipboard_data_source_publish(bool freeOnly, void *arg)
 
 	/* here is going to publish new data, if previous data from client is still referenced,
 	   unref it after selection */
-	source_prev = peerCtx->clipboard_client_data_source;
+	source_prev = ctx->clipboard_client_data_source;
 	if (!freeOnly) {
-		peerCtx->clipboard_client_data_source = source;
+		ctx->clipboard_client_data_source = source;
 		source->transfer_event_source = NULL;
 		source->base.accept = clipboard_data_source_accept;
 		source->base.send = clipboard_data_source_send;
 		source->base.cancel = clipboard_data_source_cancel;
 		source->state = RDP_CLIPBOARD_SOURCE_PUBLISHED;
-		weston_seat_set_selection(peerCtx->item.seat, &source->base,
+		weston_seat_set_selection(ctx->item.seat, &source->base,
 					wl_display_next_serial(b->compositor->wl_display));
 	} else {
-		peerCtx->clipboard_client_data_source = NULL;
+		ctx->clipboard_client_data_source = NULL;
 		clipboard_data_source_unref(source);
 	}
 	if (source_prev)
@@ -1350,9 +1350,9 @@ error_exit_free_request:
 static void
 clipboard_set_selection(struct wl_listener *listener, void *data)
 {
-	RdpPeerContext *peerCtx = 
+	RdpPeerContext *ctx =
 		container_of(listener, RdpPeerContext, clipboard_selection_listener);
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	struct rdp_backend *b = ctx->rdpBackend;
 	struct weston_seat *seat = data;
 	struct weston_data_source *selection_data_source = seat->selection_data_source;
 	struct rdp_clipboard_data_source* data_source;
@@ -1374,9 +1374,9 @@ clipboard_set_selection(struct wl_listener *listener, void *data)
 
 	/* another data source (from server side) gets selected,
 	   no longer need previous data from client. */
-	if (peerCtx->clipboard_client_data_source) {
-		data_source = peerCtx->clipboard_client_data_source;
-		peerCtx->clipboard_client_data_source = NULL;
+	if (ctx->clipboard_client_data_source) {
+		data_source = ctx->clipboard_client_data_source;
+		ctx->clipboard_client_data_source = NULL;
 		clipboard_data_source_unref(data_source);
 	}
 
@@ -1409,7 +1409,7 @@ clipboard_set_selection(struct wl_listener *listener, void *data)
 		formatList.msgType = CB_FORMAT_LIST;
 		formatList.numFormats = num_supported_format;
 		formatList.formats = &format[0];
-		peerCtx->clipboard_server_context->ServerFormatList(peerCtx->clipboard_server_context, &formatList);
+		ctx->clipboard_server_context->ServerFormatList(ctx->clipboard_server_context, &formatList);
 	} else {
 		rdp_debug_clipboard(b, "RDP %s (base:%p) no supported formats\n", __func__, selection_data_source);
 	}
@@ -1426,8 +1426,8 @@ static UINT
 clipboard_client_temp_directory(CliprdrServerContext* context, const CLIPRDR_TEMP_DIRECTORY* tempDirectory)
 {
 	freerdp_peer *client = (freerdp_peer*)context->custom;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	rdp_debug_clipboard(b, "Client: %s %s\n", __func__, tempDirectory->szTempDir);
 	return 0;
 }
@@ -1437,8 +1437,8 @@ static UINT
 clipboard_client_capabilities(CliprdrServerContext* context, const CLIPRDR_CAPABILITIES* capabilities)
 {
 	freerdp_peer *client = (freerdp_peer*)context->custom;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	rdp_debug_clipboard(b, "Client: clipboard capabilities: cCapabilitiesSet:%d\n", capabilities->cCapabilitiesSets);
 	for (UINT32 i = 0; i < capabilities->cCapabilitiesSets; i++) {
 		CLIPRDR_CAPABILITY_SET* capabilitySets = &capabilities->capabilitySets[i];
@@ -1471,8 +1471,8 @@ static UINT
 clipboard_client_format_list(CliprdrServerContext* context, const CLIPRDR_FORMAT_LIST* formatList)
 {
 	freerdp_peer *client = (freerdp_peer*)context->custom;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	struct rdp_clipboard_data_source *source = NULL;
 	BOOL isPublished = FALSE;
 	char **p, *s;
@@ -1533,7 +1533,7 @@ clipboard_client_format_list(CliprdrServerContext* context, const CLIPRDR_FORMAT
 		}
 
 		source->state = RDP_CLIPBOARD_SOURCE_FORMATLIST_READY;
-		rdp_dispatch_task_to_display_loop(peerCtx, clipboard_data_source_publish, &source->task_base);
+		rdp_dispatch_task_to_display_loop(ctx, clipboard_data_source_publish, &source->task_base);
 		isPublished = TRUE;
 	}
 
@@ -1541,7 +1541,7 @@ clipboard_client_format_list(CliprdrServerContext* context, const CLIPRDR_FORMAT
 	formatListResponse.msgType = CB_FORMAT_LIST_RESPONSE;
 	formatListResponse.msgFlags = (source && isPublished) ? CB_RESPONSE_OK : CB_RESPONSE_FAIL;
 	formatListResponse.dataLen = 0;
-	if (peerCtx->clipboard_server_context->ServerFormatListResponse(peerCtx->clipboard_server_context, &formatListResponse) != 0) {
+	if (ctx->clipboard_server_context->ServerFormatListResponse(ctx->clipboard_server_context, &formatListResponse) != 0) {
 		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 		rdp_debug_clipboard_error(b, "Client: %s (%p:%s) ServerFormatListResponse failed\n",
 			__func__, source, clipboard_data_source_state_to_string(source));
@@ -1561,10 +1561,10 @@ static UINT
 clipboard_client_format_data_response(CliprdrServerContext* context, const CLIPRDR_FORMAT_DATA_RESPONSE* formatDataResponse)
 {
 	freerdp_peer *client = (freerdp_peer*)context->custom;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	struct wl_event_loop *loop = wl_display_get_event_loop(b->compositor->wl_display);
-	struct rdp_clipboard_data_source *source = peerCtx->clipboard_inflight_client_data_source;
+	struct rdp_clipboard_data_source *source = ctx->clipboard_inflight_client_data_source;
 	BOOL Success = FALSE;
 
 	rdp_debug_clipboard(b, "Client: %s (%p:%s) flags:%d dataLen:%d\n",
@@ -1628,8 +1628,8 @@ static UINT
 clipboard_client_format_list_response(CliprdrServerContext* context, const CLIPRDR_FORMAT_LIST_RESPONSE* formatListResponse)
 {
 	freerdp_peer *client = (freerdp_peer*)context->custom;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	rdp_debug_clipboard(b, "Client: %s msgFlags:0x%x\n", __func__, formatListResponse->msgFlags);
 	assert_not_compositor_thread(b);
 	return 0;
@@ -1640,8 +1640,8 @@ static UINT
 clipboard_client_format_data_request(CliprdrServerContext* context, const CLIPRDR_FORMAT_DATA_REQUEST* formatDataRequest)
 {
 	freerdp_peer *client = (freerdp_peer*)context->custom;
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
 	struct rdp_clipboard_data_request *request;
 	int index;
 
@@ -1659,9 +1659,9 @@ clipboard_client_format_data_request(CliprdrServerContext* context, const CLIPRD
 			rdp_debug_clipboard_error(b, "zalloc failed\n", __func__);
 			goto error_return;
 		}
-		request->ctx = peerCtx;
+		request->ctx = ctx;
 		request->requested_format_index = index;
-		rdp_dispatch_task_to_display_loop(peerCtx, clipboard_data_source_request, &request->task_base);
+		rdp_dispatch_task_to_display_loop(ctx, clipboard_data_source_request, &request->task_base);
 	} else {
 		rdp_debug_clipboard_error(b, "Client: %s client requests data format the server never reported in format list response. protocol error.\n", __func__);
 		goto error_return;
@@ -1670,7 +1670,7 @@ clipboard_client_format_data_request(CliprdrServerContext* context, const CLIPRD
 
 error_return:
 	/* send FAIL response to client */
-	if (clipboard_client_send_format_data_response_fail(peerCtx, NULL) != 0)
+	if (clipboard_client_send_format_data_response_fail(ctx, NULL) != 0)
 		return -1;
 	return 0;
 }
