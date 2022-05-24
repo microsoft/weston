@@ -1153,8 +1153,6 @@ error_return_unref_source:
 
 error_return_close_fd:
 	close(fd);
-
-	return;
 }
 
 /* data-device informs the given data source is not longer referenced by compositor */
@@ -1238,8 +1236,6 @@ clipboard_data_source_publish(bool freeOnly, void *arg)
 	}
 	if (source_prev)
 		clipboard_data_source_unref(source_prev);
-
-	return;
 }
 
 /* Request the specified clipboard data from data-device at server side */
@@ -1338,8 +1334,6 @@ error_exit_response_fail:
 
 error_exit_free_request:
 	free(request);
-
-	return;
 }
 
 /*************************************\
@@ -1413,8 +1407,6 @@ clipboard_set_selection(struct wl_listener *listener, void *data)
 	} else {
 		rdp_debug_clipboard(b, "RDP %s (base:%p) no supported formats\n", __func__, selection_data_source);
 	}
-
-	return;
 }
 
 /*********************\
