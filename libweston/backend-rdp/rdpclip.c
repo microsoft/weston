@@ -67,8 +67,7 @@ struct rdp_clipboard_data_source;
 typedef void *(*pfn_process_data)(struct rdp_clipboard_data_source *source, BOOL is_send);
 
 struct rdp_clipboard_supported_format {
-	UINT32 index;
-	UINT32 format_id;
+	uint32_t format_id;
 	char *format_name;
 	char *mime_type;
 	pfn_process_data pfn;
@@ -82,11 +81,11 @@ static void *clipboard_process_html(struct rdp_clipboard_data_source *, BOOL);
 //TODO: need to support to 1:n or m:n format conversion.
 //For example, CF_UNICODETEXT to "UTF8_STRING" as well as "text/plain;charset=utf-8".
 struct rdp_clipboard_supported_format clipboard_supported_formats[] = {
-	{ 0, CF_UNICODETEXT,  NULL,               "text/plain;charset=utf-8", clipboard_process_text_utf8 },
-	{ 1, CF_TEXT,         NULL,               "STRING",                   clipboard_process_text_raw  },
-	{ 2, CF_DIB,          NULL,               "image/bmp",                clipboard_process_bmp       },
-	{ 3, CF_PRIVATE_RTF,  "Rich Text Format", "text/rtf",                 clipboard_process_text_raw  },
-	{ 4, CF_PRIVATE_HTML, "HTML Format",      "text/html",                clipboard_process_html      },
+	{ CF_UNICODETEXT,  NULL,               "text/plain;charset=utf-8", clipboard_process_text_utf8 },
+	{ CF_TEXT,         NULL,               "STRING",                   clipboard_process_text_raw  },
+	{ CF_DIB,          NULL,               "image/bmp",                clipboard_process_bmp       },
+	{ CF_PRIVATE_RTF,  "Rich Text Format", "text/rtf",                 clipboard_process_text_raw  },
+	{ CF_PRIVATE_HTML, "HTML Format",      "text/html",                clipboard_process_html      },
 };
 #define RDP_NUM_CLIPBOARD_FORMATS ARRAY_LENGTH(clipboard_supported_formats)
 
@@ -653,12 +652,13 @@ clipboard_format_id_to_string(UINT32 formatId, bool is_server_format_id)
 static int
 clipboard_find_supported_format_by_format_id(UINT32 format_id)
 {
-	for (UINT i = 0; i < RDP_NUM_CLIPBOARD_FORMATS; i++) {
+	unsigned int i;
+
+	for (i = 0; i < RDP_NUM_CLIPBOARD_FORMATS; i++) {
 		struct rdp_clipboard_supported_format *format = &clipboard_supported_formats[i];
-		if (format_id == format->format_id) {
-			assert(i == format->index);
-			return format->index;
-		}
+
+		if (format_id == format->format_id)
+			return i;
 	}
 	return -1;
 }
@@ -667,17 +667,18 @@ clipboard_find_supported_format_by_format_id(UINT32 format_id)
 static int
 clipboard_find_supported_format_by_format_id_and_name(UINT32 format_id, const char *format_name)
 {
-	for (UINT i = 0; i < RDP_NUM_CLIPBOARD_FORMATS; i++) {
+	unsigned int i;
+
+	for (i = 0; i < RDP_NUM_CLIPBOARD_FORMATS; i++) {
 		struct rdp_clipboard_supported_format *format = &clipboard_supported_formats[i];
+
 		/* when our supported format table has format name, only format name must match,
 		   format id provided from client is ignored (but it may be saved by caller for future use.
 		   When our supported format table doesn't have format name, only format id must match,
 		   format name (if provided from client) is ignored */
 		if ((format->format_name == NULL && format_id == format->format_id) ||
-			(format->format_name && format_name && strcmp(format_name, format->format_name) == 0)) {
-			assert(i == format->index);
-			return format->index;
-		}
+		    (format->format_name && format_name && strcmp(format_name, format->format_name) == 0))
+			return i;
 	}
 	return -1;
 }
@@ -686,12 +687,13 @@ clipboard_find_supported_format_by_format_id_and_name(UINT32 format_id, const ch
 static int
 clipboard_find_supported_format_by_mime_type(const char *mime_type)
 {
-	for (UINT i = 0; i < RDP_NUM_CLIPBOARD_FORMATS; i++) {
+	unsigned int i;
+
+	for (i = 0; i < RDP_NUM_CLIPBOARD_FORMATS; i++) {
 		struct rdp_clipboard_supported_format *format = &clipboard_supported_formats[i];
-		if (strcmp(mime_type, format->mime_type) == 0) {
-			assert(i == format->index);
-			return format->index;
-		}
+
+		if (strcmp(mime_type, format->mime_type) == 0)
+			return i;
 	}
 	return -1;
 }
