@@ -424,7 +424,6 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 	void *ret = NULL;
 	BITMAPFILEHEADER *bmfh = NULL;
 	BITMAPINFOHEADER *bmih = NULL;
-	const UINT32 size_of_bmfh = sizeof(*bmfh);
 	UINT32 color_table_size = 0;
 	/* size_t original_data_size = source->data_contents.size; */
 	/* BOOL was_data_processed = source->is_data_processed; */
@@ -434,7 +433,7 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 
 	if (is_send) {
 		/* Linux to Windows (remove BITMAPFILEHEADER) */
-		if (source->data_contents.size <= size_of_bmfh)
+		if (source->data_contents.size <= sizeof(*bmfh))
 			goto error_return;
 		
 		bmfh = (BITMAPFILEHEADER *)source->data_contents.data;
@@ -442,7 +441,7 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 
 		/* size must be adjusted only once */
 		if (!source->is_data_processed) {
-			source->data_contents.size -= size_of_bmfh;
+			source->data_contents.size -= sizeof(*bmfh);
 			source->is_data_processed = TRUE;
 		}
 
@@ -459,7 +458,7 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 				color_table_size = sizeof(RGBQUAD) * bmih->biClrUsed;
 
 			bmfh->bfType = DIB_HEADER_MARKER;
-			bmfh->bfOffBits = size_of_bmfh + bmih->biSize + color_table_size;
+			bmfh->bfOffBits = sizeof(*bmfh) + bmih->biSize + color_table_size;
 			if (bmih->biSizeImage)
 				bmfh->bfSize = bmfh->bfOffBits + bmih->biSizeImage;
 			else if (bmih->biCompression == BI_BITFIELDS || bmih->biCompression == BI_RGB)
@@ -469,7 +468,7 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 				goto error_return;
 
 			/* source data must have enough size as described at its own bitmap header */
-			if (source->data_contents.size < (bmfh->bfSize - size_of_bmfh))
+			if (source->data_contents.size < (bmfh->bfSize - sizeof(*bmfh)))
 				goto error_return;
 
 			if (!wl_array_add(&data_contents, bmfh->bfSize))
@@ -477,10 +476,10 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
 			assert(data_contents.size == bmfh->bfSize);
 
 			/* copy generated BITMAPFILEHEADER */
-			memcpy(data_contents.data, bmfh, size_of_bmfh);
+			memcpy(data_contents.data, bmfh, sizeof(*bmfh));
 			/* copy rest of bitmap data from source */
-			memcpy((char *)data_contents.data + size_of_bmfh,
-				source->data_contents.data, bmfh->bfSize - size_of_bmfh);
+			memcpy((char *)data_contents.data + sizeof(*bmfh),
+				source->data_contents.data, bmfh->bfSize - sizeof(*bmfh));
 
 			/* swap the data_contents with new one */
 			wl_array_release(&source->data_contents);
