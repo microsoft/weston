@@ -1677,49 +1677,51 @@ error_return:
  * Public functions *
 \********************/
 
-int 
-rdp_clipboard_init(freerdp_peer* client)
+int
+rdp_clipboard_init(freerdp_peer *client)
 {
-	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
-	struct rdp_backend *b = peerCtx->rdpBackend;
-	struct weston_seat *seat = peerCtx->item.seat;
+	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = ctx->rdpBackend;
+	struct weston_seat *seat = ctx->item.seat;
+	CliprdrServerContext *clip_ctx;
 
 	assert(seat);
 
 	assert_compositor_thread(b);
 
-	peerCtx->clipboard_server_context = cliprdr_server_context_new(peerCtx->vcm);
-	if (!peerCtx->clipboard_server_context) 
+	ctx->clipboard_server_context = cliprdr_server_context_new(ctx->vcm);
+	if (!ctx->clipboard_server_context)
 		goto error;
 
-	peerCtx->clipboard_server_context->custom = (void *)client;
-	peerCtx->clipboard_server_context->TempDirectory = clipboard_client_temp_directory;
-	peerCtx->clipboard_server_context->ClientCapabilities = clipboard_client_capabilities;
-	peerCtx->clipboard_server_context->ClientFormatList = clipboard_client_format_list;
-	peerCtx->clipboard_server_context->ClientFormatListResponse = clipboard_client_format_list_response;
-	//peerCtx->clipboard_server_context->ClientLockClipboardData
-	//peerCtx->clipboard_server_context->ClientUnlockClipboardData
-	peerCtx->clipboard_server_context->ClientFormatDataRequest = clipboard_client_format_data_request;
-	peerCtx->clipboard_server_context->ClientFormatDataResponse = clipboard_client_format_data_response;
-	//peerCtx->clipboard_server_context->ClientFileContentsRequest
-	//peerCtx->clipboard_server_context->ClientFileContentsResponse
-	peerCtx->clipboard_server_context->useLongFormatNames = FALSE; // ASCII8 format name only (No Windows-style 2 bytes Unicode).
-	peerCtx->clipboard_server_context->streamFileClipEnabled = FALSE;
-	peerCtx->clipboard_server_context->fileClipNoFilePaths = FALSE;
-	peerCtx->clipboard_server_context->canLockClipData = TRUE;
-	if (peerCtx->clipboard_server_context->Start(peerCtx->clipboard_server_context) != 0)
+	clip_ctx = ctx->clipboard_server_context;
+	clip_ctx->custom = (void *)client;
+	clip_ctx->TempDirectory = clipboard_client_temp_directory;
+	clip_ctx->ClientCapabilities = clipboard_client_capabilities;
+	clip_ctx->ClientFormatList = clipboard_client_format_list;
+	clip_ctx->ClientFormatListResponse = clipboard_client_format_list_response;
+	/* clip_ctx->ClientLockClipboardData */
+	/* clip_ctx->ClientUnlockClipboardData */
+	clip_ctx->ClientFormatDataRequest = clipboard_client_format_data_request;
+	clip_ctx->ClientFormatDataResponse = clipboard_client_format_data_response;
+	/* clip_ctxClientFileContentsRequest */
+	/* clip_ctx->ClientFileContentsResponse */
+	clip_ctx->useLongFormatNames = FALSE; /* ASCII8 format name only (No Windows-style 2 bytes Unicode). */
+	clip_ctx->streamFileClipEnabled = FALSE;
+	clip_ctx->fileClipNoFilePaths = FALSE;
+	clip_ctx->canLockClipData = TRUE;
+	if (clip_ctx->Start(ctx->clipboard_server_context) != 0)
 		goto error;
 
-	peerCtx->clipboard_selection_listener.notify = clipboard_set_selection;
+	ctx->clipboard_selection_listener.notify = clipboard_set_selection;
 	wl_signal_add(&seat->selection_signal,
-			&peerCtx->clipboard_selection_listener);
+		      &ctx->clipboard_selection_listener);
 
 	return 0;
 
 error:
-	if (peerCtx->clipboard_server_context) {
-		cliprdr_server_context_free(peerCtx->clipboard_server_context);
-		peerCtx->clipboard_server_context = NULL;
+	if (ctx->clipboard_server_context) {
+		cliprdr_server_context_free(ctx->clipboard_server_context);
+		ctx->clipboard_server_context = NULL;
 	}
 
 	return -1;
