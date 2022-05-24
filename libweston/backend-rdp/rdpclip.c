@@ -114,19 +114,19 @@ struct rdp_clipboard_data_source {
 	int data_source_fd;
 	int format_index;
 	enum rdp_clipboard_data_source_state state;
-	UINT32 data_response_fail_count;
-	UINT32 inflight_write_count;
+	uint32_t data_response_fail_count;
+	uint32_t inflight_write_count;
 	void *inflight_data_to_write;
 	size_t inflight_data_size;
-	BOOL is_data_processed;
-	BOOL is_canceled;
-	UINT32 client_format_id_table[RDP_NUM_CLIPBOARD_FORMATS];
+	bool is_data_processed;
+	bool is_canceled;
+	uint32_t client_format_id_table[RDP_NUM_CLIPBOARD_FORMATS];
 };
 
 struct rdp_clipboard_data_request {
 	struct rdp_loop_task task_base;
 	RdpPeerContext *peerCtx; 
-	UINT32 requested_format_index;
+	uint32_t requested_format_index;
 };
 
 static char *
