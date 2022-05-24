@@ -46,11 +46,11 @@
 #define CF_PRIVATE_RTF  49309 // fake format ID for "Rich Text Format".
 #define CF_PRIVATE_HTML 49405 // fake format ID for "HTML Format".
 
-                                  /*          1           2           3           4         5         6           7         8      */
-                                  /*01234567890 1 2345678901234 5 67890123456 7 89012345678901234567890 1 234567890123456789012 3 4*/
-char rdp_clipboard_html_header[] = "Version:0.9\r\nStartHTML:-1\r\nEndHTML:-1\r\nStartFragment:00000000\r\nEndFragment:00000000\r\n";
-#define RDP_CLIPBOARD_FRAGMENT_START_OFFSET (53) //--------------------------------------------+                       |
-#define RDP_CLIPBOARD_FRAGMENT_END_OFFSET (75) //----------------------------------------------------------------------+
+					       /*          1           2           3           4         5         6           7         8      */
+					       /*01234567890 1 2345678901234 5 67890123456 7 89012345678901234567890 1 234567890123456789012 3 4*/
+static const char rdp_clipboard_html_header[] = "Version:0.9\r\nStartHTML:-1\r\nEndHTML:-1\r\nStartFragment:00000000\r\nEndFragment:00000000\r\n";
+#define RDP_CLIPBOARD_FRAGMENT_START_OFFSET (53) //---------------------------------------------------------+                       |
+#define RDP_CLIPBOARD_FRAGMENT_END_OFFSET (75) //-----------------------------------------------------------------------------------+
 
 /*
  * https://docs.microsoft.com/en-us/windows/win32/dataxchg/html-clipboard-format
@@ -59,8 +59,8 @@ char rdp_clipboard_html_header[] = "Version:0.9\r\nStartHTML:-1\r\nEndHTML:-1\r\
  * (no space allowed between the !-- and the text) to conveniently
  * indicate where the fragment starts and ends. 
  */
-char rdp_clipboard_html_fragment_start[] = "<!--StartFragment-->\r\n";
-char rdp_clipboard_html_fragment_end[] = "<!--EndFragment-->\r\n";
+static const char rdp_clipboard_html_fragment_start[] = "<!--StartFragment-->\r\n";
+static const char rdp_clipboard_html_fragment_end[] = "<!--EndFragment-->\r\n";
 
 struct rdp_clipboard_data_source;
 
