@@ -897,7 +897,6 @@ clipboard_data_source_fail(int fd, uint32_t mask, void *arg)
 	/* this data source must be tracked as inflight */
 	assert(source == ctx->clipboard_inflight_client_data_source);
 
-	/* remove event source now, and if write is failed with EAGAIN, queue back to display loop. */ 
 	wl_event_source_remove(source->transfer_event_source);
 	source->transfer_event_source = NULL;
 
