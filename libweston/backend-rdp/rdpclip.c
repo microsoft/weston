@@ -1411,16 +1411,18 @@ clipboard_set_selection(struct wl_listener *listener, void *data)
 	wl_array_for_each(mime_type, &selection_data_source->mime_types) {
 		index = clipboard_find_supported_format_by_mime_type(*mime_type);
 		if (index >= 0) {
-			format[num_supported_format].formatId = clipboard_supported_formats[index].format_id;
-			format[num_supported_format].formatName = clipboard_supported_formats[index].format_name;
+			CLIPRDR_FORMAT *f = &format[num_supported_format];
+
+			f->formatId = clipboard_supported_formats[index].format_id;
+			f->formatName = clipboard_supported_formats[index].format_name;
 			rdp_debug_clipboard(b, "RDP %s (base:%p) supported formats[%d]: %d: %s\n",
-				__func__,
-				selection_data_source,
-				num_supported_format,
-				format[num_supported_format].formatId,
-				format[num_supported_format].formatName ? \
-					format[num_supported_format].formatName : \
-					clipboard_format_id_to_string(format[num_supported_format].formatId, true));
+					    __func__,
+					    selection_data_source,
+					    num_supported_format,
+					    f->formatId,
+					    f->formatName ?
+					    f->formatName :
+					    clipboard_format_id_to_string(f->formatId, true));
 			num_supported_format++;
 		}
 	}
