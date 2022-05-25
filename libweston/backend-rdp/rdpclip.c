@@ -1492,6 +1492,7 @@ clipboard_client_capabilities(CliprdrServerContext *context, const CLIPRDR_CAPAB
 static UINT
 clipboard_client_format_list(CliprdrServerContext *context, const CLIPRDR_FORMAT_LIST *formatList)
 {
+	CLIPRDR_FORMAT_LIST_RESPONSE formatListResponse = {};
 	freerdp_peer *client = (freerdp_peer *)context->custom;
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = ctx->rdpBackend;
@@ -1511,62 +1512,63 @@ clipboard_client_format_list(CliprdrServerContext *context, const CLIPRDR_FORMAT
 	}
 
 	source = zalloc(sizeof *source);
-	if (source) {
-		source->state = RDP_CLIPBOARD_SOURCE_ALLOCATED;
-		rdp_debug_clipboard(b, "Client: %s (%p:%s) allocated\n",
-				    __func__, source,
-				    clipboard_data_source_state_to_string(source));
-		wl_signal_init(&source->base.destroy_signal);
-		wl_array_init(&source->base.mime_types);
-		wl_array_init(&source->data_contents);
-		source->context = client;
-		source->refcount = 1; /* decremented when another source is selected. */
-		source->data_source_fd = -1;
-		source->format_index = -1;
+	if (!source)
+		goto fail;
 
-		for (uint32_t i = 0; i < formatList->numFormats; i++) {
-			CLIPRDR_FORMAT *format = &formatList->formats[i];
-			int index = clipboard_find_supported_format_by_format_id_and_name(format->formatId, format->formatName);
+	source->state = RDP_CLIPBOARD_SOURCE_ALLOCATED;
+	rdp_debug_clipboard(b, "Client: %s (%p:%s) allocated\n",
+			    __func__, source,
+			    clipboard_data_source_state_to_string(source));
+	wl_signal_init(&source->base.destroy_signal);
+	wl_array_init(&source->base.mime_types);
+	wl_array_init(&source->data_contents);
+	source->context = client;
+	source->refcount = 1; /* decremented when another source is selected. */
+	source->data_source_fd = -1;
+	source->format_index = -1;
 
-			if (index >= 0) {
-				/* save format id given from client, client can handle its own format id for private format. */
-				source->client_format_id_table[index] = format->formatId;
-				s = strdup(clipboard_supported_formats[index].mime_type);
-				if (s) {
-					p = wl_array_add(&source->base.mime_types, sizeof *p);
-					if (p) {
-						rdp_debug_clipboard(b, "Client: %s (%p:%s) mine_type:\"%s\" index:%d formatId:%d\n",
-								    __func__, source,
-								    clipboard_data_source_state_to_string(source),
-								    s, index, format->formatId);
-						*p = s;
-					} else {
-						rdp_debug_clipboard(b, "Client: %s (%p:%s) wl_array_add failed\n",
-								    __func__, source,
-								    clipboard_data_source_state_to_string(source));
-						free(s);
-					}
+	for (uint32_t i = 0; i < formatList->numFormats; i++) {
+		CLIPRDR_FORMAT *format = &formatList->formats[i];
+		int index = clipboard_find_supported_format_by_format_id_and_name(format->formatId, format->formatName);
+
+		if (index >= 0) {
+			/* save format id given from client, client can handle its own format id for private format. */
+			source->client_format_id_table[index] = format->formatId;
+			s = strdup(clipboard_supported_formats[index].mime_type);
+			if (s) {
+				p = wl_array_add(&source->base.mime_types, sizeof *p);
+				if (p) {
+					rdp_debug_clipboard(b, "Client: %s (%p:%s) mine_type:\"%s\" index:%d formatId:%d\n",
+							    __func__, source,
+							    clipboard_data_source_state_to_string(source),
+							    s, index, format->formatId);
+					*p = s;
 				} else {
-					rdp_debug_clipboard(b, "Client: %s (%p:%s) strdup failed\n",
+					rdp_debug_clipboard(b, "Client: %s (%p:%s) wl_array_add failed\n",
 							    __func__, source,
 							    clipboard_data_source_state_to_string(source));
+					free(s);
 				}
+			} else {
+				rdp_debug_clipboard(b, "Client: %s (%p:%s) strdup failed\n",
+						    __func__, source,
+						    clipboard_data_source_state_to_string(source));
 			}
 		}
-
-		if (formatList->numFormats != 0 &&
-		    source->base.mime_types.size == 0) {
-			rdp_debug_clipboard(b, "Client: %s (%p:%s) no formats are supported\n",
-					    __func__, source,
-					    clipboard_data_source_state_to_string(source));
-		}
-
-		source->state = RDP_CLIPBOARD_SOURCE_FORMATLIST_READY;
-		rdp_dispatch_task_to_display_loop(ctx, clipboard_data_source_publish, &source->task_base);
-		isPublished = TRUE;
 	}
 
-	CLIPRDR_FORMAT_LIST_RESPONSE formatListResponse = {};
+	if (formatList->numFormats != 0 &&
+	    source->base.mime_types.size == 0) {
+		rdp_debug_clipboard(b, "Client: %s (%p:%s) no formats are supported\n",
+				    __func__, source,
+				    clipboard_data_source_state_to_string(source));
+	}
+
+	source->state = RDP_CLIPBOARD_SOURCE_FORMATLIST_READY;
+	rdp_dispatch_task_to_display_loop(ctx, clipboard_data_source_publish, &source->task_base);
+	isPublished = TRUE;
+
+fail:
 	formatListResponse.msgType = CB_FORMAT_LIST_RESPONSE;
 	formatListResponse.msgFlags = (source && isPublished) ? CB_RESPONSE_OK : CB_RESPONSE_FAIL;
 	formatListResponse.dataLen = 0;
