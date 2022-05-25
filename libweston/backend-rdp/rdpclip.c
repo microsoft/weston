@@ -62,7 +62,7 @@ static const char rdp_clipboard_html_fragment_end[] = "<!--EndFragment-->\r\n";
 
 struct rdp_clipboard_data_source;
 
-typedef void *(*pfn_process_data)(struct rdp_clipboard_data_source *source, BOOL is_send);
+typedef void *(*pfn_process_data)(struct rdp_clipboard_data_source *source, bool is_send);
 
 struct rdp_clipboard_supported_format {
 	uint32_t format_id;
@@ -71,10 +71,10 @@ struct rdp_clipboard_supported_format {
 	pfn_process_data pfn;
 };
 
-static void *clipboard_process_text_utf8(struct rdp_clipboard_data_source *, BOOL);
-static void *clipboard_process_text_raw(struct rdp_clipboard_data_source *, BOOL);
-static void *clipboard_process_bmp(struct rdp_clipboard_data_source *, BOOL);
-static void *clipboard_process_html(struct rdp_clipboard_data_source *, BOOL);
+static void *clipboard_process_text_utf8(struct rdp_clipboard_data_source *, bool);
+static void *clipboard_process_text_raw(struct rdp_clipboard_data_source *, bool);
+static void *clipboard_process_bmp(struct rdp_clipboard_data_source *, bool);
+static void *clipboard_process_html(struct rdp_clipboard_data_source *, bool);
 
 /* TODO: need to support to 1:n or m:n format conversion.
  * For example, CF_UNICODETEXT to "UTF8_STRING" as well as "text/plain;charset=utf-8".
@@ -162,7 +162,7 @@ clipboard_data_source_state_to_string(struct rdp_clipboard_data_source *source)
 }
 
 static void *
-clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, BOOL is_send)
+clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, bool is_send)
 {
 	freerdp_peer *client = (freerdp_peer *)source->context;
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
@@ -262,7 +262,7 @@ error_return:
 }
 
 static void *
-clipboard_process_text_raw(struct rdp_clipboard_data_source *source, BOOL is_send)
+clipboard_process_text_raw(struct rdp_clipboard_data_source *source, bool is_send)
 {
 	freerdp_peer *client = (freerdp_peer *)source->context;
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
@@ -304,7 +304,7 @@ clipboard_process_text_raw(struct rdp_clipboard_data_source *source, BOOL is_sen
    because Firefox sends "<meta http-equiv="content-type" content="text/html; charset=utf-8">...", thus
    this needs to property strip meta header and convert to the Windows clipboard style HTML. */
 static void *
-clipboard_process_html(struct rdp_clipboard_data_source *source, BOOL is_send)
+clipboard_process_html(struct rdp_clipboard_data_source *source, bool is_send)
 {
 	freerdp_peer *client = (freerdp_peer *)source->context;
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
@@ -415,7 +415,7 @@ error_return:
 #define DIB_WIDTH_BYTES(bits) ((((bits) + 31) & ~31) >> 3)
 
 static void *
-clipboard_process_bmp(struct rdp_clipboard_data_source *source, BOOL is_send)
+clipboard_process_bmp(struct rdp_clipboard_data_source *source, bool is_send)
 {
 	freerdp_peer *client = (freerdp_peer *)source->context;
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
