@@ -898,22 +898,18 @@ clipboard_data_source_fail(int fd, uint32_t mask, void *arg)
 	wl_event_source_remove(source->transfer_event_source);
 	source->transfer_event_source = NULL;
 
-	if (source->data_contents.size) {
-		/* if data is recieved, but failed by other reason,
-		   then keep data and format index for future request,
-		   otherwise data is purged at last reference release. */
-		/* wl_array_release(&source->data_contents); */
-		/* wl_array_init(&source->data_contents); */
-	} else {
-		/* data has been never recieved, thus must be empty. */
+	/* if data was received, but failed for another reason then keep data
+	 * and format index for future request,	otherwise data is purged at
+	 * last reference release. */
+	if (!source->data_contents.size) {
+		/* data has been never received, thus must be empty. */
 		assert(source->data_contents.size == 0);
 		assert(source->data_contents.alloc == 0);
 		assert(source->data_contents.data == NULL);
 		/* clear previous requested format so it can be requested later again. */
 		source->format_index = -1;
 	}
-	/* don't clear format id table, so it allows to retry to get data from client. */
-	/* memset(source->client_format_id_table, 0, sizeof(source->client_format_id_table)); */
+
 	/* data has never been sent to write(), thus must be no inflight write. */
 	assert(source->inflight_write_count == 0);
 	assert(source->inflight_data_to_write == NULL);
