@@ -1084,7 +1084,7 @@ clipboard_data_source_send(struct weston_data_source *base,
 			/* when new source and previous source is same, update fd with new one and retry */
 			source->state = RDP_CLIPBOARD_SOURCE_RETRY;
 			ctx->clipboard_inflight_client_data_source->data_source_fd = fd;
-			goto exit_return;
+			return;
 		} else {
 			source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 			goto error_return_close_fd;
@@ -1153,7 +1153,6 @@ clipboard_data_source_send(struct weston_data_source *base,
 		goto error_return_close_fd;
 	}
 
-exit_return:
 	return;
 
 error_return_unref_source:
