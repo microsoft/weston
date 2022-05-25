@@ -39,8 +39,6 @@
 
 #include "libweston-internal.h"
 
-#define RDP_INVALID_EVENT_SOURCE ((void*)(-1))
-
 /* From MSDN, RegisterClipboardFormat API.
    Registered clipboard formats are identified by values in the range 0xC000 through 0xFFFF. */
 #define CF_PRIVATE_RTF  49309 /* fake format ID for "Rich Text Format". */
