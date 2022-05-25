@@ -1547,7 +1547,7 @@ clipboard_client_format_list(CliprdrServerContext *context, const CLIPRDR_FORMAT
 						free(s);
 					}
 				} else {
-					rdp_debug_clipboard(b, "Client: %s (%p:%s) wl_array_add failed\n",
+					rdp_debug_clipboard(b, "Client: %s (%p:%s) strdup failed\n",
 							    __func__, source,
 							    clipboard_data_source_state_to_string(source));
 				}
