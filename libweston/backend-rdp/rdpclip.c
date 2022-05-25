@@ -1196,26 +1196,27 @@ clipboard_data_source_cancel(struct weston_data_source *base)
 				    clipboard_data_source_state_to_string(source),
 				    source->refcount);
 		assert(source->refcount > 1);
-	} else {
-		/* everything outside of the base has to be cleaned up */
-		source->state = RDP_CLIPBOARD_SOURCE_CANCELED;
-		rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) - refcount:%d\n",
-			__func__, source, clipboard_data_source_state_to_string(source),
-			source->refcount);
-		assert(source->refcount == 1);
-		assert(source->transfer_event_source == NULL);
-		wl_array_release(&source->data_contents);
-		wl_array_init(&source->data_contents);
-		source->is_data_processed = FALSE;
-		source->format_index = -1;
-		memset(source->client_format_id_table, 0, sizeof(source->client_format_id_table));
-		source->inflight_write_count = 0;
-		source->inflight_data_to_write = NULL;
-		source->inflight_data_size = 0;
-		if (source->data_source_fd != -1) {
-			close(source->data_source_fd);
-			source->data_source_fd = -1;
-		}
+		return;
+	}
+	/* everything outside of the base has to be cleaned up */
+	source->state = RDP_CLIPBOARD_SOURCE_CANCELED;
+	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) - refcount:%d\n",
+				    __func__, source,
+				    clipboard_data_source_state_to_string(source),
+				    source->refcount);
+	assert(source->refcount == 1);
+	assert(source->transfer_event_source == NULL);
+	wl_array_release(&source->data_contents);
+	wl_array_init(&source->data_contents);
+	source->is_data_processed = false;
+	source->format_index = -1;
+	memset(source->client_format_id_table, 0, sizeof(source->client_format_id_table));
+	source->inflight_write_count = 0;
+	source->inflight_data_to_write = NULL;
+	source->inflight_data_size = 0;
+	if (source->data_source_fd != -1) {
+		close(source->data_source_fd);
+		source->data_source_fd = -1;
 	}
 }
 
