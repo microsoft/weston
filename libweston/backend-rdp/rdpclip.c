@@ -749,7 +749,7 @@ clipboard_data_source_unref(struct rdp_clipboard_data_source *source)
 \******************************************/
 
 /* Inform client data request is succeeded with data */
-static UINT
+static void
 clipboard_client_send_format_data_response(RdpPeerContext *ctx, struct rdp_clipboard_data_source *source, void *data, UINT32 size)
 {
 	struct rdp_backend *b = ctx->rdpBackend;
@@ -768,12 +768,10 @@ clipboard_client_send_format_data_response(RdpPeerContext *ctx, struct rdp_clipb
 	formatDataResponse.requestedFormatData = data;
 	ctx->clipboard_server_context->ServerFormatDataResponse(ctx->clipboard_server_context, &formatDataResponse);
 	/* if here failed to send response, what can we do ? */
-
-	return 0;
 }
 
 /* Inform client data request has failed */
-static UINT
+static void
 clipboard_client_send_format_data_response_fail(RdpPeerContext *ctx, struct rdp_clipboard_data_source *source)
 {
 	struct rdp_backend *b = ctx->rdpBackend;
@@ -794,8 +792,6 @@ clipboard_client_send_format_data_response_fail(RdpPeerContext *ctx, struct rdp_
 	formatDataResponse.requestedFormatData = NULL;
 	ctx->clipboard_server_context->ServerFormatDataResponse(ctx->clipboard_server_context, &formatDataResponse);
 	/* if here failed to send response, what can we do ? */
-
-	return 0;
 }
 
 /***************************************\
@@ -1710,8 +1706,7 @@ clipboard_client_format_data_request(CliprdrServerContext *context,
 
 error_return:
 	/* send FAIL response to client */
-	if (clipboard_client_send_format_data_response_fail(ctx, NULL) != 0)
-		return -1;
+	clipboard_client_send_format_data_response_fail(ctx, NULL);
 	return 0;
 }
 
