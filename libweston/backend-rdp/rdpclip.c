@@ -706,6 +706,8 @@ clipboard_data_source_unref(struct rdp_clipboard_data_source *source)
 	struct rdp_backend *b = ctx->rdpBackend;
 	char **p;
 
+	assert_compositor_thread(b);
+
 	assert(source->refcount);
 	source->refcount--;
 
@@ -717,22 +719,15 @@ clipboard_data_source_unref(struct rdp_clipboard_data_source *source)
 	if (source->refcount > 0)
 		return;
 
-	if (source->transfer_event_source) {
-		/* removing event source must be done from wayland display thread */
-		assert_compositor_thread(b);
+	if (source->transfer_event_source)
 		wl_event_source_remove(source->transfer_event_source);
-	}
 
-	if (source->data_source_fd != -1) {
-		assert_compositor_thread(b);
+	if (source->data_source_fd != -1)
 		close(source->data_source_fd);
-	}
 
-	if (!wl_list_empty(&source->base.destroy_signal.listener_list)) {
-		assert_compositor_thread(b);
+	if (!wl_list_empty(&source->base.destroy_signal.listener_list))
 		wl_signal_emit(&source->base.destroy_signal,
 			       &source->base);
-	}
 
 	wl_array_release(&source->data_contents);
 
