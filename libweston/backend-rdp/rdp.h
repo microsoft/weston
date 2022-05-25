@@ -373,9 +373,6 @@ struct rdp_loop_task {
 #define rdp_debug_clipboard_continue(b, ...) \
 	if (b->debugClipboardLevel >= RDP_DEBUG_LEVEL_INFO) \
 		rdp_debug_print(b->debugClipboard, true,  __VA_ARGS__)
-#define rdp_debug_clipboard_error(b, ...) \
-	if (b->debugClipboardLevel >= RDP_DEBUG_LEVEL_ERR) \
-		rdp_debug_print(b->debugClipboard, false, __VA_ARGS__)
 
 /* To enable rdp_debug message, add "--logger-scopes=rdp-backend". */
 
