@@ -1459,28 +1459,28 @@ clipboard_client_capabilities(CliprdrServerContext *context, const CLIPRDR_CAPAB
 	freerdp_peer *client = (freerdp_peer *)context->custom;
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = ctx->rdpBackend;
+
 	rdp_debug_clipboard(b, "Client: clipboard capabilities: cCapabilitiesSet:%d\n", capabilities->cCapabilitiesSets);
-	for (UINT32 i = 0; i < capabilities->cCapabilitiesSets; i++) {
-		CLIPRDR_CAPABILITY_SET* capabilitySets = &capabilities->capabilitySets[i];
+	for (uint32_t i = 0; i < capabilities->cCapabilitiesSets; i++) {
+		CLIPRDR_CAPABILITY_SET *capabilitySets = &capabilities->capabilitySets[i];
+		CLIPRDR_GENERAL_CAPABILITY_SET *generalCapabilitySet = (CLIPRDR_GENERAL_CAPABILITY_SET *)capabilitySets;
+
 		switch (capabilitySets->capabilitySetType) {
-			case CB_CAPSTYPE_GENERAL:
-			{
-				CLIPRDR_GENERAL_CAPABILITY_SET *generalCapabilitySet = (CLIPRDR_GENERAL_CAPABILITY_SET *)capabilitySets;
-				rdp_debug_clipboard(b, "Client: clipboard capabilities[%d]: General\n", i);
-				rdp_debug_clipboard(b, "    Version:%d\n", generalCapabilitySet->version);
-				rdp_debug_clipboard(b, "    GeneralFlags:0x%x\n", generalCapabilitySet->generalFlags);
-				if (generalCapabilitySet->generalFlags & CB_USE_LONG_FORMAT_NAMES)
-					rdp_debug_clipboard(b, "        CB_USE_LONG_FORMAT_NAMES\n");
-				if (generalCapabilitySet->generalFlags & CB_STREAM_FILECLIP_ENABLED)
-					rdp_debug_clipboard(b, "        CB_STREAM_FILECLIP_ENABLED\n");
-				if (generalCapabilitySet->generalFlags & CB_FILECLIP_NO_FILE_PATHS)
-					rdp_debug_clipboard(b, "        CB_FILECLIP_NO_FILE_PATHS\n");
-				if (generalCapabilitySet->generalFlags & CB_CAN_LOCK_CLIPDATA)
-					rdp_debug_clipboard(b, "        CB_CAN_LOCK_CLIPDATA\n");
-				break;
-			}
-			default:
-				return -1;
+		case CB_CAPSTYPE_GENERAL:
+			rdp_debug_clipboard(b, "Client: clipboard capabilities[%d]: General\n", i);
+			rdp_debug_clipboard(b, "    Version:%d\n", generalCapabilitySet->version);
+			rdp_debug_clipboard(b, "    GeneralFlags:0x%x\n", generalCapabilitySet->generalFlags);
+			if (generalCapabilitySet->generalFlags & CB_USE_LONG_FORMAT_NAMES)
+				rdp_debug_clipboard(b, "        CB_USE_LONG_FORMAT_NAMES\n");
+			if (generalCapabilitySet->generalFlags & CB_STREAM_FILECLIP_ENABLED)
+				rdp_debug_clipboard(b, "        CB_STREAM_FILECLIP_ENABLED\n");
+			if (generalCapabilitySet->generalFlags & CB_FILECLIP_NO_FILE_PATHS)
+				rdp_debug_clipboard(b, "        CB_FILECLIP_NO_FILE_PATHS\n");
+			if (generalCapabilitySet->generalFlags & CB_CAN_LOCK_CLIPDATA)
+				rdp_debug_clipboard(b, "        CB_CAN_LOCK_CLIPDATA\n");
+			break;
+		default:
+			return -1;
 		}
 	}
 	return 0;
