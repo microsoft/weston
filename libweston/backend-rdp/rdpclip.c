@@ -1497,7 +1497,6 @@ clipboard_client_format_list(CliprdrServerContext *context, const CLIPRDR_FORMAT
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = ctx->rdpBackend;
 	struct rdp_clipboard_data_source *source = NULL;
-	BOOL isPublished = FALSE;
 	char **p, *s;
 
 	assert_not_compositor_thread(b);
@@ -1566,11 +1565,10 @@ clipboard_client_format_list(CliprdrServerContext *context, const CLIPRDR_FORMAT
 
 	source->state = RDP_CLIPBOARD_SOURCE_FORMATLIST_READY;
 	rdp_dispatch_task_to_display_loop(ctx, clipboard_data_source_publish, &source->task_base);
-	isPublished = TRUE;
 
 fail:
 	formatListResponse.msgType = CB_FORMAT_LIST_RESPONSE;
-	formatListResponse.msgFlags = (source && isPublished) ? CB_RESPONSE_OK : CB_RESPONSE_FAIL;
+	formatListResponse.msgFlags = source ? CB_RESPONSE_OK : CB_RESPONSE_FAIL;
 	formatListResponse.dataLen = 0;
 	if (ctx->clipboard_server_context->ServerFormatListResponse(ctx->clipboard_server_context, &formatListResponse) != 0) {
 		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
@@ -1579,12 +1577,6 @@ fail:
 			   clipboard_data_source_state_to_string(source));
 		return -1;
 	}
-
-	if (!isPublished && source) {
-		assert(source->refcount == 1);
-		clipboard_data_source_unref(source);
-	}
-
 	return 0;
 }
 
