@@ -1692,19 +1692,20 @@ clipboard_client_format_data_request(CliprdrServerContext *context,
 
 	/* Make sure clients requested the format we knew */
 	index = clipboard_find_supported_format_by_format_id(formatDataRequest->requestedFormatId);
-	if (index >= 0) {
-		request = zalloc(sizeof(*request));
-		if (!request) {
-			weston_log("zalloc failed\n");
-			goto error_return;
-		}
-		request->ctx = ctx;
-		request->requested_format_index = index;
-		rdp_dispatch_task_to_display_loop(ctx, clipboard_data_source_request, &request->task_base);
-	} else {
+	if (index < 0) {
 		weston_log("Client: %s client requests data format the server never reported in format list response. protocol error.\n", __func__);
 		goto error_return;
 	}
+
+	request = zalloc(sizeof(*request));
+	if (!request) {
+		weston_log("zalloc failed\n");
+		goto error_return;
+	}
+	request->ctx = ctx;
+	request->requested_format_index = index;
+	rdp_dispatch_task_to_display_loop(ctx, clipboard_data_source_request, &request->task_base);
+
 	return 0;
 
 error_return:
