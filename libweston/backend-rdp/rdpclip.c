@@ -1590,50 +1590,50 @@ clipboard_client_format_data_response(CliprdrServerContext *context, const CLIPR
 
 	assert_not_compositor_thread(b);
 
-	if (source) {
-		if (source->transfer_event_source || (source->inflight_write_count != 0)) {
-			/* here means client responded more than once for single data request */
-			source->state = RDP_CLIPBOARD_SOURCE_FAILED;
-			weston_log("Client: %s (%p:%s) middle of write loop:%p, %d\n",
-				   __func__, source, clipboard_data_source_state_to_string(source),
-				   source->transfer_event_source, source->inflight_write_count);
-			return -1;
-		}
+	if (!source) {
+		rdp_debug_clipboard(b, "Client: %s client send data without server asking. protocol error", __func__);
+		return -1;
+	}
 
-		if (formatDataResponse->msgFlags == CB_RESPONSE_OK) {
-			/* Recieved data from client, cache to data source */
-			if (wl_array_add(&source->data_contents, formatDataResponse->dataLen+1)) {
-				memcpy(source->data_contents.data,
-					formatDataResponse->requestedFormatData,
-					formatDataResponse->dataLen);
-				source->data_contents.size = formatDataResponse->dataLen;
-				/* regardless data type, make sure it ends with NULL */
-				((char *)source->data_contents.data)[source->data_contents.size] = '\0';
-				/* data is ready, waiting to be written to destination */
-				source->state = RDP_CLIPBOARD_SOURCE_RECEIVED_DATA;
-				success = true;
-			} else {
-				source->state = RDP_CLIPBOARD_SOURCE_FAILED;
-			}
+	if (source->transfer_event_source || (source->inflight_write_count != 0)) {
+		/* here means client responded more than once for single data request */
+		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
+		weston_log("Client: %s (%p:%s) middle of write loop:%p, %d\n",
+			   __func__, source, clipboard_data_source_state_to_string(source),
+			   source->transfer_event_source, source->inflight_write_count);
+		return -1;
+	}
+
+	if (formatDataResponse->msgFlags == CB_RESPONSE_OK) {
+		/* Recieved data from client, cache to data source */
+		if (wl_array_add(&source->data_contents, formatDataResponse->dataLen+1)) {
+			memcpy(source->data_contents.data,
+			       formatDataResponse->requestedFormatData,
+			       formatDataResponse->dataLen);
+			source->data_contents.size = formatDataResponse->dataLen;
+			/* regardless data type, make sure it ends with NULL */
+			((char *)source->data_contents.data)[source->data_contents.size] = '\0';
+			/* data is ready, waiting to be written to destination */
+			source->state = RDP_CLIPBOARD_SOURCE_RECEIVED_DATA;
+			success = true;
 		} else {
 			source->state = RDP_CLIPBOARD_SOURCE_FAILED;
-			source->data_response_fail_count++;
-		}
-		rdp_debug_clipboard_verbose(b, "Client: %s (%p:%s) fail count:%d)\n",
-					    __func__, source,
-					    clipboard_data_source_state_to_string(source),
-					    source->data_response_fail_count);
-
-		assert(source->transfer_event_source == NULL);
-		if (!rdp_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
-			success ? clipboard_data_source_write : clipboard_data_source_fail, source, &source->transfer_event_source)) {
-			source->state = RDP_CLIPBOARD_SOURCE_FAILED;
-			weston_log("Client: %s (%p:%s) rdp_event_loop_add_fd failed\n",
-				   __func__, source, clipboard_data_source_state_to_string(source));
-			return -1;
 		}
 	} else {
-		rdp_debug_clipboard(b, "Client: %s client send data without server asking. protocol error", __func__);
+		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
+		source->data_response_fail_count++;
+	}
+	rdp_debug_clipboard_verbose(b, "Client: %s (%p:%s) fail count:%d\n",
+				    __func__, source,
+				    clipboard_data_source_state_to_string(source),
+				    source->data_response_fail_count);
+
+	assert(source->transfer_event_source == NULL);
+	if (!rdp_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
+		success ? clipboard_data_source_write : clipboard_data_source_fail, source, &source->transfer_event_source)) {
+		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
+		weston_log("Client: %s (%p:%s) rdp_event_loop_add_fd failed\n",
+			   __func__, source, clipboard_data_source_state_to_string(source));
 		return -1;
 	}
 
