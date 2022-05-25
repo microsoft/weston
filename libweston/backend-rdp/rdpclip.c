@@ -1108,6 +1108,8 @@ clipboard_data_source_send(struct weston_data_source *base,
 		assert(source->inflight_data_to_write == NULL);
 		assert(source->inflight_data_size == 0);
 		if (index == source->format_index) {
+			bool ret;
+
 			/* data is already in data_contents, no need to pull from client */
 			assert(source->transfer_event_source == NULL);
 			source->state = RDP_CLIPBOARD_SOURCE_RECEIVED_DATA;
@@ -1118,8 +1120,11 @@ clipboard_data_source_send(struct weston_data_source *base,
 						    source->client_format_id_table[index],
 						    clipboard_format_id_to_string(source->client_format_id_table[index],
 						    false));
-			if (!rdp_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
-				clipboard_data_source_write, source, &source->transfer_event_source)) {
+
+			ret = rdp_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
+						    clipboard_data_source_write, source,
+						    &source->transfer_event_source);
+			if (!ret) {
 				source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 				weston_log("RDP %s (%p:%s) rdp_event_loop_add_fd failed\n",
 					   __func__, source,
@@ -1269,6 +1274,7 @@ clipboard_data_source_request(bool freeOnly, void *arg)
 	const char *requested_mime_type, **mime_type;
 	int index;
 	bool found_requested_format;
+	bool ret;
 
 	assert_compositor_thread(b);
 
@@ -1331,9 +1337,10 @@ clipboard_data_source_request(bool freeOnly, void *arg)
 	selection_data_source->send(selection_data_source, requested_mime_type, p[1]);
 	/* p[1] should be closed by data source */
 
-	/* wait until data is ready on pipe */
-	if (!rdp_event_loop_add_fd(loop, p[0], WL_EVENT_READABLE,
-		clipboard_data_source_read, source, &source->transfer_event_source)) {
+	ret = rdp_event_loop_add_fd(loop, p[0], WL_EVENT_READABLE,
+				    clipboard_data_source_read, source,
+				    &source->transfer_event_source);
+	if (!ret) {
 		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 		weston_log("RDP %s (%p:%s) rdp_event_loop_add_fd failed.\n",
 			   __func__, source,
@@ -1581,6 +1588,7 @@ clipboard_client_format_data_response(CliprdrServerContext *context, const CLIPR
 	struct wl_event_loop *loop = wl_display_get_event_loop(b->compositor->wl_display);
 	struct rdp_clipboard_data_source *source = ctx->clipboard_inflight_client_data_source;
 	bool success = false;
+	bool ret;
 
 	rdp_debug_clipboard(b, "Client: %s (%p:%s) flags:%d dataLen:%d\n",
 			    __func__, source,
@@ -1629,8 +1637,10 @@ clipboard_client_format_data_response(CliprdrServerContext *context, const CLIPR
 				    source->data_response_fail_count);
 
 	assert(source->transfer_event_source == NULL);
-	if (!rdp_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
-		success ? clipboard_data_source_write : clipboard_data_source_fail, source, &source->transfer_event_source)) {
+	ret = rdp_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
+				    success ? clipboard_data_source_write : clipboard_data_source_fail,
+				    source, &source->transfer_event_source);
+	if (!ret) {
 		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 		weston_log("Client: %s (%p:%s) rdp_event_loop_add_fd failed\n",
 			   __func__, source, clipboard_data_source_state_to_string(source));
