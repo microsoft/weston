@@ -989,7 +989,10 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 	}
 	while (data_to_write && data_size) {
 		source->state = RDP_CLIPBOARD_SOURCE_TRANSFERING;
-		size = write(source->data_source_fd, data_to_write, data_size);
+		do {
+			size = write(source->data_source_fd, data_to_write, data_size);
+		} while (size == -1 && errno == EINTR);
+
 		if (size <= 0) {
 			if (errno != EAGAIN) {
 				source->state = RDP_CLIPBOARD_SOURCE_FAILED;
