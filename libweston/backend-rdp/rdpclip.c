@@ -472,6 +472,10 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, bool is_send)
 		}
 
 		BITMAPFILEHEADER _bmfh = {};
+
+		if (source->data_contents.size <= sizeof(*bmih))
+			goto error_return;
+
 		bmih = source->data_contents.data;
 		bmfh = &_bmfh;
 		if (bmih->biCompression == BI_BITFIELDS)
