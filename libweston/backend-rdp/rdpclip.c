@@ -175,6 +175,8 @@ clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, bool is_se
 		goto out;
 
 	if (is_send) {
+		size_t data_size, data_size_in_char;
+
 		/* Linux to Windows (convert utf-8 to UNICODE) */
 		/* Include terminating NULL in size */
 		assert((source->data_contents.size + 1) <= source->data_contents.alloc);
@@ -182,10 +184,10 @@ clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, bool is_se
 		source->data_contents.size++;
 
 		/* obtain size in UNICODE */
-		size_t data_size = MultiByteToWideChar(CP_UTF8, 0,
-						       source->data_contents.data,
-						       source->data_contents.size,
-						       NULL, 0);
+		data_size = MultiByteToWideChar(CP_UTF8, 0,
+						source->data_contents.data,
+						source->data_contents.size,
+						NULL, 0);
 		if (data_size < 1)
 			goto error_return;
 
@@ -194,14 +196,15 @@ clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, bool is_se
 			goto error_return;
 
 		/* convert to UNICODE */
-		size_t data_size_in_char = MultiByteToWideChar(CP_UTF8, 0,
-							       source->data_contents.data,
-							       source->data_contents.size,
-							       data_contents.data,
-							       data_size);
+		data_size_in_char = MultiByteToWideChar(CP_UTF8, 0,
+							source->data_contents.data,
+							source->data_contents.size,
+							data_contents.data,
+							data_size);
 		assert(data_contents.size == (data_size_in_char * 2));
 	} else {
 		/* Windows to Linux (UNICODE to utf-8) */
+		size_t data_size;
 		LPWSTR data = source->data_contents.data;
 		size_t data_size_in_char = source->data_contents.size / 2;
 
@@ -213,11 +216,11 @@ clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, bool is_se
 			goto error_return;
 
 		/* obtain size in utf-8 */
-		size_t data_size = WideCharToMultiByte(CP_UTF8, 0,
-						       source->data_contents.data,
-						       data_size_in_char,
-						       NULL, 0,
-						       NULL, NULL);
+		data_size = WideCharToMultiByte(CP_UTF8, 0,
+						source->data_contents.data,
+						data_size_in_char,
+						NULL, 0,
+						NULL, NULL);
 		if (data_size < 1)
 			goto error_return;
 
