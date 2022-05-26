@@ -171,76 +171,80 @@ clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, bool is_se
 
 	wl_array_init(&data_contents);
 
-	if (!source->is_data_processed) {
-		if (is_send) {
-			/* Linux to Windows (convert utf-8 to UNICODE) */
-			/* Include terminating NULL in size */
-			assert((source->data_contents.size + 1) <= source->data_contents.alloc);
-			assert(((char *)source->data_contents.data)[source->data_contents.size] == '\0');
-			source->data_contents.size++;
+	if (source->is_data_processed)
+		goto out;
 
-			/* obtain size in UNICODE */
-			size_t data_size = MultiByteToWideChar(CP_UTF8, 0,
-				(char *)source->data_contents.data,
-				source->data_contents.size,
-				NULL, 0);
-			if (data_size < 1)
-				goto error_return;
+	if (is_send) {
+		/* Linux to Windows (convert utf-8 to UNICODE) */
+		/* Include terminating NULL in size */
+		assert((source->data_contents.size + 1) <= source->data_contents.alloc);
+		assert(((char *)source->data_contents.data)[source->data_contents.size] == '\0');
+		source->data_contents.size++;
 
-			data_size *= 2; /* convert to size in bytes. */
-			if (!wl_array_add(&data_contents, data_size))
-				goto error_return;
+		/* obtain size in UNICODE */
+		size_t data_size = MultiByteToWideChar(CP_UTF8, 0,
+						       source->data_contents.data,
+						       source->data_contents.size,
+						       NULL, 0);
+		if (data_size < 1)
+			goto error_return;
 
-			/* convert to UNICODE */
-			size_t data_size_in_char = MultiByteToWideChar(CP_UTF8, 0,
-				(char *)source->data_contents.data,
-				source->data_contents.size,
-				(LPWSTR)data_contents.data,
-				data_size);
-			assert(data_contents.size == (data_size_in_char * 2));
-		} else {
-			/* Windows to Linux (UNICODE to utf-8) */
-			LPWSTR data = (LPWSTR)source->data_contents.data;
-			size_t data_size_in_char = source->data_contents.size / 2;
+		data_size *= 2; /* convert to size in bytes. */
+		if (!wl_array_add(&data_contents, data_size))
+			goto error_return;
 
-			/* Windows's data has trailing chars, which Linux doesn't expect. */
-			while(data_size_in_char &&
-				((data[data_size_in_char-1] == L'\0') || (data[data_size_in_char-1] == L'\n')))
-				data_size_in_char -= 1;
-			if (!data_size_in_char)
-				goto error_return;
+		/* convert to UNICODE */
+		size_t data_size_in_char = MultiByteToWideChar(CP_UTF8, 0,
+							       source->data_contents.data,
+							       source->data_contents.size,
+							       data_contents.data,
+							       data_size);
+		assert(data_contents.size == (data_size_in_char * 2));
+	} else {
+		/* Windows to Linux (UNICODE to utf-8) */
+		LPWSTR data = source->data_contents.data;
+		size_t data_size_in_char = source->data_contents.size / 2;
 
-			/* obtain size in utf-8 */
-			size_t data_size = WideCharToMultiByte(CP_UTF8, 0,
-				(LPCWSTR)source->data_contents.data,
-				data_size_in_char,
-				NULL, 0,
-				NULL, NULL);
-			if (data_size < 1)
-				goto error_return;
+		/* Windows's data has trailing chars, which Linux doesn't expect. */
+		while (data_size_in_char &&
+		       ((data[data_size_in_char-1] == L'\0') || (data[data_size_in_char-1] == L'\n')))
+			data_size_in_char -= 1;
+		if (!data_size_in_char)
+			goto error_return;
 
-			if (!wl_array_add(&data_contents, data_size))
-				goto error_return;
+		/* obtain size in utf-8 */
+		size_t data_size = WideCharToMultiByte(CP_UTF8, 0,
+						       source->data_contents.data,
+						       data_size_in_char,
+						       NULL, 0,
+						       NULL, NULL);
+		if (data_size < 1)
+			goto error_return;
 
-			/* convert to utf-8 */
-			data_size = WideCharToMultiByte(CP_UTF8, 0,
-				(LPCWSTR)source->data_contents.data,
-				data_size_in_char,
-				(char *)data_contents.data,
-				data_size,
-				NULL, NULL);
-			assert(data_contents.size == data_size);
-		}
+		if (!wl_array_add(&data_contents, data_size))
+			goto error_return;
 
-		/* swap the data_contents with new one */
-		wl_array_release(&source->data_contents);
-		source->data_contents = data_contents;
-		source->is_data_processed = TRUE;
+		/* convert to utf-8 */
+		data_size = WideCharToMultiByte(CP_UTF8, 0,
+						source->data_contents.data,
+						data_size_in_char,
+						data_contents.data,
+						data_size,
+						NULL, NULL);
+		assert(data_contents.size == data_size);
 	}
 
+	/* swap the data_contents with new one */
+	wl_array_release(&source->data_contents);
+	source->data_contents = data_contents;
+	source->is_data_processed = TRUE;
+
+out:
 	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s): %s (%u bytes)\n",
-				    __func__, source, clipboard_data_source_state_to_string(source),
-				    is_send ? "send" : "receive", (uint32_t)source->data_contents.size);
+				    __func__, source,
+				    clipboard_data_source_state_to_string(source),
+				    is_send ? "send" : "receive",
+				    (uint32_t)source->data_contents.size);
 
 	return source->data_contents.data;
 
@@ -268,28 +272,32 @@ clipboard_process_text_raw(struct rdp_clipboard_data_source *source, bool is_sen
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = ctx->rdpBackend;
 
-	if (!source->is_data_processed) {
-		if (is_send) {
-			/* Linux to Windows */
-			/* Include terminating NULL in size */
-			assert((source->data_contents.size + 1) <= source->data_contents.alloc);
-			assert(((char *)source->data_contents.data)[source->data_contents.size] == '\0');
-			source->data_contents.size++;
-		} else {
-			/* Windows to Linux */
-			char *data = (char *)source->data_contents.data;
-			size_t data_size = source->data_contents.size;
+	if (source->is_data_processed)
+		goto out;
 
-			/* Windows's data has trailing chars, which Linux doesn't expect. */
-			while(data_size && ((data[data_size-1] == '\0') || (data[data_size-1] == '\n')))
-				data_size -= 1;
-			source->data_contents.size = data_size;
-		}
-		source->is_data_processed = TRUE;
+	if (is_send) {
+		/* Linux to Windows */
+		/* Include terminating NULL in size */
+		assert((source->data_contents.size + 1) <= source->data_contents.alloc);
+		assert(((char *)source->data_contents.data)[source->data_contents.size] == '\0');
+		source->data_contents.size++;
+	} else {
+		/* Windows to Linux */
+		char *data = (char *)source->data_contents.data;
+		size_t data_size = source->data_contents.size;
+
+		/* Windows's data has trailing chars, which Linux doesn't expect. */
+		while (data_size && ((data[data_size-1] == '\0') || (data[data_size-1] == '\n')))
+			data_size -= 1;
+		source->data_contents.size = data_size;
 	}
+	source->is_data_processed = TRUE;
 
-	rdp_debug_clipboard_verbose(b, "RDP %s (%p): %s (%d bytes)\n",
-		__func__, source, is_send ? "send" : "receive", (UINT32)source->data_contents.size);
+out:
+	rdp_debug_clipboard_verbose(b, "RDP %s (%p): %s (%u bytes)\n",
+				    __func__, source,
+				    is_send ? "send" : "receive",
+				    (uint32_t)source->data_contents.size);
 	//rdp_debug_clipboard_verbose(b, "RDP %s (%p): %s \n\"%s\"\n (%d bytes)\n",
 	//	__func__, source, is_send ? "send" : "receive",
 	//	(char *)source->data_contents.data,
@@ -313,78 +321,80 @@ clipboard_process_html(struct rdp_clipboard_data_source *source, bool is_send)
 
 	wl_array_init(&data_contents);
 
-	if (!source->is_data_processed) {
-		char *cur = (char *)source->data_contents.data;
-		cur = strstr(cur, "<html");
-		if (!cur)
+	if (source->is_data_processed)
+		goto out;
+
+	char *cur = (char *)source->data_contents.data;
+	cur = strstr(cur, "<html");
+	if (!cur)
+		goto error_return;
+
+	if (!is_send) {
+		/* Windows to Linux */
+		size_t data_size = source->data_contents.size -
+				   (cur - (char *)source->data_contents.data);
+
+		/* Windows's data has trailing chars, which Linux doesn't expect. */
+		while (data_size && ((cur[data_size-1] == '\0') || (cur[data_size-1] == '\n')))
+			data_size -= 1;
+
+		if (!data_size)
 			goto error_return;
 
-		if (!is_send) {
-			/* Windows to Linux */
-			size_t data_size = source->data_contents.size -
-				(cur - (char *)source->data_contents.data);
+		if (!wl_array_add(&data_contents, data_size+1)) /* +1 for null */
+			goto error_return;
 
-			/* Windows's data has trailing chars, which Linux doesn't expect. */
-			while(data_size && ((cur[data_size-1] == '\0') || (cur[data_size-1] == '\n')))
-				data_size -= 1;
+		memcpy(data_contents.data, cur, data_size);
+		((char *)(data_contents.data))[data_size] = '\0';
+		data_contents.size = data_size;
+	} else {
+		/* Linux to Windows */
+		char *last, *buf;
+		uint32_t fragment_start, fragment_end;
 
-			if (!data_size)
-				goto error_return;
+		if (!wl_array_add(&data_contents, source->data_contents.size+200))
+			goto error_return;
 
-			if (!wl_array_add(&data_contents, data_size+1)) /* +1 for null */
-				goto error_return;
+		buf = data_contents.data;
+		strcpy(buf, rdp_clipboard_html_header);
+		last = cur;
+		cur = strstr(cur, "<body");
+		if (!cur)
+			goto error_return;
+		cur += 5;
+		while (*cur != '>' && *cur != '\0')
+			cur++;
+		if (*cur == '\0')
+			goto error_return;
+		cur++; /* include '>' */
+		strncat(buf, last, cur-last);
+		last = cur;
+		fragment_start = strlen(buf);
+		strcat(buf, rdp_clipboard_html_fragment_start);
+		cur = strstr(cur, "</body");
+		if (!cur)
+			goto error_return;
+		strncat(buf, last, cur-last);
+		fragment_end = strlen(buf);
+		strcat(buf, rdp_clipboard_html_fragment_end);
+		strcat(buf, cur);
 
-			memcpy(data_contents.data, cur, data_size);
-			((char *)(data_contents.data))[data_size] = '\0';
-			data_contents.size = data_size;
-		} else {
-			/* Linux to Windows */
-			char *last, *buf;
-			UINT32 fragment_start, fragment_end;
+		cur = buf + RDP_CLIPBOARD_FRAGMENT_START_OFFSET;
+		sprintf(cur, "%08u", fragment_start);
+		*(cur+8) = '\r';
+		cur = buf + RDP_CLIPBOARD_FRAGMENT_END_OFFSET;
+		sprintf(cur, "%08u", fragment_end);
+		*(cur+8) = '\r';
 
-			if (!wl_array_add(&data_contents, source->data_contents.size+200))
-				goto error_return;
-
-			buf = (char *)data_contents.data;
-			strcpy(buf, rdp_clipboard_html_header);
-			last = cur;
-			cur = strstr(cur, "<body");
-			if (!cur)
-				goto error_return;
-			cur += 5;
-			while(*cur != '>' && *cur != '\0')
-				cur++;
-			if (*cur == '\0')
-				goto error_return;
-			cur++; /* include '>' */
-			strncat(buf, last, cur-last);
-			last = cur;
-			fragment_start = strlen(buf);
-			strcat(buf, rdp_clipboard_html_fragment_start);
-			cur = strstr(cur, "</body");
-			if (!cur)
-				goto error_return;
-			strncat(buf, last, cur-last);
-			fragment_end = strlen(buf);
-			strcat(buf, rdp_clipboard_html_fragment_end);
-			strcat(buf, cur);
-
-			cur = buf + RDP_CLIPBOARD_FRAGMENT_START_OFFSET;
-			sprintf(cur, "%08u", fragment_start);
-			*(cur+8) = '\r';
-			cur = buf + RDP_CLIPBOARD_FRAGMENT_END_OFFSET;
-			sprintf(cur, "%08u", fragment_end);
-			*(cur+8) = '\r';
-
-			data_contents.size = strlen(buf) + 1; /* +1 to null terminate. */
-		}
-
-		/* swap the data_contents with new one */
-		wl_array_release(&source->data_contents);
-		source->data_contents = data_contents;
-		source->is_data_processed = TRUE;
+		data_contents.size = strlen(buf) + 1; /* +1 to null terminate. */
 	}
 
+	/* swap the data_contents with new one */
+	wl_array_release(&source->data_contents);
+	source->data_contents = data_contents;
+	source->is_data_processed = TRUE;
+
+out:
 	//rdp_debug_clipboard_verbose(b, "RDP %s (%p): %s \n\"%s\"\n (%d bytes)\n",
 	//	__func__, source, is_send ? "send" : "receive",
 	//	(char *)source->data_contents.data,
@@ -396,7 +406,6 @@ clipboard_process_html(struct rdp_clipboard_data_source *source, bool is_send)
 	return source->data_contents.data;
 
 error_return:
-
 	source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 	weston_log("RDP %s FAILED (%p:%s): %s (%u bytes)\n",
 		   __func__, source, clipboard_data_source_state_to_string(source),
@@ -434,8 +443,8 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, bool is_send)
 		/* Linux to Windows (remove BITMAPFILEHEADER) */
 		if (source->data_contents.size <= sizeof(*bmfh))
 			goto error_return;
-		
-		bmfh = (BITMAPFILEHEADER *)source->data_contents.data;
+
+		bmfh = source->data_contents.data;
 		bmih = (BITMAPINFOHEADER *)(bmfh + 1);
 
 		/* size must be adjusted only once */
@@ -447,51 +456,52 @@ clipboard_process_bmp(struct rdp_clipboard_data_source *source, bool is_send)
 		ret = (void *)bmih; /* Skip BITMAPFILEHEADER. */
 	} else {
 		/* Windows to Linux (insert BITMAPFILEHEADER) */
-		if (!source->is_data_processed) {
-			BITMAPFILEHEADER _bmfh = {};
-			bmih = (BITMAPINFOHEADER *)source->data_contents.data;
-			bmfh = &_bmfh;
-			if (bmih->biCompression == BI_BITFIELDS)
-				color_table_size = sizeof(RGBQUAD) * 3;
-			else
-				color_table_size = sizeof(RGBQUAD) * bmih->biClrUsed;
-
-			bmfh->bfType = DIB_HEADER_MARKER;
-			bmfh->bfOffBits = sizeof(*bmfh) + bmih->biSize + color_table_size;
-			if (bmih->biSizeImage)
-				bmfh->bfSize = bmfh->bfOffBits + bmih->biSizeImage;
-			else if (bmih->biCompression == BI_BITFIELDS || bmih->biCompression == BI_RGB)
-				bmfh->bfSize = bmfh->bfOffBits +
-					(DIB_WIDTH_BYTES(bmih->biWidth * bmih->biBitCount) * abs(bmih->biHeight));
-			else
-				goto error_return;
-
-			/* source data must have enough size as described at its own bitmap header */
-			if (source->data_contents.size < (bmfh->bfSize - sizeof(*bmfh)))
-				goto error_return;
-
-			if (!wl_array_add(&data_contents, bmfh->bfSize))
-				goto error_return;
-			assert(data_contents.size == bmfh->bfSize);
-
-			/* copy generated BITMAPFILEHEADER */
-			memcpy(data_contents.data, bmfh, sizeof(*bmfh));
-			/* copy rest of bitmap data from source */
-			memcpy((char *)data_contents.data + sizeof(*bmfh),
-				source->data_contents.data, bmfh->bfSize - sizeof(*bmfh));
-
-			/* swap the data_contents with new one */
-			wl_array_release(&source->data_contents);
-			source->data_contents = data_contents;
-			source->is_data_processed = TRUE;
-
-			bmfh = (BITMAPFILEHEADER *)source->data_contents.data;
+		if (source->is_data_processed) {
+			bmfh = source->data_contents.data;
 			bmih = (BITMAPINFOHEADER *)(bmfh + 1);
-		} else {
-			bmfh = (BITMAPFILEHEADER *)source->data_contents.data;
-			bmih = (BITMAPINFOHEADER *)(bmfh + 1);
+			goto out;
 		}
 
+		BITMAPFILEHEADER _bmfh = {};
+		bmih = source->data_contents.data;
+		bmfh = &_bmfh;
+		if (bmih->biCompression == BI_BITFIELDS)
+			color_table_size = sizeof(RGBQUAD) * 3;
+		else
+			color_table_size = sizeof(RGBQUAD) * bmih->biClrUsed;
+
+		bmfh->bfType = DIB_HEADER_MARKER;
+		bmfh->bfOffBits = sizeof(*bmfh) + bmih->biSize + color_table_size;
+		if (bmih->biSizeImage)
+			bmfh->bfSize = bmfh->bfOffBits + bmih->biSizeImage;
+		else if (bmih->biCompression == BI_BITFIELDS || bmih->biCompression == BI_RGB)
+			bmfh->bfSize = bmfh->bfOffBits +
+				       (DIB_WIDTH_BYTES(bmih->biWidth * bmih->biBitCount) * abs(bmih->biHeight));
+		else
+			goto error_return;
+
+		/* source data must have enough size as described in its own bitmap header */
+		if (source->data_contents.size < (bmfh->bfSize - sizeof(*bmfh)))
+			goto error_return;
+
+		if (!wl_array_add(&data_contents, bmfh->bfSize))
+			goto error_return;
+		assert(data_contents.size == bmfh->bfSize);
+
+		/* copy generated BITMAPFILEHEADER */
+		memcpy(data_contents.data, bmfh, sizeof(*bmfh));
+		/* copy rest of bitmap data from source */
+		memcpy((char *)data_contents.data + sizeof(*bmfh),
+		       source->data_contents.data, bmfh->bfSize - sizeof(*bmfh));
+
+		/* swap the data_contents with new one */
+		wl_array_release(&source->data_contents);
+		source->data_contents = data_contents;
+		source->is_data_processed = TRUE;
+
+		bmfh = source->data_contents.data;
+		bmih = (BITMAPINFOHEADER *)(bmfh + 1);
+out:
 		ret = source->data_contents.data;
 	}
 
