@@ -802,6 +802,7 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 	char *data;
 	int len, size;
 	void *data_to_send;
+	bool failed = true;
 
 	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) fd:%d\n",
 				    __func__, source,
@@ -830,32 +831,16 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 	data = (char *)source->data_contents.data + source->data_contents.size;
 	size = source->data_contents.alloc - source->data_contents.size - 1; /* -1 leave space for NULL-terminate. */
 	len = read(fd, data, size);
-	if (len == 0) {
-		/* all data from source is read, so completed. */
-		source->state = RDP_CLIPBOARD_SOURCE_TRANSFERRED;
-		rdp_debug_clipboard(b, "RDP %s (%p:%s): read completed (%ld bytes)\n",
-			__func__, source, clipboard_data_source_state_to_string(source), source->data_contents.size);
-		if (!source->data_contents.size)
-			goto error_exit;
-		/* process data before sending to client */
-		if (clipboard_supported_formats[source->format_index].pfn)
-			data_to_send = clipboard_supported_formats[source->format_index].pfn(source, TRUE);
-		else
-			data_to_send = source->data_contents.data;
-		/* send clipboard data to client */
-		if (data_to_send)
-			clipboard_client_send_format_data_response(ctx, source, data_to_send, source->data_contents.size);
-		else
-			goto error_exit;
-		goto send_exit;
-	} else if (len < 0) {
+	if (len < 0) {
 		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 		weston_log("RDP %s (%p:%s) read failed (%s)\n",
 			   __func__, source,
 			   clipboard_data_source_state_to_string(source),
 			   strerror(errno));
 		goto error_exit;
-	} else {
+	}
+
+	if (len > 0) {
 		source->data_contents.size += len;
 		((char *)source->data_contents.data)[source->data_contents.size] = '\0';
 		rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) read (%zu bytes)\n",
@@ -865,12 +850,30 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 		/* continue to read next batch */
 		return 0;
 	}
-	assert(false);
+
+	/* len == 0, all data from source is read, so completed. */
+	source->state = RDP_CLIPBOARD_SOURCE_TRANSFERRED;
+	rdp_debug_clipboard(b, "RDP %s (%p:%s): read completed (%ld bytes)\n",
+			    __func__, source,
+			    clipboard_data_source_state_to_string(source),
+			    source->data_contents.size);
+	if (!source->data_contents.size)
+		goto error_exit;
+	/* process data before sending to client */
+	if (clipboard_supported_formats[source->format_index].pfn)
+		data_to_send = clipboard_supported_formats[source->format_index].pfn(source, TRUE);
+	else
+		data_to_send = source->data_contents.data;
+	/* send clipboard data to client */
+	if (data_to_send)
+		clipboard_client_send_format_data_response(ctx, source, data_to_send, source->data_contents.size);
+	else
+		failed = true;
 
 error_exit:
-	clipboard_client_send_format_data_response_fail(ctx, source);
+	if (failed)
+		clipboard_client_send_format_data_response_fail(ctx, source);
 
-send_exit:
 	/* make sure this is the last reference, so event source is removed at unref */
 	assert(source->refcount == 1);
 	clipboard_data_source_unref(source);
