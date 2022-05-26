@@ -959,59 +959,70 @@ clipboard_data_source_write(int fd, uint32_t mask, void *arg)
 		rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) canceled\n",
 					    __func__, source,
 					    clipboard_data_source_state_to_string(source));
-	} else if (source->data_contents.data && source->data_contents.size) {
-		assert(source->refcount > 1);
-		if (source->inflight_data_to_write) {
-			assert(source->inflight_data_size);
-			rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) transfer in chunck, count:%d\n",
-				__func__, source, clipboard_data_source_state_to_string(source), source->inflight_write_count);
-			data_to_write = source->inflight_data_to_write;
-			data_size = source->inflight_data_size;
-		} else {
-			fcntl(source->data_source_fd, F_SETFL, O_WRONLY | O_NONBLOCK);
-			if (clipboard_supported_formats[source->format_index].pfn)
-				data_to_write = clipboard_supported_formats[source->format_index].pfn(source, FALSE);
-			else
-				data_to_write = source->data_contents.data;
-			data_size = source->data_contents.size;
-		}
-		while (data_to_write && data_size) {
-			source->state = RDP_CLIPBOARD_SOURCE_TRANSFERING;
-			size = write(source->data_source_fd, data_to_write, data_size);
-			if (size <= 0) {
-				if (errno != EAGAIN) {
-					source->state = RDP_CLIPBOARD_SOURCE_FAILED;
-					weston_log("RDP %s (%p:%s) write failed %s\n",
-						   __func__, source,
-						   clipboard_data_source_state_to_string(source),
-						   strerror(errno));
-					break;
-				}
-				/* buffer is full, wait until data_source_fd is writable again */
-				source->inflight_data_to_write = data_to_write;
-				source->inflight_data_size = data_size;
-				source->inflight_write_count++;
-				return 0;
-			} else {
-				assert(data_size >= (size_t)size);
-				data_size -= size;
-				data_to_write = (char *)data_to_write + size;
-				rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) wrote %ld bytes, remaining %ld bytes\n",
-					__func__, source, clipboard_data_source_state_to_string(source), size, data_size);
-				if (!data_size) {
-					source->state = RDP_CLIPBOARD_SOURCE_TRANSFERRED;
-					rdp_debug_clipboard(b, "RDP %s (%p:%s) write completed (%ld bytes)\n",
-						__func__, source, clipboard_data_source_state_to_string(source), source->data_contents.size);
-				}
-			}
-		}
-	} else {
+		goto fail;
+	}
+
+	if (!source->data_contents.data || !source->data_contents.size) {
 		assert(source->refcount > 1);
 		weston_log("RDP %s (%p:%s) no data received from client\n",
 			   __func__, source,
 			   clipboard_data_source_state_to_string(source));
+		goto fail;
 	}
 
+	assert(source->refcount > 1);
+	if (source->inflight_data_to_write) {
+		assert(source->inflight_data_size);
+		rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) transfer in chunck, count:%d\n",
+					    __func__, source,
+					    clipboard_data_source_state_to_string(source),
+					    source->inflight_write_count);
+		data_to_write = source->inflight_data_to_write;
+		data_size = source->inflight_data_size;
+	} else {
+		fcntl(source->data_source_fd, F_SETFL, O_WRONLY | O_NONBLOCK);
+		if (clipboard_supported_formats[source->format_index].pfn)
+			data_to_write = clipboard_supported_formats[source->format_index].pfn(source, FALSE);
+		else
+			data_to_write = source->data_contents.data;
+		data_size = source->data_contents.size;
+	}
+	while (data_to_write && data_size) {
+		source->state = RDP_CLIPBOARD_SOURCE_TRANSFERING;
+		size = write(source->data_source_fd, data_to_write, data_size);
+		if (size <= 0) {
+			if (errno != EAGAIN) {
+				source->state = RDP_CLIPBOARD_SOURCE_FAILED;
+				weston_log("RDP %s (%p:%s) write failed %s\n",
+					   __func__, source,
+					   clipboard_data_source_state_to_string(source),
+					   strerror(errno));
+				break;
+			}
+			/* buffer is full, wait until data_source_fd is writable again */
+			source->inflight_data_to_write = data_to_write;
+			source->inflight_data_size = data_size;
+			source->inflight_write_count++;
+			return 0;
+		} else {
+			assert(data_size >= (size_t)size);
+			data_size -= size;
+			data_to_write = (char *)data_to_write + size;
+			rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) wrote %ld bytes, remaining %ld bytes\n",
+						    __func__, source,
+						    clipboard_data_source_state_to_string(source),
+						    size, data_size);
+			if (!data_size) {
+				source->state = RDP_CLIPBOARD_SOURCE_TRANSFERRED;
+				rdp_debug_clipboard(b, "RDP %s (%p:%s) write completed (%ld bytes)\n",
+						    __func__, source,
+						    clipboard_data_source_state_to_string(source),
+						    source->data_contents.size);
+			}
+		}
+	}
+
+fail:
 	/* Here write is either completed, canceled or failed, so close the pipe. */
 	close(source->data_source_fd);
 	source->data_source_fd = -1;
