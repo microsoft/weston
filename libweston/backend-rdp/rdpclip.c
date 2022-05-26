@@ -175,12 +175,13 @@ clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, bool is_se
 		goto out;
 
 	if (is_send) {
+		char *data = source->data_contents.data;
 		size_t data_size, data_size_in_char;
 
 		/* Linux to Windows (convert utf-8 to UNICODE) */
 		/* Include terminating NULL in size */
 		assert((source->data_contents.size + 1) <= source->data_contents.alloc);
-		assert(((char *)source->data_contents.data)[source->data_contents.size] == '\0');
+		data[source->data_contents.size] = '\0';
 		source->data_contents.size++;
 
 		/* obtain size in UNICODE */
@@ -274,6 +275,8 @@ clipboard_process_text_raw(struct rdp_clipboard_data_source *source, bool is_sen
 	freerdp_peer *client = (freerdp_peer *)source->context;
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = ctx->rdpBackend;
+	char *data = source->data_contents.data;
+	size_t data_size = source->data_contents.size;
 
 	if (source->is_data_processed)
 		goto out;
@@ -281,14 +284,11 @@ clipboard_process_text_raw(struct rdp_clipboard_data_source *source, bool is_sen
 	if (is_send) {
 		/* Linux to Windows */
 		/* Include terminating NULL in size */
-		assert((source->data_contents.size + 1) <= source->data_contents.alloc);
-		assert(((char *)source->data_contents.data)[source->data_contents.size] == '\0');
+		assert(data_size + 1 <= source->data_contents.alloc);
+		data[data_size] = '\0';
 		source->data_contents.size++;
 	} else {
 		/* Windows to Linux */
-		char *data = (char *)source->data_contents.data;
-		size_t data_size = source->data_contents.size;
-
 		/* Windows's data has trailing chars, which Linux doesn't expect. */
 		while (data_size && ((data[data_size-1] == '\0') || (data[data_size-1] == '\n')))
 			data_size -= 1;
@@ -324,6 +324,12 @@ clipboard_process_html(struct rdp_clipboard_data_source *source, bool is_send)
 
 	wl_array_init(&data_contents);
 
+	/* We're treating the contents as a string for now, so null
+	 * terminate it so strstr can't run off the end. However, we
+	 * don't increase data_contents.size because we don't want
+	 * to affect the content. */
+	assert(source->data_contents.size + 1 <= source->data_contents.alloc);
+	((char *)(source->data_contents.data))[source->data_contents.size] = '\0';
 	if (source->is_data_processed)
 		goto out;
 
@@ -812,9 +818,8 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 	freerdp_peer *client = (freerdp_peer *)source->context;
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = ctx->rdpBackend;
-	char *data;
-	int len, size;
 	void *data_to_send;
+	int len;
 	bool failed = true;
 
 	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) fd:%d\n",
@@ -831,19 +836,9 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 	   available for read in pipe. */
 	assert(source->transfer_event_source);
 
-	/* if buffer is less than 1024 bytes remaining, request another 1024 bytes minimum */
-	/* but actual reallocated buffer size will be increased by ^2 */
-	if (source->data_contents.alloc - source->data_contents.size < 1024) {
-		if (!wl_array_add(&source->data_contents, 1024)) {
-			goto error_exit;
-		}
-		source->data_contents.size -= 1024;
-	}
-
 	source->state = RDP_CLIPBOARD_SOURCE_TRANSFERING;
-	data = (char *)source->data_contents.data + source->data_contents.size;
-	size = source->data_contents.alloc - source->data_contents.size - 1; /* -1 leave space for NULL-terminate. */
-	len = read(fd, data, size);
+
+	len = rdp_wl_array_read_fd(&source->data_contents, fd);
 	if (len < 0) {
 		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
 		weston_log("RDP %s (%p:%s) read failed (%s)\n",
@@ -854,8 +849,6 @@ clipboard_data_source_read(int fd, uint32_t mask, void *arg)
 	}
 
 	if (len > 0) {
-		source->data_contents.size += len;
-		((char *)source->data_contents.data)[source->data_contents.size] = '\0';
 		rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) read (%zu bytes)\n",
 					    __func__, source,
 					    clipboard_data_source_state_to_string(source),

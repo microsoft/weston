@@ -491,3 +491,38 @@ rdp_destroy_dispatch_task_event_source(RdpPeerContext *peerCtx)
 	pthread_mutex_destroy(&peerCtx->loop_task_list_mutex);
 }
 
+/* This is a little tricky - it makes sure there's always at least
+ * one spare byte in the array in case the caller needs to add a
+ * null terminator to it. We can't just null terminate the array
+ * here, because some callers won't want that - and some won't
+ * like having an odd number of bytes.
+ */
+int
+rdp_wl_array_read_fd(struct wl_array *array, int fd)
+{
+	int len, size;
+	char *data;
+
+	/* Make sure we have at least 1024 bytes of space left */
+	if (array->alloc - array->size < 1024) {
+		if (!wl_array_add(array, 1024)) {
+			errno = ENOMEM;
+			return -1;
+		}
+		array->size -= 1024;
+	}
+	data = (char *)array->data + array->size;
+	/* Leave one char in case the caller needs space for a
+	 * null terminator */
+	size = array->alloc - array->size - 1;
+	do {
+		len = read(fd, data, size);
+	} while (len == -1 && errno == EINTR);
+
+	if (len == -1)
+		return -1;
+
+	array->size += len;
+
+	return len;
+}

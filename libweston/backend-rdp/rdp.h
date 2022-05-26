@@ -385,6 +385,9 @@ void rdp_head_destroy(struct weston_compositor *compositor, struct rdp_head *hea
 pid_t rdp_get_tid(void);
 void rdp_debug_print(struct weston_log_scope *log_scope, bool cont, char *fmt, ...);
 
+int
+rdp_wl_array_read_fd(struct wl_array *array, int fd);
+
 void
 assert_compositor_thread(struct rdp_backend *b);
 
