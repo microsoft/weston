@@ -2665,6 +2665,12 @@ rdp_rail_output_repaint(struct weston_output *output, pixman_region32_t *damage)
 	RdpPeerContext *peerCtx = (RdpPeerContext *)b->rdp_peer->context;
 
 	if (peerCtx->isAcknowledgedSuspended || ((peerCtx->currentFrameId - peerCtx->acknowledgedFrameId) < 2)) {
+		/* notify window z order to client first,
+		   mstsc/msrdc needs this to be sent before window update. */
+		if (peerCtx->is_window_zorder_dirty) {
+			rdp_rail_sync_window_zorder(b->compositor);
+			peerCtx->is_window_zorder_dirty = false;
+		}
 		rdp_debug_verbose(b, "currentFrameId:0x%x, acknowledgedFrameId:0x%x, isAcknowledgedSuspended:%d\n",
 			 peerCtx->currentFrameId, peerCtx->acknowledgedFrameId, peerCtx->isAcknowledgedSuspended);
 		struct update_window_iter_data iter_data = {};
@@ -2676,11 +2682,6 @@ rdp_rail_output_repaint(struct weston_output *output, pixman_region32_t *damage)
 			endFrame.frameId = iter_data.startedFrameId;
 			rdp_debug_verbose(b, "EndFrame(frameId:0x%x)\n", endFrame.frameId);
 			peerCtx->rail_grfx_server_context->EndFrame(peerCtx->rail_grfx_server_context, &endFrame);
-		}
-		if (peerCtx->is_window_zorder_dirty) {
-			/* notify window z order to client */
-			rdp_rail_sync_window_zorder(b->compositor);
-			peerCtx->is_window_zorder_dirty = false;
 		}
 		if (iter_data.isUpdatePending && b->enable_display_power_by_screenupdate) {
 			/* By default, compositor won't update idle timer by screen activity,
