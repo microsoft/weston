@@ -214,6 +214,7 @@ struct weston_surface_rail_state {
 	float bufferScaleFactorHeight;
 	pixman_region32_t damage;
 	struct weston_output *output;
+	int32_t output_scale;
 	struct weston_surface *parent_surface;
 	uint32_t parent_window_id;
 	bool isCursor;

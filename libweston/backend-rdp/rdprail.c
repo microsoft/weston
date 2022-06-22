@@ -1853,6 +1853,13 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 		to_client_coordinate(peerCtx, surface->output,
 			&newClientPos.x, &newClientPos.y, &newClientPos.width, &newClientPos.height);
 
+	/* when window move to new output with different scale, refresh all state to client. */
+	if (rail_state->output_scale != surface->output->current_scale) {
+		rail_state->forceUpdateWindowState = true;
+		rail_state->forceRecreateSurface = true;
+		rail_state->output_scale = surface->output->current_scale;
+	}
+
 	/* Adjust the Windows size and position on the screen */
 	if (rail_state->clientPos.x != newClientPos.x ||
 		rail_state->clientPos.y != newClientPos.y ||
