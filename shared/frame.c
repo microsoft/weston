@@ -493,27 +493,40 @@ frame_resize(struct frame *frame, int32_t width, int32_t height)
 }
 
 void
-frame_resize_inside(struct frame *frame, int32_t width, int32_t height)
+frame_decoration_sizes(struct frame *frame, int32_t *top, int32_t *bottom,
+		       int32_t *left, int32_t *right)
 {
 	struct theme *t = frame->theme;
-	int decoration_width, decoration_height, titlebar_height;
 
+	/* Top may have a titlebar */
 	if (frame->title || !wl_list_empty(&frame->buttons))
-		titlebar_height = t->titlebar_height;
+		*top = t->titlebar_height;
 	else
-		titlebar_height = t->width;
+		*top = t->width;
 
-	if (frame->flags & FRAME_FLAG_MAXIMIZED) {
-		decoration_width = t->width * 2;
-		decoration_height = t->width + titlebar_height;
-	} else {
-		decoration_width = (t->width + t->margin) * 2;
-		decoration_height = t->width +
-			titlebar_height + t->margin * 2;
-	}
+	/* All other sides have the basic frame thickness */
+	*bottom = t->width;
+	*right = t->width;
+	*left = t->width;
 
-	frame_resize(frame, width + decoration_width,
-		     height + decoration_height);
+	if (frame->flags & FRAME_FLAG_MAXIMIZED)
+		return;
+
+	/* Not maximized, add shadows */
+	*top += t->margin;
+	*bottom += t->margin;
+	*left += t->margin;
+	*right += t->margin;
+}
+
+void
+frame_resize_inside(struct frame *frame, int32_t width, int32_t height)
+{
+	int32_t top, bottom, left, right;
+
+	frame_decoration_sizes(frame, &top, &bottom, &left, &right);
+	frame_resize(frame, width + left + right,
+		     height + top + bottom);
 }
 
 int32_t

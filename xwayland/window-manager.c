@@ -177,6 +177,10 @@ struct weston_wm_window {
 	struct wm_size_hints size_hints;
 	struct motif_wm_hints motif_hints;
 	struct wl_list link;
+	int decor_top;
+	int decor_bottom;
+	int decor_left;
+	int decor_right;
 };
 
 static int
@@ -1249,6 +1253,38 @@ weston_wm_window_set_wm_state(struct weston_wm_window *window, int32_t state)
 }
 
 static void
+weston_wm_window_set_net_frame_extents(struct weston_wm_window *window)
+{
+	struct weston_wm *wm = window->wm;
+	uint32_t property[4];
+	int top = 0, bottom = 0, left = 0, right = 0;
+
+	if (!window->fullscreen)
+		frame_decoration_sizes(window->frame, &top, &bottom, &left, &right);
+
+	if (window->decor_top == top && window->decor_bottom == bottom &&
+	    window->decor_left == left && window->decor_right == right)
+		return;
+
+	window->decor_top = top;
+	window->decor_bottom = bottom;
+	window->decor_left = left;
+	window->decor_right = right;
+
+	property[0] = left;
+	property[1] = right;
+	property[2] = top;
+	property[3] = bottom;
+	xcb_change_property(wm->conn,
+			    XCB_PROP_MODE_REPLACE,
+			    window->id,
+			    wm->atom.net_frame_extents,
+			    XCB_ATOM_CARDINAL,
+			    32, /* format */
+			    4, property);
+}
+
+static void
 weston_wm_window_set_net_wm_state(struct weston_wm_window *window)
 {
 	struct weston_wm *wm = window->wm;
@@ -1594,6 +1630,7 @@ weston_wm_window_do_repaint(void *data)
 	weston_wm_window_read_properties(window);
 
 	weston_wm_window_draw_decoration(window);
+	weston_wm_window_set_net_frame_extents(window);
 	weston_wm_window_set_pending_state(window);
 	weston_wm_window_set_allow_commits(window, true);
 }
@@ -1794,6 +1831,10 @@ weston_wm_window_create(struct weston_wm *wm,
 	window->frame_y = INT_MIN;
 	window->map_request_x = INT_MIN; /* out of range for valid positions */
 	window->map_request_y = INT_MIN; /* out of range for valid positions */
+	window->decor_top = -1;
+	window->decor_bottom = -1;
+	window->decor_left = -1;
+	window->decor_right = -1;
 	weston_output_weak_ref_init(&window->legacy_fullscreen_output);
 
 	geometry_reply = xcb_get_geometry_reply(wm->conn, geometry_cookie, NULL);
@@ -2703,6 +2744,7 @@ weston_wm_get_resources(struct weston_wm *wm)
 		{ "WM_S0",		F(atom.wm_s0) },
 		{ "WM_CLIENT_MACHINE",	F(atom.wm_client_machine) },
 		{ "WM_CHANGE_STATE", F(atom.wm_change_state) },
+		{ "_NET_FRAME_EXTENTS",	F(atom.net_frame_extents) },
 		{ "_NET_WM_CM_S0",	F(atom.net_wm_cm_s0) },
 		{ "_NET_WM_NAME",	F(atom.net_wm_name) },
 		{ "_NET_WM_PID",	F(atom.net_wm_pid) },
@@ -2891,7 +2933,7 @@ weston_wm_create(struct weston_xserver *wxs, int fd)
 	struct wl_event_loop *loop;
 	xcb_screen_iterator_t s;
 	uint32_t values[1];
-	xcb_atom_t supported[6];
+	xcb_atom_t supported[7];
 
 	wm = zalloc(sizeof *wm);
 	if (wm == NULL)
@@ -2945,6 +2987,7 @@ weston_wm_create(struct weston_xserver *wxs, int fd)
 	supported[3] = wm->atom.net_wm_state_maximized_vert;
 	supported[4] = wm->atom.net_wm_state_maximized_horz;
 	supported[5] = wm->atom.net_active_window;
+	supported[6] = wm->atom.net_frame_extents;
 	xcb_change_property(wm->conn,
 			    XCB_PROP_MODE_REPLACE,
 			    wm->screen->root,
