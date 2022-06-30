@@ -151,7 +151,7 @@ weston_desktop_xwayland_surface_committed(struct weston_desktop_surface *dsurfac
 	if (surface->has_next_geometry) {
 		oldgeom = weston_desktop_surface_get_geometry(surface->surface);
 		sx -= surface->next_geometry.x - oldgeom.x;
-		sy -= surface->next_geometry.y - oldgeom.x;
+		sy -= surface->next_geometry.y - oldgeom.y;
 
 		surface->has_next_geometry = false;
 		weston_desktop_surface_set_geometry(surface->surface,
