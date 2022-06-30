@@ -812,6 +812,17 @@ desktop_surface_set_xwayland_position(struct weston_desktop_surface *desktop_sur
 	shsurf->xwayland.is_set = true;
 }
 
+static void
+desktop_surface_get_position(struct weston_desktop_surface *desktop_surface,
+			     int32_t *x, int32_t *y, void *shell)
+{
+	struct kiosk_shell_surface *shsurf =
+		weston_desktop_surface_get_user_data(desktop_surface);
+
+	*x = shsurf->view->geometry.x;
+	*y = shsurf->view->geometry.y;
+}
+
 static const struct weston_desktop_api kiosk_shell_desktop_api = {
 	.struct_size = sizeof(struct weston_desktop_api),
 	.surface_added = desktop_surface_added,
@@ -826,6 +837,7 @@ static const struct weston_desktop_api kiosk_shell_desktop_api = {
 	.ping_timeout = desktop_surface_ping_timeout,
 	.pong = desktop_surface_pong,
 	.set_xwayland_position = desktop_surface_set_xwayland_position,
+	.get_position = desktop_surface_get_position,
 };
 
 /*

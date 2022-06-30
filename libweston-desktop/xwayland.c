@@ -428,6 +428,18 @@ set_pid(struct weston_desktop_xwayland_surface *surface, pid_t pid)
 	weston_desktop_surface_set_pid(surface->surface, pid);
 }
 
+static void
+get_position(struct weston_desktop_xwayland_surface *surface,
+	     int32_t *x, int32_t *y)
+{
+	if (!surface->surface) {
+		*x = 0;
+		*y = 0;
+		return;
+	}
+	weston_desktop_api_get_position(surface->desktop, surface->surface, x, y);
+}
+
 static const struct weston_desktop_xwayland_interface weston_desktop_xwayland_interface = {
 	.create_surface = create_surface,
 	.set_toplevel = set_toplevel,
@@ -444,6 +456,7 @@ static const struct weston_desktop_xwayland_interface weston_desktop_xwayland_in
 	.set_maximized = set_maximized,
 	.set_minimized = set_minimized,
 	.set_pid = set_pid,
+	.get_position = get_position,
 	.set_window_icon = set_window_icon,
 };
 

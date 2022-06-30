@@ -117,6 +117,9 @@ struct weston_desktop_api {
 	 */
 	void (*set_xwayland_position)(struct weston_desktop_surface *surface,
 				      int32_t x, int32_t y, void *user_data);
+	void (*get_position)(struct weston_desktop_surface *surface,
+			     int32_t *x, int32_t *y,
+			     void *user_data);
 	/*
 	 * In contrast to above set_xwayland_position(), move_xwayland_position()
 	 * to be used to move window after mapped.

@@ -264,6 +264,17 @@ weston_desktop_api_set_xwayland_position(struct weston_desktop *desktop,
 }
 
 void
+weston_desktop_api_get_position(struct weston_desktop *desktop,
+				struct weston_desktop_surface *surface,
+				int32_t *x, int32_t *y)
+{
+	if (!desktop->api.get_position)
+		return;
+
+	desktop->api.get_position(surface, x, y, desktop->user_data);
+}
+
+void
 weston_desktop_api_move_xwayland_position(struct weston_desktop *desktop,
 					  struct weston_desktop_surface *surface,
 					  int32_t x, int32_t y)
