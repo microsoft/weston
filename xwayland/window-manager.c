@@ -1523,7 +1523,7 @@ weston_wm_window_set_pending_state(struct weston_wm_window *window)
 					  window->height + 2);
 	}
 
-	if (window->decorate && !window->fullscreen) {
+	if (window->frame && !window->fullscreen) {
 		frame_input_rect(window->frame, &input_x, &input_y,
 				 &input_w, &input_h);
 	} else {
