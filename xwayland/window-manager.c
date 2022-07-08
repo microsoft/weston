@@ -1503,6 +1503,7 @@ weston_wm_window_set_pending_state(struct weston_wm_window *window)
 	int32_t input_x, input_y, input_w, input_h;
 	const struct weston_desktop_xwayland_interface *xwayland_interface =
 		window->wm->server->compositor->xwayland_interface;
+	struct theme *t = window->wm->theme;
 
 	if (!window->surface)
 		return;
@@ -1523,14 +1524,19 @@ weston_wm_window_set_pending_state(struct weston_wm_window *window)
 					  window->height + 2);
 	}
 
-	if (window->frame && !window->fullscreen) {
-		frame_input_rect(window->frame, &input_x, &input_y,
-				 &input_w, &input_h);
-	} else {
+	if (window->fullscreen) {
 		input_x = x;
 		input_y = y;
 		input_w = width;
 		input_h = height;
+	} else if (window->decorate && window->frame) {
+		frame_input_rect(window->frame, &input_x, &input_y,
+				 &input_w, &input_h);
+	} else {
+		input_x = t->margin;
+		input_y = t->margin;
+		input_w = window->width;
+		input_h = window->height;
 	}
 
 	wm_printf(window->wm, "XWM: win %d geometry: %d,%d %dx%d\n",
