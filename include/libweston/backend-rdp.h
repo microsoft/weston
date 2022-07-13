@@ -233,6 +233,11 @@ struct weston_surface_rail_state {
 	void *get_label;
 	int taskbarButton;
 
+	uint32_t window_margin_top;
+	uint32_t window_margin_left;
+	uint32_t window_margin_right;
+	uint32_t window_margin_bottom;
+
 	/* gfxredir shared memory */
 	uint32_t pool_id;
 	uint32_t buffer_id;

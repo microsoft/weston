@@ -538,7 +538,7 @@ to_client_coordinate(RdpPeerContext *peerContext, struct weston_output *output, 
 	}
 }
 
-#define RDP_RAIL_WINDOW_RESIZE_MARGIN 4
+#define RDP_RAIL_WINDOW_RESIZE_MARGIN 8
 
 static inline bool
 is_window_shadow_remoting_disabled(RdpPeerContext *peerCtx)
