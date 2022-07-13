@@ -346,9 +346,8 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 			to_weston_coordinate(peerCtx,
 				&snapArrangeRect.x, &snapArrangeRect.y,
 				&snapArrangeRect.width, &snapArrangeRect.height);
-			if (!b->enable_window_shadow_remoting &&
-				b->rdprail_shell_api &&
-				b->rdprail_shell_api->get_window_geometry) {
+			if (is_window_shadow_remoting_disabled(peerCtx)) {
+				/* offset window shadow area */
 				/* window_geometry here is last commited geometry */
 				b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
 				snapArrangeRect.x -= windowGeometry.x;
@@ -411,9 +410,8 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 			to_weston_coordinate(peerCtx,
 				&windowMoveRect.x, &windowMoveRect.y,
 				&windowMoveRect.width, &windowMoveRect.height);
-			if (!b->enable_window_shadow_remoting &&
-				b->rdprail_shell_api &&
-				b->rdprail_shell_api->get_window_geometry) {
+			if (is_window_shadow_remoting_disabled(peerCtx)) {
+				/* offset window shadow area */
 				/* window_geometry here is last commited geometry */
 				b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
 				windowMoveRect.x -= windowGeometry.x;
@@ -1394,9 +1392,8 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 		rdp_debug_verbose(b, "%s: surface has no view (windowId:0x%x)\n", __func__, rail_state->window_id);
 	}
 
-	if (!b->enable_window_shadow_remoting &&
-		b->rdprail_shell_api &&
-		b->rdprail_shell_api->get_window_geometry) {
+	if (is_window_shadow_remoting_disabled(peerCtx)) {
+		/* drop window shadow area */
 		b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
 		clientPos.x += windowGeometry.x;
 		clientPos.y += windowGeometry.y;
@@ -1470,6 +1467,16 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 	window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_VISIBILITY;
 	window_state_order.numVisibilityRects = 1;
 	window_state_order.visibilityRects = &window_vis;
+
+	if (is_window_shadow_remoting_disabled(peerCtx)) {
+		/* add resize margin area */
+		window_order_info.fieldFlags |=
+			WINDOW_ORDER_FIELD_RESIZE_MARGIN_X | WINDOW_ORDER_FIELD_RESIZE_MARGIN_Y;
+		window_state_order.resizeMarginLeft = RDP_RAIL_WINDOW_RESIZE_MARGIN;
+		window_state_order.resizeMarginRight = RDP_RAIL_WINDOW_RESIZE_MARGIN;
+		window_state_order.resizeMarginTop = RDP_RAIL_WINDOW_RESIZE_MARGIN;
+		window_state_order.resizeMarginBottom = RDP_RAIL_WINDOW_RESIZE_MARGIN;
+	}
 
 	/*window_state_order.titleInfo = NULL; */
 	/*window_state_order.OverlayDescription = 0;*/
@@ -1837,9 +1844,8 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 		rdp_debug_verbose(b, "%s: surface has no view (windowId:0x%x)\n", __func__, rail_state->window_id);
 	}
 
-	if (!b->enable_window_shadow_remoting &&
-		b->rdprail_shell_api &&
-		b->rdprail_shell_api->get_window_geometry) {
+	if (is_window_shadow_remoting_disabled(peerCtx)) {
+		/* drop window shadow area */
 		b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
 		newClientPos.x += windowGeometry.x;
 		newClientPos.y += windowGeometry.y;
@@ -2254,7 +2260,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 			}
 			/* damageBox represents damaged area in contentBuffer */
 			/* if it's not remoting window shadow, exclude the area from damageBox */
-			if (!b->enable_window_shadow_remoting) {
+			if (is_window_shadow_remoting_disabled(peerCtx)) {
 				if (damageBox.x1 < contentBufferWindowGeometry.x)
 					damageBox.x1 = contentBufferWindowGeometry.x;
 				if (damageBox.x2 > contentBufferWindowGeometry.x + contentBufferWindowGeometry.width)
@@ -3133,9 +3139,8 @@ rdp_rail_start_window_move(
 		rdp_debug_verbose(b, "%s: surface has no view (windowId:0x%x)\n", __func__, rail_state->window_id);
 	}
 
-	if (!b->enable_window_shadow_remoting &&
-		b->rdprail_shell_api &&
-		b->rdprail_shell_api->get_window_geometry) {
+	if (is_window_shadow_remoting_disabled(peerCtx)) {
+		/* offset window shadow area */
 		b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
 		posX += windowGeometry.x;
 		posY += windowGeometry.y;
@@ -3236,9 +3241,8 @@ rdp_rail_end_window_move(struct weston_surface* surface)
 		rdp_debug_verbose(b, "%s: surface has no view (windowId:0x%x)\n", __func__, rail_state->window_id);
 	}
 
-	if (!b->enable_window_shadow_remoting &&
-		b->rdprail_shell_api &&
-		b->rdprail_shell_api->get_window_geometry) {
+	if (is_window_shadow_remoting_disabled(peerCtx)) {
+		/* offset window shadow area */
 		b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
 		posX += windowGeometry.x;
 		posY += windowGeometry.y;

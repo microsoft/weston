@@ -538,4 +538,20 @@ to_client_coordinate(RdpPeerContext *peerContext, struct weston_output *output, 
 	}
 }
 
+#define RDP_RAIL_WINDOW_RESIZE_MARGIN 4
+
+static inline bool
+is_window_shadow_remoting_disabled(RdpPeerContext *peerCtx)
+{
+	struct rdp_backend *b = peerCtx->rdpBackend;
+
+	/* When shadow is not remoted, window geometry must be able to queried from shell to clip
+	   shadow area, and resize margin must be supported by client. When remoting window shadow,
+	   the shadow area is used as resize margin, but without it, window can't be resizable,
+	   thus window margin must be added by client side. */
+	return (!b->enable_window_shadow_remoting &&
+			b->rdprail_shell_api && b->rdprail_shell_api->get_window_geometry &&
+			(peerCtx->clientStatusFlags & TS_RAIL_CLIENTSTATUS_WINDOW_RESIZE_MARGIN_SUPPORTED));
+}
+
 #endif
