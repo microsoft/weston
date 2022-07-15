@@ -181,6 +181,19 @@ if get_option('systemd')
 	env_modmap += 'systemd-notify.so=@0@;'.format(plugin_systemd_notify.full_path())
 endif
 
+if get_option('wslgd')
+	plugin_wslgd_notify = shared_library(
+		'wslgd-notify',
+		'wslgd-notify.c',
+		include_directories: common_inc,
+		dependencies: [ dep_libweston_public ],
+		name_prefix: '',
+		install: true,
+		install_dir: dir_module_weston
+	)
+	env_modmap += 'wslgd-notify.so=@0@;'.format(plugin_wslgd_notify.full_path())
+endif
+
 weston_ini_config = configuration_data()
 weston_ini_config.set('bindir', dir_bin)
 weston_ini_config.set('libexecdir', dir_libexec)

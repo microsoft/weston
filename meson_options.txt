@@ -93,6 +93,13 @@ option(
 )
 
 option(
+	'wslgd',
+	type: 'boolean',
+	value: false,
+	description: 'wslgd plugin: state notify'
+)
+
+option(
 	'remoting',
 	type: 'boolean',
 	value: true,
