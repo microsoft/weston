@@ -440,6 +440,13 @@ weston_client_launch(struct weston_compositor *compositor,
 	}
 
 	if (pid == 0) {
+		/* Put the client in a new session so it won't catch signals
+		 * intended for the parent. Sharing a session can be
+		 * confusing when launching weston under gdb, as the ctrl-c
+		 * intended for gdb will pass to the child, and weston
+		 * will cleanly shut down when the child exits.
+		 */
+		setsid();
 		child_client_exec(sv[1], path);
 		_exit(-1);
 	}
@@ -3248,13 +3255,19 @@ weston_log_subscribe_to_scopes(struct weston_log_context *log_ctx,
 	}
 }
 
+static void
+sigint_helper(int sig)
+{
+	raise(SIGUSR2);
+}
+
 WL_EXPORT int
 wet_main(int argc, char *argv[])
 {
 	int ret = EXIT_FAILURE;
 	char *cmdline;
 	struct wl_display *display;
-	struct wl_event_source *signals[4];
+	struct wl_event_source *signals[3];
 	struct wl_event_loop *loop;
 	int i, fd;
 	char *backend = NULL;
@@ -3287,9 +3300,9 @@ wet_main(int argc, char *argv[])
 	struct weston_log_subscriber *logger = NULL;
 	struct weston_log_subscriber *flight_rec = NULL;
 	sigset_t mask;
+	struct sigaction action;
 
 	bool wait_for_debugger = false;
-	bool disable_terminate_on_sigint = false;
 	struct wl_protocol_logger *protologger = NULL;
 
 	const struct weston_option core_options[] = {
@@ -3307,7 +3320,6 @@ wet_main(int argc, char *argv[])
 		{ WESTON_OPTION_BOOLEAN, "no-config", 0, &noconfig },
 		{ WESTON_OPTION_STRING, "config", 'c', &config_file },
 		{ WESTON_OPTION_BOOLEAN, "wait-for-debugger", 0, &wait_for_debugger },
-		{ WESTON_OPTION_BOOLEAN, "disable-terminate-on-sigint", 0, &disable_terminate_on_sigint },
 		{ WESTON_OPTION_BOOLEAN, "debug", 0, &debug_protocol },
 		{ WESTON_OPTION_STRING, "logger-scopes", 'l', &log_scopes },
 		{ WESTON_OPTION_STRING, "flight-rec-scopes", 'f', &flight_rec_scopes },
@@ -3384,25 +3396,28 @@ wet_main(int argc, char *argv[])
 	loop = wl_display_get_event_loop(display);
 	signals[0] = wl_event_loop_add_signal(loop, SIGTERM, on_term_signal,
 					      display);
-
-	/* vs-code 'pause' button raise SIGINT, disable to terminate if requested */
-	if (!disable_terminate_on_sigint)
-		weston_config_section_get_bool(section, "disable-terminate-on-sigint",
-					       &disable_terminate_on_sigint, false);
-	if (!disable_terminate_on_sigint)
-		signals[1] = wl_event_loop_add_signal(loop, SIGINT, on_term_signal,
-						      display);
-	else
-		signals[1] = NULL;
-
-	signals[2] = wl_event_loop_add_signal(loop, SIGQUIT, on_term_signal,
+	signals[1] = wl_event_loop_add_signal(loop, SIGUSR2, on_term_signal,
 					      display);
 
 	wl_list_init(&child_process_list);
-	signals[3] = wl_event_loop_add_signal(loop, SIGCHLD, sigchld_handler,
+	signals[2] = wl_event_loop_add_signal(loop, SIGCHLD, sigchld_handler,
 					      NULL);
 
-	if (!signals[0] || (!signals[1] && !disable_terminate_on_sigint) || !signals[2] || !signals[3])
+	/* When debugging weston, if use wl_event_loop_add_signal() to catch
+	 * SIGINT, the debugger can't catch it, and attempting to stop
+	 * weston from within the debugger results in weston exiting
+	 * cleanly.
+	 *
+	 * Instead, use the sigaction() function, which sets up the signal
+	 * in a way that gdb can successfully catch, but have the handler
+	 * for SIGINT send SIGUSR2 (xwayland uses SIGUSR1), which we catch
+	 * via wl_event_loop_add_signal().
+	 */
+	action.sa_handler = sigint_helper;
+	sigemptyset(&action.sa_mask);
+	action.sa_flags = 0;
+	sigaction(SIGINT, &action, NULL);
+	if (!signals[0] || !signals[1] || !signals[2])
 		goto out_signals;
 
 	/* Xwayland uses SIGUSR1 for communicating with weston. Since some
