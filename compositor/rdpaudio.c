@@ -538,34 +538,13 @@ rdp_audio_handle_get_latency(struct audio_out_private *priv)
 	return 0;
 }
 
-static void signalhandler(int sig) {
-	weston_log("RDP Audio: %s(%d)\n", __func__, sig);
-	return;
-}
-
 static void*
 rdp_audio_pulse_audio_sink_thread(void *context)
 {
 	struct audio_out_private *priv = context;
-	struct sigaction act;
-	sigset_t set;
 
-	sigemptyset(&set);
-	if (sigaddset(&set, SIGUSR2) == -1) {
-		weston_log("Audio sink thread: sigaddset(SIGUSR2) failed.\n");
-		return NULL;
-	}
-	if (pthread_sigmask(SIG_UNBLOCK, &set, NULL) != 0) {
-		weston_log("Audio sink thread: pthread_sigmask(SIG_UNBLOCK,SIGUSR2) failed.\n");
-		return NULL;
-	}
-	act.sa_flags = 0;
-	act.sa_mask = set;
-	act.sa_handler = &signalhandler;
-	if (sigaction(SIGUSR2, &act, NULL) == -1) {
-		weston_log("Audio sink thread: sigaction(SIGUSR2) failed.\n");
-		return NULL;
-	}
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 
 	assert(priv->pulseAudioSinkListenerFd != 0);
 
@@ -780,7 +759,7 @@ rdp_audio_out_destroy(void *audio_out_private)
 			priv->audioExitSignal = TRUE;
 			shutdown(priv->pulseAudioSinkListenerFd, SHUT_RDWR);
 			shutdown(priv->pulseAudioSinkFd, SHUT_RDWR);
-			pthread_kill(priv->pulseAudioSinkThread, SIGUSR2);   
+			pthread_cancel(priv->pulseAudioSinkThread);
 			pthread_join(priv->pulseAudioSinkThread, NULL);
 
 			if (priv->pulseAudioSinkListenerFd != -1) {
