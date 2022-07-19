@@ -86,6 +86,7 @@ spawn_xserver(void *user_data, const char *display, int abstract_fd, int unix_fd
 	pid = fork();
 	switch (pid) {
 	case 0:
+		setsid();
 		/* SOCK_CLOEXEC closes both ends, so we need to unset
 		 * the flag on the client fd. */
 		fd = dup(sv[1]);
