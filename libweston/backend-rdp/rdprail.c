@@ -346,7 +346,7 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 			snapArrangeRect.y = snap->top;
 			snapArrangeRect.width = snap->right - snap->left;
 			snapArrangeRect.height = snap->bottom - snap->top;
-			/* SnapArrang PDU include window resize margin */
+			/* SnapArrange PDU include window resize margin */
 			/* [MS-RDPERP] - v20200304 - 3.2.5.1.6 Processing Window Information Orders
 			    However, the Client Window Move PDU (section 2.2.2.7.4) and Client Window Snap PDU
 			    (section 2.2.2.7.5) do include resize margins in the window boundaries. */
