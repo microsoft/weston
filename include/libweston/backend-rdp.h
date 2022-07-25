@@ -234,6 +234,7 @@ struct weston_surface_rail_state {
 	void *get_label;
 	int taskbarButton;
 
+	struct weston_geometry windowGeometry;
 	uint32_t window_margin_top;
 	uint32_t window_margin_left;
 	uint32_t window_margin_right;
