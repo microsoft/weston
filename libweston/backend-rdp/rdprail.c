@@ -339,7 +339,7 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 	if (!freeOnly)
 		surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, snap->windowId);
 	if (surface) {
-		rail_state = (struct weston_surface_rail_state *)surface->backend_state;
+		rail_state = surface->backend_state;
 		if (b->rdprail_shell_api &&
 			b->rdprail_shell_api->request_window_snap) {
 			snapArrangeRect.x = snap->left;
@@ -352,8 +352,10 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 			    (section 2.2.2.7.5) do include resize margins in the window boundaries. */
 			snapArrangeRect.x += rail_state->window_margin_left;
 			snapArrangeRect.y += rail_state->window_margin_top;
-			snapArrangeRect.width -= (rail_state->window_margin_left + rail_state->window_margin_right);
-			snapArrangeRect.height -= (rail_state->window_margin_top + rail_state->window_margin_bottom);
+			snapArrangeRect.width -= rail_state->window_margin_left +
+						 rail_state->window_margin_right;
+			snapArrangeRect.height -= rail_state->window_margin_top +
+						  rail_state->window_margin_bottom;
 			to_weston_coordinate(peerCtx,
 				&snapArrangeRect.x, &snapArrangeRect.y,
 				&snapArrangeRect.width, &snapArrangeRect.height);
@@ -372,7 +374,7 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 				snapArrangeRect.width,
 				snapArrangeRect.height);
 			rail_state->forceUpdateWindowState = true;
-			rdp_rail_schedule_update_window(NULL, (void*)surface);
+			rdp_rail_schedule_update_window(NULL, surface);
 		}
 	}
 
@@ -412,7 +414,7 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 	if (!freeOnly)
 		surface = (struct weston_surface *)rdp_id_manager_lookup(&peerCtx->windowId, windowMove->windowId);
 	if (surface) {
-		rail_state = (struct weston_surface_rail_state *)surface->backend_state;
+		rail_state = surface->backend_state;
 		if (b->rdprail_shell_api &&
 			b->rdprail_shell_api->request_window_move) {
 			windowMoveRect.x = windowMove->left;
@@ -425,8 +427,10 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 			    (section 2.2.2.7.5) do include resize margins in the window boundaries. */
 			windowMoveRect.x += rail_state->window_margin_left;
 			windowMoveRect.y += rail_state->window_margin_top;
-			windowMoveRect.width -= (rail_state->window_margin_left + rail_state->window_margin_right);
-			windowMoveRect.height -= (rail_state->window_margin_top + rail_state->window_margin_bottom);
+			windowMoveRect.width -= rail_state->window_margin_left +
+						rail_state->window_margin_right;
+			windowMoveRect.height -= rail_state->window_margin_top +
+						 rail_state->window_margin_bottom;
 			to_weston_coordinate(peerCtx,
 				&windowMoveRect.x, &windowMoveRect.y,
 				&windowMoveRect.width, &windowMoveRect.height);
@@ -445,7 +449,7 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 				windowMoveRect.width,
 				windowMoveRect.height);
 			rail_state->forceUpdateWindowState = true;
-			rdp_rail_schedule_update_window(NULL, (void*)surface);
+			rdp_rail_schedule_update_window(NULL, surface);
 		}
 	}
 
