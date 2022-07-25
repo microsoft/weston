@@ -324,7 +324,6 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 	struct weston_surface *surface;
 	struct weston_surface_rail_state *rail_state;
 	pixman_rectangle32_t snapArrangeRect;
-	struct weston_geometry windowGeometry;
 
 	rdp_debug(b, "Client: SnapArrange: WindowId:0x%x at (%d, %d) %dx%d\n", 
 		snap->windowId,
@@ -361,12 +360,11 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 				&snapArrangeRect.width, &snapArrangeRect.height);
 			if (is_window_shadow_remoting_disabled(peerCtx)) {
 				/* offset window shadow area */
-				/* window_geometry here is last commited geometry */
-				b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
-				snapArrangeRect.x -= windowGeometry.x;
-				snapArrangeRect.y -= windowGeometry.y;
-				snapArrangeRect.width += (surface->width - windowGeometry.width);
-				snapArrangeRect.height += (surface->height - windowGeometry.height);
+				/* window_geometry here is last geometry used with window create/update PDU */
+				snapArrangeRect.x -= rail_state->windowGeometry.x;
+				snapArrangeRect.y -= rail_state->windowGeometry.y;
+				snapArrangeRect.width += (surface->width - rail_state->windowGeometry.width);
+				snapArrangeRect.height += (surface->height - rail_state->windowGeometry.height);
 			}
 			b->rdprail_shell_api->request_window_snap(surface, 
 				snapArrangeRect.x,
@@ -399,7 +397,6 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 	struct weston_surface *surface;
 	struct weston_surface_rail_state *rail_state;
 	pixman_rectangle32_t windowMoveRect;
-	struct weston_geometry windowGeometry;
 
 	rdp_debug(b, "Client: WindowMove: WindowId:0x%x at (%d,%d) %dx%d\n", 
 		windowMove->windowId,
@@ -436,12 +433,11 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 				&windowMoveRect.width, &windowMoveRect.height);
 			if (is_window_shadow_remoting_disabled(peerCtx)) {
 				/* offset window shadow area */
-				/* window_geometry here is last commited geometry */
-				b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
-				windowMoveRect.x -= windowGeometry.x;
-				windowMoveRect.y -= windowGeometry.y;
-				windowMoveRect.width += (surface->width - windowGeometry.width);
-				windowMoveRect.height += (surface->height - windowGeometry.height);
+				/* window_geometry here is last geometry used with window create/update PDU */
+				windowMoveRect.x -= rail_state->windowGeometry.x;
+				windowMoveRect.y -= rail_state->windowGeometry.y;
+				windowMoveRect.width += (surface->width - rail_state->windowGeometry.width);
+				windowMoveRect.height += (surface->height - rail_state->windowGeometry.height);
 			}
 			b->rdprail_shell_api->request_window_move(surface, 
 				windowMoveRect.x,
@@ -1544,6 +1540,7 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 	rail_state->parent_window_id = window_state_order.ownerWindowId;
 	rail_state->pos = pos;
 	rail_state->clientPos = clientPos;
+	rail_state->windowGeometry = windowGeometry;
 	rail_state->window_margin_left = window_margin_left;
 	rail_state->window_margin_top = window_margin_top;
 	rail_state->window_margin_right = window_margin_right;
@@ -2108,6 +2105,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 					window_id, window_margin_left, window_margin_top, window_margin_right, window_margin_bottom);
 			}
 		}
+		rail_state->windowGeometry = windowGeometry;
 
 		if (rail_state->forceUpdateWindowState ||
 			rail_state->clientPos.width != newClientPos.width ||
@@ -2188,7 +2186,7 @@ rdp_rail_update_window(struct weston_surface *surface, struct update_window_iter
 			rail_state->clientPos.height = newClientPos.height;
 			rail_state->output = surface->output;
 
-			rdp_debug_verbose(b, "WindowUpdate(0x%x - size (%d, %d) in RDP client size (%d, %d)\n",
+			rdp_debug_verbose(b, "WindowUpdate(0x%x - size (%d, %d) - RDP client size (%d, %d)\n",
 					window_id, newPos.width, newPos.height, newClientPos.width, newClientPos.height);
 		}
 
@@ -3751,18 +3749,12 @@ rdp_rail_dump_window_iter(void *element, void *data)
 	struct weston_surface *surface = (struct weston_surface *)element;
 	struct weston_surface_rail_state *rail_state = (struct weston_surface_rail_state *)surface->backend_state;
 	struct rdp_rail_dump_window_context *context = (struct rdp_rail_dump_window_context *)data;
-	struct rdp_backend *b = context->peerCtx->rdpBackend;
 	assert(rail_state); // this iter is looping from window hash table, thus it must have rail_state initialized.
 	FILE *fp = context->fp;
 	char label[256] = {};
-	struct weston_geometry windowGeometry = {};
 	struct weston_view *view;
 	int contentBufferWidth, contentBufferHeight;
 	weston_surface_get_content_size(surface, &contentBufferWidth, &contentBufferHeight);
-
-	if (b->rdprail_shell_api &&
-		b->rdprail_shell_api->get_window_geometry)
-		b->rdprail_shell_api->get_window_geometry(surface, &windowGeometry);
 
 	rdp_rail_dump_window_label(surface, label, sizeof(label));
 	fprintf(fp,"    %s\n", label);
@@ -3780,8 +3772,8 @@ rdp_rail_dump_window_iter(void *element, void *data)
 		rail_state->window_margin_left, rail_state->window_margin_top,
 		rail_state->window_margin_right, rail_state->window_margin_bottom);
 	fprintf(fp,"    Window geometry x:%d, y:%d, width:%d height:%d\n",
-		windowGeometry.x, windowGeometry.y,
-		windowGeometry.width, windowGeometry.height);
+		rail_state->windowGeometry.x, rail_state->windowGeometry.y,
+		rail_state->windowGeometry.width, rail_state->windowGeometry.height);
 	fprintf(fp,"    input extents: x1:%d, y1:%d, x2:%d, y2:%d\n",
 		surface->input.extents.x1, surface->input.extents.y1,
 		surface->input.extents.x2, surface->input.extents.y2);
@@ -3855,7 +3847,7 @@ rdp_rail_dump_window_iter(void *element, void *data)
 	}
 	/* force sync with client */
 	fprintf(fp,"force sync window state with client.\n");
-	rail_state->forceUpdateWindowState = 1; /* resent window state */
+	rail_state->forceUpdateWindowState = true; /* resent window state */
 	weston_surface_damage(surface); /* resend window content */
 	weston_surface_schedule_repaint(surface);
 	fprintf(fp,"\n");
