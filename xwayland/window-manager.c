@@ -2531,11 +2531,23 @@ weston_wm_handle_leave(struct weston_wm *wm, xcb_generic_event_t *event)
 static void
 weston_wm_handle_focus_in(struct weston_wm *wm, xcb_generic_event_t *event)
 {
+	struct weston_wm_window *window;
 	xcb_focus_in_event_t *focus = (xcb_focus_in_event_t *) event;
 
 	/* Do not interfere with grabs */
 	if (focus->mode == XCB_NOTIFY_MODE_GRAB ||
 	    focus->mode == XCB_NOTIFY_MODE_UNGRAB)
+		return;
+
+	if (!wm_lookup_window(wm, focus->event, &window))
+		return;
+
+	/* Sometimes apps like to focus their own windows, and we don't
+	 * want to prevent that - but we'd like to at least prevent any
+	 * attempt to focus a toplevel that isn't the currently activated
+	 * toplevel.
+	 */
+	if (!window->frame)
 		return;
 
 	/* Do not let X clients change the focus behind the compositor's
