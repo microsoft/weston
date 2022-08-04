@@ -767,6 +767,17 @@ weston_wm_window_send_configure_notify(struct weston_wm_window *window)
 	const struct weston_desktop_xwayland_interface *xwayland_api =
 		wm->server->compositor->xwayland_interface;
 
+	if (window->override_redirect) {
+		/* Some clever application has changed the override redirect
+		 * flag on an existing window. We didn't see it at map time,
+		 * so have no idea what to do with it now. Log and leave.
+		 */
+		wm_printf(wm, "XWM warning: Can't send XCB_CONFIGURE_NOTIFY to"
+			  " window %d which was mapped override redirect\n",
+			  window->id);
+		return;
+	}
+
 	weston_wm_window_get_child_position(window, &x, &y);
 	/* Synthetic ConfigureNotify events must be relative to the root
 	 * window, so get our offset if we're mapped. */
@@ -882,6 +893,13 @@ weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *ev
 		  window->fullscreen ? ", fullscreen" : "",
 		  window->override_redirect ? ", override" : "");
 
+	/* If we see this, a window's override_redirect state has changed
+	 * after it was mapped, and we don't really know what to do about
+	 * that.
+	 */
+	if (window->override_redirect)
+		return;
+
 	if (window->fullscreen) {
 		weston_wm_window_send_configure_notify(window);
 		return;
@@ -900,7 +918,7 @@ weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *ev
 	/* don't send x/y when frame (parent window) is not created yet,
 	   unless this is frame itself. Since only after frame is created,
 	   the app's window position will become relative to parent (frame). */
-	if (window->frame || window->override_redirect) {
+	if (window->frame) {
 		weston_wm_window_get_child_position(window, &x, &y);
 		/* window is app's window has frame as parent, or override. */
 		values[i++] = x; // relative from frame.
@@ -922,7 +940,7 @@ weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *ev
 	}
 
 	weston_wm_configure_window(wm, window->id, mask, values);
-	if (window->frame == NULL && !window->override_redirect) {
+	if (window->frame == NULL) {
 		/* must not mapped yet */
 		assert(!window->shsurf);
 		/* if frame is not created yet, or not override window,
