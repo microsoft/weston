@@ -4519,7 +4519,7 @@ rdp_rail_notify_app_list(void *rdp_backend,
 	peer_ctx = (RdpPeerContext *)b->rdp_peer->context;
 
 	applist_ctx = peer_ctx->applist_server_context;
-	if (applist_ctx)
+	if (!applist_ctx)
 		return false;
 
 	rdp_debug(b, "rdp_rail_notify_app_list(): rdp_peer %p\n", peer_ctx);
