@@ -218,10 +218,17 @@ detach_app_list_namespace(struct desktop_shell *shell)
 }
 
 static bool 
+is_dir_exist(char *file)
+{
+	struct stat buffer;
+	return ((stat(file, &buffer) == 0) && S_ISDIR(buffer.st_mode));
+}
+
+static bool 
 is_file_exist(char *file)
 {
 	struct stat buffer;
-	return (stat(file, &buffer) == 0);
+	return ((stat(file, &buffer) == 0) && S_ISREG(buffer.st_mode));
 }
 
 static char *
@@ -839,7 +846,7 @@ app_list_monitor_thread(LPVOID arg)
 				folder = path;
 			}
 
-			if (!is_file_exist(folder)) {
+			if (!is_dir_exist(folder)) {
 				shell_rdp_debug(shell, "app_list_monitor_thread: %s doesn't exist, skipping.\n", folder);
 				detach_app_list_namespace(shell);
 				close(fd[num_watch]);
