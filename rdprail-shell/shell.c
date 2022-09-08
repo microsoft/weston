@@ -409,12 +409,13 @@ shell_surface_set_window_icon(struct weston_desktop_surface *desktop_surface,
 		}
 		if (!image) {
 			/* If this is X app, try window class name as id for icon */
-			if (api && api->is_xwayland_surface(surface))
+			if (api && api->is_xwayland_surface(surface)) {
 				id = api->get_class_name(surface);
-			if (id)
-				image = app_list_load_icon_file(shsurf->shell, id);
-			if (image)
-				shsurf->icon.is_default_icon_used = false;
+				if (id)
+					image = app_list_load_icon_file(shsurf->shell, id);
+				if (image)
+					shsurf->icon.is_default_icon_used = false;
+			}
 		}
 		if (!image) {
 			/* When caller doens't supply custom image, look for default images */
