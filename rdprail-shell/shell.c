@@ -357,6 +357,7 @@ shell_surface_set_window_icon(struct weston_desktop_surface *desktop_surface,
 	pixman_image_t *image = NULL;
 	pixman_format_code_t format;
 	const char *id;
+	char *class_name;
 
 	shsurf = weston_desktop_surface_get_user_data(desktop_surface);
 	if (!shsurf)
@@ -410,11 +411,13 @@ shell_surface_set_window_icon(struct weston_desktop_surface *desktop_surface,
 		if (!image) {
 			/* If this is X app, try window class name as id for icon */
 			if (api && api->is_xwayland_surface(surface)) {
-				id = api->get_class_name(surface);
-				if (id)
-					image = app_list_load_icon_file(shsurf->shell, id);
-				if (image)
-					shsurf->icon.is_default_icon_used = false;
+				class_name = api->get_class_name(surface);
+				if (class_name) {
+					image = app_list_load_icon_file(shsurf->shell, class_name);
+					if (image)
+						shsurf->icon.is_default_icon_used = false;
+					free(class_name);
+				}
 			}
 		}
 		if (!image) {
