@@ -347,8 +347,9 @@ send_app_entry(struct desktop_shell *shell, char *key, struct app_entry *entry,
 			if (app_list_data.appIcon)
 				pixman_image_ref(app_list_data.appIcon);
 		}
-		if (app_list_data.appIcon &&
-		    shell->is_blend_overlay_icon_app_list &&
+		if (shell->is_blend_overlay_icon_app_list &&
+		    app_list_data.appIcon &&
+		    app_list_data.appIcon != context->default_icon &&
 		    context->default_overlay_icon)
 			shell_blend_overlay_icon(shell,
 						 app_list_data.appIcon,
@@ -1290,6 +1291,14 @@ void app_list_init(struct desktop_shell *shell)
 	iconpath = getenv("WSL2_DEFAULT_APP_OVERLAY_ICON");
 	if (iconpath && (strcmp(iconpath, "disabled") != 0))
 		context->default_overlay_icon = load_icon_image(shell, iconpath);
+
+	/* preblend default icon with overlay icon if requested */
+	if (shell->is_blend_overlay_icon_app_list &&
+	    context->default_icon &&
+	    context->default_overlay_icon)
+		shell_blend_overlay_icon(shell,
+					 context->default_icon,
+					 context->default_overlay_icon);
 
 	/* set default language as "en_US". this will be updated once client connected */
 	strcpy(context->lang_info.requestedClientLanguageId, "en_US");

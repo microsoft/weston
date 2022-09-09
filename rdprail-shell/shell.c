@@ -427,7 +427,9 @@ shell_surface_set_window_icon(struct weston_desktop_surface *desktop_surface,
 		}
 		if (!image)
 			return;
+		/* no need to blend default icon as it's already pre-blended if requested. */
 		if (shsurf->shell->is_blend_overlay_icon_taskbar &&
+		    shsurf->shell->image_default_app_icon != image &&
 		    shsurf->shell->image_default_app_overlay_icon)
 			shell_blend_overlay_icon(shsurf->shell,
 						 image,
@@ -760,6 +762,14 @@ shell_configuration(struct desktop_shell *shell)
 		"WESTON_RDPRAIL_SHELL_BLEND_OVERLAY_ICON_TASKBAR", true);
 	shell_rdp_debug(shell, "RDPRAIL-shell: WESTON_RDPRAIL_SHELL_BLEND_OVERLAY_ICON_TASKBAR:%d\n",
 		shell->is_blend_overlay_icon_taskbar);
+
+	/* preblend overlay icon over app icon */
+	if (shell->is_blend_overlay_icon_taskbar &&
+	    shell->image_default_app_icon &&
+	    shell->image_default_app_overlay_icon)
+		shell_blend_overlay_icon(shell,
+					 shell->image_default_app_icon,
+					 shell->image_default_app_overlay_icon);
 
 	shell->workspaces.num = 1;
 }
