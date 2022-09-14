@@ -1808,6 +1808,12 @@ weston_wm_window_create(struct weston_wm *wm,
 	window->override_redirect = override;
 	window->width = width;
 	window->height = height;
+	/* Completely arbitrary defaults in case something starts
+	 * maximized and we unmaximize it later - at which point 0 x 0
+	 * would not be the most useful size.
+	 */
+	window->saved_width = 512;
+	window->saved_height = 512;
 	window->x = x;
 	window->y = y;
 	window->pos_dirty = false;
@@ -2055,10 +2061,12 @@ weston_wm_window_set_toplevel(struct weston_wm_window *window)
 	xwayland_interface->set_toplevel(window->shsurf);
 	window->width = window->saved_width;
 	window->height = window->saved_height;
-	if (window->frame)
+	if (window->frame) {
+		frame_unset_flag(window->frame, FRAME_FLAG_MAXIMIZED);
 		frame_resize_inside(window->frame,
 					window->width,
 					window->height);
+	}
 	weston_wm_window_configure(window);
 }
 
@@ -2497,6 +2505,7 @@ weston_wm_handle_button(struct weston_wm *wm, xcb_generic_event_t *event)
 	if (frame_status(window->frame) & FRAME_STATUS_MAXIMIZE) {
 		window->maximized_horz = !window->maximized_horz;
 		window->maximized_vert = !window->maximized_vert;
+		weston_wm_window_set_net_wm_state(window);
 		if (weston_wm_window_is_maximized(window)) {
 			window->saved_width = window->width;
 			window->saved_height = window->height;
@@ -3126,6 +3135,9 @@ send_configure(struct weston_surface *surface, int32_t width, int32_t height)
 		window->height = new_height;
 
 		if (window->frame) {
+			if (weston_wm_window_is_maximized(window))
+				frame_set_flag(window->frame, FRAME_FLAG_MAXIMIZED);
+
 			frame_resize_inside(window->frame,
 					    window->width, window->height);
 		}

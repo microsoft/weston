@@ -64,6 +64,7 @@ struct weston_desktop_xwayland_surface {
 	bool committed;
 	bool added;
 	enum weston_desktop_xwayland_surface_state state;
+	enum weston_desktop_xwayland_surface_state prev_state;
 };
 
 static void
@@ -150,8 +151,16 @@ weston_desktop_xwayland_surface_committed(struct weston_desktop_surface *dsurfac
 
 	if (surface->has_next_geometry) {
 		oldgeom = weston_desktop_surface_get_geometry(surface->surface);
-		sx -= surface->next_geometry.x - oldgeom.x;
-		sy -= surface->next_geometry.y - oldgeom.y;
+		/* If we're transitioning away from fullscreen or maximized
+		 * we've moved to old saved co-ordinates that were saved
+		 * with window geometry in place, so avoid adajusting by
+		 * the geometry in those cases.
+		 */
+		if (surface->state == surface->prev_state) {
+			sx -= surface->next_geometry.x - oldgeom.x;
+			sy -= surface->next_geometry.y - oldgeom.y;
+		}
+		surface->prev_state = surface->state;
 
 		surface->has_next_geometry = false;
 		weston_desktop_surface_set_geometry(surface->surface,
