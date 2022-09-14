@@ -1705,8 +1705,7 @@ shell_surface_set_output(struct shell_surface *shsurf,
 }
 
 static void
-weston_view_set_initial_position(struct weston_view *view,
-				 struct desktop_shell *shell);
+weston_view_set_initial_position(struct shell_surface *shsurf);
 
 static void
 unset_fullscreen(struct shell_surface *shsurf)
@@ -1732,7 +1731,7 @@ unset_fullscreen(struct shell_surface *shsurf)
 		weston_view_set_position(shsurf->view,
 					 shsurf->saved_x, shsurf->saved_y);
 	else
-		weston_view_set_initial_position(shsurf->view, shsurf->shell);
+		weston_view_set_initial_position(shsurf);
 	shsurf->saved_position_valid = false;
 
 	if (shsurf->saved_rotation_valid) {
@@ -1770,7 +1769,7 @@ unset_maximized(struct shell_surface *shsurf)
 			weston_view_set_position(shsurf->view,
 						shsurf->saved_x, shsurf->saved_y);
 		else
-			weston_view_set_initial_position(shsurf->view, shsurf->shell);
+			weston_view_set_initial_position(shsurf);
 		shsurf->saved_position_valid = false;
 	}
 
@@ -2310,7 +2309,7 @@ set_position_from_xwayland(struct shell_surface *shsurf)
 	}
 
 	/* Otherwise, move to default initial position */
-	weston_view_set_initial_position(shsurf->view, shsurf->shell);
+	weston_view_set_initial_position(shsurf);
 }
 
 static void
@@ -2355,7 +2354,7 @@ map(struct desktop_shell *shell, struct shell_surface *shsurf,
 	} else if (shsurf->parent) {
 		set_default_position_from_parent(shsurf);
 	} else {
-		weston_view_set_initial_position(shsurf->view, shell);
+		weston_view_set_initial_position(shsurf);
 	}
 
 	/* Surface stacking order, see also activate(). */
@@ -3713,14 +3712,16 @@ center_on_output(struct weston_view *view, struct weston_output *output)
 }
 
 static void
-weston_view_set_initial_position(struct weston_view *view,
-				 struct desktop_shell *shell)
+weston_view_set_initial_position(struct shell_surface *shsurf)
 {
+	struct weston_view *view = shsurf->view;
+	struct desktop_shell *shell = shsurf->shell;
 	struct weston_compositor *compositor = shell->compositor;
 	int32_t range_x, range_y;
 	int32_t x, y;
 	struct weston_output *target_output = NULL;
 	pixman_rectangle32_t area;
+	struct weston_geometry geometry;
 
 	/* As a heuristic place the new window on the same output as the
 	 * pointer. Falling back to the output containing 0, 0.
@@ -3774,9 +3775,9 @@ weston_view_set_initial_position(struct weston_view *view,
 	 * output.
 	 */
 	get_output_work_area(shell, target_output, &area);
-
-	x = area.x;
-	y = area.y;
+	geometry = weston_desktop_surface_get_geometry(shsurf->desktop_surface);
+	x = area.x - geometry.x;
+	y = area.y - geometry.y;
 	range_x = area.width - view->surface->width;
 	range_y = area.height - view->surface->height;
 
