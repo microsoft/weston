@@ -170,6 +170,7 @@ struct weston_wm_window {
 	int delete_window;
 	int maximized_vert;
 	int maximized_horz;
+	bool maximized_state_changing;
 	int take_focus;
 	int no_shadow;
 	struct wm_size_hints size_hints;
@@ -2116,6 +2117,7 @@ weston_wm_window_handle_state(struct weston_wm_window *window,
 			weston_wm_window_set_net_wm_state(window);
 
 		if (maximized != weston_wm_window_is_maximized(window)) {
+			window->maximized_state_changing = true;
 			if (weston_wm_window_is_maximized(window)) {
 				window->saved_width = window->width;
 				window->saved_height = window->height;
@@ -2128,6 +2130,7 @@ weston_wm_window_handle_state(struct weston_wm_window *window,
 					frame_unset_flag(window->frame, FRAME_FLAG_MAXIMIZED);
 				weston_wm_window_set_toplevel(window);
 			}
+			window->maximized_state_changing = false;
 		}
 	}
 }
@@ -2503,6 +2506,7 @@ weston_wm_handle_button(struct weston_wm *wm, xcb_generic_event_t *event)
 	}
 
 	if (frame_status(window->frame) & FRAME_STATUS_MAXIMIZE) {
+		window->maximized_state_changing = true;
 		window->maximized_horz = !window->maximized_horz;
 		window->maximized_vert = !window->maximized_vert;
 		weston_wm_window_set_net_wm_state(window);
@@ -2516,6 +2520,7 @@ weston_wm_handle_button(struct weston_wm *wm, xcb_generic_event_t *event)
 			weston_wm_window_set_toplevel(window);
 		}
 		frame_status_clear(window->frame, FRAME_STATUS_MAXIMIZE);
+		window->maximized_state_changing = false;
 	}
 
 	if (frame_status(window->frame) & FRAME_STATUS_MINIMIZE) {
@@ -3130,7 +3135,7 @@ send_configure(struct weston_surface *surface, int32_t width, int32_t height)
 	else
 		new_height = 1;
 
-	if (window->width != new_width || window->height != new_height) {
+	if (window->width != new_width || window->height != new_height || window->maximized_state_changing) {
 		window->width = new_width;
 		window->height = new_height;
 
@@ -3197,6 +3202,7 @@ set_maximized(struct weston_surface *surface, bool is_maximized)
 
 	wm = window->wm;
 
+	window->maximized_state_changing = true;
 	if (is_maximized) {
 		if (!weston_wm_window_is_maximized(window)) {
 			window->maximized_horz = 1;
@@ -3216,6 +3222,7 @@ set_maximized(struct weston_surface *surface, bool is_maximized)
 		}
 	}
 	weston_wm_window_set_net_wm_state(window);
+	window->maximized_state_changing = false;
 }
 
 static char *
@@ -3436,10 +3443,12 @@ xserver_map_shell_surface(struct weston_wm_window *window,
 						       parent->surface);
 		}
 	} else if (weston_wm_window_is_maximized(window)) {
+		window->maximized_state_changing = true;
 		window->saved_width = window->width;
 		window->saved_height = window->height;
 		frame_set_flag(window->frame, FRAME_FLAG_MAXIMIZED);
 		xwayland_interface->set_maximized(window->shsurf);
+		window->maximized_state_changing = false;
 	} else {
 		if (weston_wm_window_type_inactive(window)) {
 			xwayland_interface->set_xwayland(window->shsurf,
