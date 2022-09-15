@@ -2509,10 +2509,8 @@ weston_wm_handle_button(struct weston_wm *wm, xcb_generic_event_t *event)
 		if (weston_wm_window_is_maximized(window)) {
 			window->saved_width = window->width;
 			window->saved_height = window->height;
-			frame_set_flag(window->frame, FRAME_FLAG_MAXIMIZED);
 			xwayland_interface->set_maximized(window->shsurf);
 		} else {
-			frame_unset_flag(window->frame, FRAME_FLAG_MAXIMIZED);
 			weston_wm_window_set_toplevel(window);
 		}
 		frame_status_clear(window->frame, FRAME_STATUS_MAXIMIZE);
