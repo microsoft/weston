@@ -876,6 +876,8 @@ weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *ev
 	int x, y;
 	int i = 0;
 	bool is_our_resource = our_resource(wm, configure_request->window);
+	const struct weston_desktop_xwayland_interface *xwayland_api =
+		wm->server->compositor->xwayland_interface;
 
 	wm_printf(wm, "XCB_CONFIGURE_REQUEST (window %d) %dx%d @ %d,%d mask 0x%x%s\n",
 		  configure_request->window,
@@ -951,6 +953,13 @@ weston_wm_handle_configure_request(struct weston_wm *wm, xcb_generic_event_t *ev
 			window->x = configure_request->x;
 		if (configure_request->value_mask & XCB_CONFIG_WINDOW_Y)
 			window->y = configure_request->y; 
+	} else if (window->shsurf &&
+		   configure_request->value_mask & (XCB_CONFIG_WINDOW_X|XCB_CONFIG_WINDOW_Y)) {
+		xwayland_api->move_position(window->shsurf,
+			configure_request->value_mask & XCB_CONFIG_WINDOW_X ?
+				configure_request->x : window->x,
+			configure_request->value_mask & XCB_CONFIG_WINDOW_Y ?
+				configure_request->y : window->y);
 	}
 	weston_wm_window_configure_frame(window);
 	weston_wm_window_send_configure_notify(window);
@@ -1022,10 +1031,6 @@ weston_wm_handle_configure_notify(struct weston_wm *wm, xcb_generic_event_t *eve
 		if (window->shsurf)
 			xwayland_api->set_xwayland(window->shsurf,
 						   window->x, window->y);
-	} else if (is_our_resource) {
-		if (window->shsurf)
-			xwayland_api->move_position(window->shsurf,
-						    window->x, window->y);
 	}
 }
 
