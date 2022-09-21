@@ -236,6 +236,9 @@ shell_backend_request_window_activate(void *shell_context, struct weston_seat *s
 
 #define ICON_STRIDE( W, BPP ) ((((W) * (BPP) + 31) / 32) * 4)
 
+#define TITLEBAR_GRAB_MARGIN_X (30)
+#define TITLEBAR_GRAB_MARGIN_Y (10)
+
 static int cached_tm_mday = -1;
 
 static char *
@@ -788,8 +791,10 @@ get_default_output(struct weston_compositor *compositor)
 }
 
 static struct weston_output *
-get_output_containing(struct weston_compositor *compositor, int x, int y)
+get_output_containing(struct desktop_shell *shell, int x, int y, bool use_default)
 {
+	struct weston_compositor *compositor = shell->compositor;
+
 	if (wl_list_empty(&compositor->output_list))
 		return NULL;
 
@@ -800,8 +805,14 @@ get_output_containing(struct weston_compositor *compositor, int x, int y)
 			return output;
 		}
 	}
-	weston_log("Didn't find output containing (%d, %d), return default\n", x, y);
-	return get_default_output(compositor);
+
+	if (use_default) {
+		shell_rdp_debug_verbose(shell, "%s: Didn't find output containing (%d, %d), return default\n",
+			__func__, x, y);
+		return get_default_output(compositor);
+	} else {
+		return NULL;
+	}
 }
 
 
@@ -2289,14 +2300,14 @@ set_position_from_xwayland(struct shell_surface *shsurf)
 	y = shsurf->xwayland.y - geometry.y;
 
 	/* Make sure the position given from xwayland is a part of workarea */
-	output = get_output_containing(shsurf->shell->compositor, x, y);
+	output = get_output_containing(shsurf->shell, shsurf->xwayland.x, shsurf->xwayland.y, false);
 	if (output) {
 		get_output_work_area(shsurf->shell, output, &area);
 		/* Use xwayland position as this is the X app's origin of client area */
 		if (shsurf->xwayland.x >= area.x &&
 		    shsurf->xwayland.y >= area.y &&
-		    shsurf->xwayland.x < (int32_t)(area.x + area.width - (area.width / 10)) &&
-		    shsurf->xwayland.y < (int32_t)(area.y + area.height - (area.height / 10))) {
+		    shsurf->xwayland.x <= (int32_t)(area.x + area.width - TITLEBAR_GRAB_MARGIN_X) &&
+		    shsurf->xwayland.y <= (int32_t)(area.y + area.height - TITLEBAR_GRAB_MARGIN_Y)) {
 
 			weston_view_set_position(shsurf->view, x, y);
 
@@ -2806,9 +2817,10 @@ shell_backend_request_window_snap(struct weston_surface *surface, int x, int y, 
 		 * based on the last position of the mouse when the
 		 * grab event finished.
 		 */
-		struct weston_output *output = get_output_containing(surface->compositor, 
+		struct weston_output *output = get_output_containing(shsurf->shell, 
 				shsurf->snapped.last_grab_x, 
-				shsurf->snapped.last_grab_y);
+				shsurf->snapped.last_grab_y,
+				true);
 
 		weston_view_set_output(shsurf->view, output);
 		shell_surface_set_output(shsurf, output);
@@ -2992,6 +3004,15 @@ desktop_surface_get_position(struct weston_desktop_surface *surface,
 	*y = shsurf->view->geometry.y;
 }
 
+static bool
+area_contain_point(pixman_rectangle32_t *area, int x, int y) 
+{
+	return x >= area->x &&
+	       y >= area->y &&
+	       x < area->x + (int)area->width &&
+	       y < area->y + (int)area->height;
+}
+
 static void
 desktop_surface_move_xwayland_position(struct weston_desktop_surface *desktop_surface,
 				       int32_t x, int32_t y, void *shell_)
@@ -3002,8 +3023,14 @@ desktop_surface_move_xwayland_position(struct weston_desktop_surface *desktop_su
 		weston_desktop_surface_get_user_data(desktop_surface);
 	struct desktop_shell *shell = shsurf->shell;
 	const struct weston_xwayland_surface_api *api;
+	struct weston_geometry geometry;
 
 	assert(shell == shell_);
+
+	geometry = weston_desktop_surface_get_geometry(desktop_surface);
+	if (shsurf->view->geometry.x == x - geometry.x &&
+	    shsurf->view->geometry.y == y - geometry.y)
+		return;
 
 	api = shell->xwayland_surface_api;
 	if (!api) {
@@ -3015,12 +3042,38 @@ desktop_surface_move_xwayland_position(struct weston_desktop_surface *desktop_su
 		         But this is not simple, for example, app can have accompanying
 		         window which move along with other main window, in such case,
 		         often, it's totally fine the accompanying goes out of workarea. */
+		/* Below code to make sure window title bar is grab-able */
+		struct weston_output *output;
+		int left, right, top;
+		pixman_rectangle32_t area;
+		bool visible = false;
 
-		weston_view_set_position(shsurf->view, x, y);
-		weston_compositor_schedule_repaint(shell->compositor);
+		left = x + TITLEBAR_GRAB_MARGIN_X;
+		right = x + (surface->width - TITLEBAR_GRAB_MARGIN_X);
+		top = y + TITLEBAR_GRAB_MARGIN_Y;
 
-		shell_rdp_debug_verbose(shell, "%s: surface:%p, position (%d,%d)\n",
-			__func__, surface, x, y);
+		/* check uppper left */
+		output = get_output_containing(shell, left, top, false);
+		if (output) {
+			get_output_work_area(shell, output, &area);
+			visible = area_contain_point(&area, left, top);
+		}
+		if (!visible) {
+			/* check upper right */
+			output = get_output_containing(shell, right, top, false);
+			if (output) {
+				get_output_work_area(shell, output, &area);
+				visible = area_contain_point(&area, right, top);
+			}
+		}
+		if (visible) {
+			x -= geometry.x;
+			y -= geometry.y;
+			weston_view_set_position(shsurf->view, x, y);
+			weston_compositor_schedule_repaint(shell->compositor);
+			shell_rdp_debug_verbose(shell, "%s: surface:%p, position (%d,%d)\n",
+				__func__, surface, x, y);
+		}
 	} else {
 		shell_rdp_debug_error(shell, "%s: surface:%p is not from xwayland\n",
 			__func__, surface);
