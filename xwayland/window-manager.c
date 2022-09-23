@@ -3337,6 +3337,9 @@ weston_wm_window_is_positioned(struct weston_wm_window *window)
 		weston_log("XWM warning: win %d did not see map request\n",
 			   window->id);
 
+	if (window->size_hints.flags & (USPosition | PPosition))
+		return true;
+
 	return window->map_request_x != 0 || window->map_request_y != 0;
 }
 
