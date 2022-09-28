@@ -116,6 +116,7 @@ struct app_entry {
 char *app_list_folder[] = {
 	"/usr/share/applications",
 	"/usr/local/share/applications",
+	"/var/lib/snapd/desktop/applications",
 };
 
 /* list of folders to look for icon in specific orders */
@@ -247,6 +248,13 @@ find_icon_file(char *name)
 {
 	char buf[512];
 	int len;
+
+	/* if name is absolute path and file presents, use as-is */ 
+	if (*name == '/') {
+		if (is_file_exist(name))
+			return strdup(name);
+		return NULL;
+	}
 
 	/* TODO: follow icon search path desribed at "Icon Lookup" section at
 		 https://specifications.freedesktop.org/icon-theme-spec/icon-theme-spec-latest.html */
@@ -385,6 +393,7 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 	char *lang_id = context->lang_info.currentClientLanguageId;
 	char *s;
 	GKeyFile *key_file;
+	GError *err = NULL;
 
 	key_file = g_key_file_new();
 	if (!key_file)
@@ -397,8 +406,9 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 		goto exit;
 
 	attach_app_list_namespace(shell);
-	if (!g_key_file_load_from_file(key_file, file, G_KEY_FILE_NONE, NULL)) {
-		shell_rdp_debug(shell, "desktop file: %s is failed to be loaded\n", entry->file);
+	if (!g_key_file_load_from_file(key_file, file, G_KEY_FILE_NONE, &err)) {
+		shell_rdp_debug(shell, "desktop file: %s is failed to be loaded: %s\n",
+			entry->file, err && err->message ? err->message : "");
 		detach_app_list_namespace(shell);
 		goto exit;
 	}
@@ -491,6 +501,9 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 	return true;
 
 exit:
+	if (err)
+		g_error_free(err);
+
 	g_key_file_free(key_file);
 
 	/* caller will clean up partially filled entry upon returning false */
@@ -775,6 +788,7 @@ app_list_monitor_thread(LPVOID arg)
 	struct app_entry *entry;
 	int fd[ARRAY_LENGTH(app_list_folder)] = {};
 	int wd[ARRAY_LENGTH(app_list_folder)] = {};
+	int app_list_folder_index[ARRAY_LENGTH(app_list_folder)] = {};
 	char *home;
 	char *folder;
 	int len, cur;
@@ -875,6 +889,7 @@ app_list_monitor_thread(LPVOID arg)
 				fd[num_watch] = 0;
 				continue;
 			}
+			app_list_folder_index[num_watch] = i;
 			num_events++;
 			num_watch++;
 		}
@@ -977,6 +992,8 @@ app_list_monitor_thread(LPVOID arg)
 		if (shell->rdprail_api->notify_app_list && num_watch) {
 			len = read(fd[status - WAIT_OBJECT_0 - NUM_CONTROL_EVENT], buf, sizeof buf); 
 			cur = 0;
+			if (len)
+				sleep(2); /* workaround to settle .desktop file and other resoures write */
 			while (cur < len) {
 				event = (struct inotify_event *)&buf[cur];
 				if (event->len &&
@@ -984,7 +1001,7 @@ app_list_monitor_thread(LPVOID arg)
 					is_desktop_file(event->name)) {
 					if (event->mask & (IN_CREATE|IN_MODIFY|IN_MOVED_TO)) {
 						shell_rdp_debug(shell, "app_list_monitor_thread: file created/updated (%s)\n", event->name);
-						app_list_desktop_file_changed(shell, app_list_folder[status - WAIT_OBJECT_0 - NUM_CONTROL_EVENT], event->name);
+						app_list_desktop_file_changed(shell, app_list_folder[app_list_folder_index[status - WAIT_OBJECT_0 - NUM_CONTROL_EVENT]], event->name);
 					}
 					else if (event->mask & (IN_DELETE|IN_MOVED_FROM)) {
 						shell_rdp_debug(shell, "app_list_monitor_thread: file removed (%s)\n", event->name);
