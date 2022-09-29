@@ -64,8 +64,6 @@
 #include <winpr/file.h>
 #endif
 
-#define GROUP_DESKTOP_ENTRY "Desktop Entry"
-
 #if HAVE_GLIB && HAVE_WINPR
 
 #define NUM_CONTROL_EVENT 5
@@ -414,19 +412,19 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 	}
 	detach_app_list_namespace(shell);
 
-	if (!g_key_file_has_group(key_file, GROUP_DESKTOP_ENTRY)) {
+	if (!g_key_file_has_group(key_file, G_KEY_FILE_DESKTOP_GROUP)) {
 		shell_rdp_debug(shell, "desktop file: %s is missing %s section\n",
-			entry->file, GROUP_DESKTOP_ENTRY);
+			entry->file, G_KEY_FILE_DESKTOP_GROUP);
 		goto exit;
 	}
 
-	if (g_key_file_get_boolean(key_file, GROUP_DESKTOP_ENTRY, "Hidden", NULL)) {
+	if (g_key_file_get_boolean(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_HIDDEN, NULL)) {
 		shell_rdp_debug(shell, "desktop file: %s is hidden\n",
 			entry->file);
 		goto exit;
 	}
 
-	s = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "Type", NULL);
+	s = g_key_file_get_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_TYPE, NULL);
 	if (s) {
 		if (strcmp(s, "Application") != 0) {
 			shell_rdp_debug(shell, "desktop file: %s is not app (%s)\n", entry->file, s);
@@ -435,23 +433,23 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 		}
 		free(s);
 	}
-	if (g_key_file_get_boolean(key_file, GROUP_DESKTOP_ENTRY, "NoDisplay", NULL)) {
+	if (g_key_file_get_boolean(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_NO_DISPLAY, NULL)) {
 		shell_rdp_debug(shell, "desktop file: %s has NoDisplay specified\n", entry->file);
 		goto exit; // NoDisplay app is not included.
 	}
-	if (g_key_file_get_boolean(key_file, GROUP_DESKTOP_ENTRY, "Terminal", NULL)) {
+	if (g_key_file_get_boolean(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_TERMINAL, NULL)) {
 		shell_rdp_debug(shell, "desktop file: %s is terminal based app\n", entry->file);
 		goto exit; // terminal based app is not included.
 	}
 	/*TODO: OnlyShowIn/NotShowIn support for WSL environment. */
 	/*      Need $XDG_CURRENT_DESKTOP keyword for WSL GUI environment */
-	s = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "OnlyShowIn", NULL);
+	s = g_key_file_get_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_ONLY_SHOW_IN, NULL);
 	if (s) {
 		shell_rdp_debug(shell, "desktop file: %s has OnlyShowIn %s\n", entry->file, s);
 		free(s);
 		goto exit;
 	}
-	entry->name = g_key_file_get_locale_string(key_file, GROUP_DESKTOP_ENTRY, "Name", lang_id, NULL);
+	entry->name = g_key_file_get_locale_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_NAME, lang_id, NULL);
 	if (!entry->name) {
 		/* name is required */
 		shell_rdp_debug(shell, "desktop file: %s is missing Name key\n", entry->file);
@@ -472,17 +470,17 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 			entry->name = t;
 		}
 	}
-	entry->exec = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "Exec", NULL);
+	entry->exec = g_key_file_get_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_EXEC, NULL);
 	if (!entry->exec) {
 		shell_rdp_debug(shell, "desktop file: %s is missing Exec key\n", entry->file);
 		goto exit;
 	}
 	trim_command_exec(entry->exec);
-	entry->try_exec = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "TryExec", NULL);
+	entry->try_exec = g_key_file_get_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_TRY_EXEC, NULL);
 	if (entry->try_exec)
 		trim_command_exec(entry->try_exec);
-	entry->working_dir = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "Path", NULL);
-	entry->icon = g_key_file_get_string(key_file, GROUP_DESKTOP_ENTRY, "Icon", NULL);
+	entry->working_dir = g_key_file_get_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_PATH, NULL);
+	entry->icon = g_key_file_get_locale_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_ICON, lang_id, NULL);
 	if (entry->icon) {
 		attach_app_list_namespace(shell);
 		entry->icon_file = find_icon_file(entry->icon);
