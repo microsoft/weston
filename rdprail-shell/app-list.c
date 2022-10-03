@@ -247,56 +247,60 @@ is_desktop_file(char *file)
 	return NULL;
 }
 
-static char *
+static bool
 find_icon_file(struct app_entry *entry)
 {
 	struct desktop_shell *shell = entry->shell;
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
-	char *name = entry->icon_name;
 	char buf[512];
 	int len;
+	char *icon_file = buf;
 
-	assert(name);
-
-	if (entry->icon_retry_count)
-		context->icon_retry_count--;
+	assert(entry->icon_name);
+	assert(entry->icon_file == NULL);
+	assert(entry->icon_retry_count < MAX_ICON_RETRY_COUNT);
 
 	/* if name is absolute path and file presents, use as-is */ 
-	if (*name == '/') {
-		if (is_file_exist(name))
-			return strdup(name);
+	if (*entry->icon_name == '/') {
+		if (is_file_exist(entry->icon_name)) {
+			icon_file = entry->icon_name;
+			goto Found;
+		}
 	} else {
 		/* TODO: follow icon search path desribed at "Icon Lookup" section at
 		 https://specifications.freedesktop.org/icon-theme-spec/icon-theme-spec-latest.html */
 		for (int i = 0; i < (int)ARRAY_LENGTH(icon_folder); i++) {
 			copy_string(buf, sizeof buf, icon_folder[i]);
-			append_string(buf, sizeof buf, name);
+			append_string(buf, sizeof buf, entry->icon_name);
 			len = strlen(buf);
 
 			/* first, try given file name as is */
 			if (is_file_exist(buf))
-				return strdup(buf);
+				goto Found;
 
 			/* if not found, try again with .png extension appended */
 			append_string(buf, sizeof buf, ".png");
 			if (is_file_exist(buf))
-				return strdup(buf);
+				goto Found;
 
 			/* if not found, try again with .svg extension appended */
 			copy_string(&buf[len], sizeof buf - len, ".svg");
 			if (is_file_exist(buf))
-				return strdup(buf);
+				goto Found;
 		}
 	}
 
-	entry->icon_retry_count++;
-	if (entry->icon_retry_count < 5) {
+	if (entry->icon_retry_count++ == 0)
 		context->icon_retry_count++;
-		shell_rdp_debug(entry->shell, "%s: icon (%s) search retry scheduled:(%d) (%d)\n",
-			__func__, name, entry->icon_retry_count, context->icon_retry_count);
-	}
+	shell_rdp_debug(entry->shell, "%s: icon (%s) search retry scheduled:(%d) global:(%d)\n",
+		__func__, entry->icon_name, entry->icon_retry_count, context->icon_retry_count);
+	return false;
 
-	return NULL;
+Found:
+	if (entry->icon_retry_count)
+		context->icon_retry_count--;
+	entry->icon_file = strdup(icon_file);
+	return (entry->icon_file != NULL);
 }
 
 static void
@@ -304,7 +308,11 @@ free_app_entry(void *arg)
 {
 	struct app_entry *e = (struct app_entry *)arg;
 	if (e) {
-		shell_rdp_debug(e->shell, "free_app_entry(): %s: %s\n", e->name, e->file);
+		struct desktop_shell *shell = e->shell;
+		struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
+
+		shell_rdp_debug(shell, "free_app_entry(): %s: %s\n", e->name, e->file);
+
 		if (e->file) free(e->file);
 		if (e->name) free(e->name);
 		if (e->exec) free(e->exec);
@@ -313,6 +321,8 @@ free_app_entry(void *arg)
 		if (e->icon_name) free(e->icon_name);
 		if (e->icon_file) free(e->icon_file);
 		if (e->icon_image) pixman_image_unref(e->icon_image);
+		if (e->icon_retry_count) context->icon_retry_count--;
+
 		free(e);
 	}
 }
@@ -401,12 +411,11 @@ retry_find_icon_file(struct desktop_shell *shell)
 		if (entry &&
 		    entry->icon_name &&
 		    entry->icon_file == NULL &&
-		    entry->icon_retry_count < 5) {
+		    entry->icon_retry_count < MAX_ICON_RETRY_COUNT) {
 			shell_rdp_debug(entry->shell, "%s: icon (%s) retry count (%d)\n",
 				__func__, entry->icon_name, entry->icon_retry_count);
 			attach_app_list_namespace(shell);
-			entry->icon_file = find_icon_file(entry);
-			if (entry->icon_file)
+			if (find_icon_file(entry))
 				entry->icon_image = load_icon_image(shell, entry->icon_file);
 			detach_app_list_namespace(shell);
 			if (entry->icon_image)
@@ -533,8 +542,7 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 	entry->icon_name = g_key_file_get_locale_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_ICON, lang_id, NULL);
 	if (entry->icon_name) {
 		attach_app_list_namespace(shell);
-		entry->icon_file = find_icon_file(entry);
-		if (entry->icon_file)
+		if (find_icon_file(entry))
 			entry->icon_image = load_icon_image(shell, entry->icon_file);
 		detach_app_list_namespace(shell);
 	}
@@ -1046,8 +1054,6 @@ app_list_monitor_thread(LPVOID arg)
 		if (shell->rdprail_api->notify_app_list && num_watch) {
 			len = read(fd[status - WAIT_OBJECT_0 - NUM_CONTROL_EVENT], buf, sizeof buf); 
 			cur = 0;
-			if (len)
-				sleep(2); /* workaround to settle .desktop file and other resoures write */
 			while (cur < len) {
 				event = (struct inotify_event *)&buf[cur];
 				if (event->len &&
