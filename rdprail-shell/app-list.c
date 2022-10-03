@@ -68,6 +68,9 @@
 
 #define NUM_CONTROL_EVENT 5
 
+#define EVENT_TIMEOUT_MS 20000 // 2 seconds
+#define MAX_ICON_RETRY_COUNT 5
+
 struct app_list_context {
 	wHashTable* table;
 	HANDLE thread;
@@ -81,6 +84,7 @@ struct app_list_context {
 	bool isAppListNamespaceAttached;
 	int app_list_pidfd;
 	int weston_pidfd;
+	uint32_t icon_retry_count;
 	pixman_image_t* default_icon;
 	pixman_image_t* default_overlay_icon;
 	struct {
@@ -106,8 +110,10 @@ struct app_entry {
 	char *exec;
 	char *try_exec;
 	char *working_dir;
-	char *icon;
+	char *icon_name;
 	char *icon_file;
+	pixman_image_t* icon_image;
+	uint32_t icon_retry_count;
 };
 
 /* TODO: obtain additional path from $XDG_DATA_DIRS, default path is defined here */
@@ -242,38 +248,52 @@ is_desktop_file(char *file)
 }
 
 static char *
-find_icon_file(char *name)
+find_icon_file(struct app_entry *entry)
 {
+	struct desktop_shell *shell = entry->shell;
+	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
+	char *name = entry->icon_name;
 	char buf[512];
 	int len;
+
+	assert(name);
+
+	if (entry->icon_retry_count)
+		context->icon_retry_count--;
 
 	/* if name is absolute path and file presents, use as-is */ 
 	if (*name == '/') {
 		if (is_file_exist(name))
 			return strdup(name);
-		return NULL;
+	} else {
+		/* TODO: follow icon search path desribed at "Icon Lookup" section at
+		 https://specifications.freedesktop.org/icon-theme-spec/icon-theme-spec-latest.html */
+		for (int i = 0; i < (int)ARRAY_LENGTH(icon_folder); i++) {
+			copy_string(buf, sizeof buf, icon_folder[i]);
+			append_string(buf, sizeof buf, name);
+			len = strlen(buf);
+
+			/* first, try given file name as is */
+			if (is_file_exist(buf))
+				return strdup(buf);
+
+			/* if not found, try again with .png extension appended */
+			append_string(buf, sizeof buf, ".png");
+			if (is_file_exist(buf))
+				return strdup(buf);
+
+			/* if not found, try again with .svg extension appended */
+			copy_string(&buf[len], sizeof buf - len, ".svg");
+			if (is_file_exist(buf))
+				return strdup(buf);
+		}
 	}
 
-	/* TODO: follow icon search path desribed at "Icon Lookup" section at
-		 https://specifications.freedesktop.org/icon-theme-spec/icon-theme-spec-latest.html */
-	for (int i = 0; i < (int)ARRAY_LENGTH(icon_folder); i++) {
-		copy_string(buf, sizeof buf, icon_folder[i]);
-		append_string(buf, sizeof buf, name);
-		len = strlen(buf);
-
-		/* first, try given file name as is */
-		if (is_file_exist(buf))
-			return strdup(buf);
-
-		/* if not found, try again with .png extension appended */
-		append_string(buf, sizeof buf, ".png");
-		if (is_file_exist(buf))
-			return strdup(buf);
-
-		/* if not found, try again with .svg extension appended */
-		copy_string(&buf[len], sizeof buf - len, ".svg");
-		if (is_file_exist(buf))
-			return strdup(buf);
+	entry->icon_retry_count++;
+	if (entry->icon_retry_count < 5) {
+		context->icon_retry_count++;
+		shell_rdp_debug(entry->shell, "%s: icon (%s) search retry scheduled:(%d) (%d)\n",
+			__func__, name, entry->icon_retry_count, context->icon_retry_count);
 	}
 
 	return NULL;
@@ -290,8 +310,9 @@ free_app_entry(void *arg)
 		if (e->exec) free(e->exec);
 		if (e->try_exec) free(e->try_exec);
 		if (e->working_dir) free(e->working_dir);
-		if (e->icon) free(e->icon);
+		if (e->icon_name) free(e->icon_name);
 		if (e->icon_file) free(e->icon_file);
+		if (e->icon_image) pixman_image_unref(e->icon_image);
 		free(e);
 	}
 }
@@ -340,19 +361,11 @@ send_app_entry(struct desktop_shell *shell, char *key, struct app_entry *entry,
 		app_list_data.appExecPath = entry->try_exec ? entry->try_exec : entry->exec;
 		app_list_data.appWorkingDir = entry->working_dir;
 		app_list_data.appDesc = entry->name;
-		if (entry->icon) {
-			attach_app_list_namespace(shell);
-			if (!entry->icon_file)
-				entry->icon_file = find_icon_file(entry->icon);
-			if (entry->icon_file)
-				app_list_data.appIcon = load_icon_image(shell, entry->icon_file);
-			detach_app_list_namespace(shell);
-		} 
-		if (!app_list_data.appIcon) {
+		app_list_data.appIcon = entry->icon_image;
+		if (!app_list_data.appIcon)
 			app_list_data.appIcon = context->default_icon;
-			if (app_list_data.appIcon)
-				pixman_image_ref(app_list_data.appIcon);
-		}
+		if (app_list_data.appIcon)
+			pixman_image_ref(app_list_data.appIcon);
 		if (shell->is_blend_overlay_icon_app_list &&
 		    app_list_data.appIcon &&
 		    app_list_data.appIcon != context->default_icon &&
@@ -366,6 +379,43 @@ send_app_entry(struct desktop_shell *shell, char *key, struct app_entry *entry,
 
 	if (app_list_data.appIcon)
 		pixman_image_unref(app_list_data.appIcon);
+}
+
+static void
+retry_find_icon_file(struct desktop_shell *shell)
+{
+	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
+	struct app_entry *entry;
+	char **keys;
+	char **cur;
+	int num_keys;
+
+	keys = NULL;
+	num_keys = HashTable_GetKeys(context->table, (ULONG_PTR**)&keys);
+	if (num_keys < 0)
+		return;
+
+	cur = keys;
+	for (int i = 0; i < num_keys; i++, cur++) {
+		entry = (struct app_entry *)HashTable_GetItemValue(context->table, (void *)*cur);
+		if (entry &&
+		    entry->icon_name &&
+		    entry->icon_file == NULL &&
+		    entry->icon_retry_count < 5) {
+			shell_rdp_debug(entry->shell, "%s: icon (%s) retry count (%d)\n",
+				__func__, entry->icon_name, entry->icon_retry_count);
+			attach_app_list_namespace(shell);
+			entry->icon_file = find_icon_file(entry);
+			if (entry->icon_file)
+				entry->icon_image = load_icon_image(shell, entry->icon_file);
+			detach_app_list_namespace(shell);
+			if (entry->icon_image)
+				send_app_entry(shell, *cur, entry, false, false, false, false, false, false);
+		}
+	}
+
+	if (keys)
+		free(keys);
 }
 
 static void
@@ -480,10 +530,12 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 	if (entry->try_exec)
 		trim_command_exec(entry->try_exec);
 	entry->working_dir = g_key_file_get_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_PATH, NULL);
-	entry->icon = g_key_file_get_locale_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_ICON, lang_id, NULL);
-	if (entry->icon) {
+	entry->icon_name = g_key_file_get_locale_string(key_file, G_KEY_FILE_DESKTOP_GROUP, G_KEY_FILE_DESKTOP_KEY_ICON, lang_id, NULL);
+	if (entry->icon_name) {
 		attach_app_list_namespace(shell);
-		entry->icon_file = find_icon_file(entry->icon);
+		entry->icon_file = find_icon_file(entry);
+		if (entry->icon_file)
+			entry->icon_image = load_icon_image(shell, entry->icon_file);
 		detach_app_list_namespace(shell);
 	}
 	g_key_file_free(key_file);
@@ -493,8 +545,9 @@ update_app_entry(struct desktop_shell *shell, char *file, struct app_entry *entr
 	shell_rdp_debug(shell, "    Exec:%s\n", entry->exec);
 	shell_rdp_debug(shell, "    TryExec:%s\n", entry->try_exec);
 	shell_rdp_debug(shell, "    WorkingDir:%s\n", entry->working_dir);
-	shell_rdp_debug(shell, "    Icon name:%s\n", entry->icon);
+	shell_rdp_debug(shell, "    Icon name:%s\n", entry->icon_name);
 	shell_rdp_debug(shell, "    Icon file:%s\n", entry->icon_file);
+	shell_rdp_debug(shell, "    Icon image:%p\n", entry->icon_image);
 
 	return true;
 
@@ -666,7 +719,7 @@ app_list_start_rdp_notify(struct desktop_shell *shell)
 
 	keys = NULL;
 	num_keys = HashTable_GetKeys(context->table, (ULONG_PTR**)&keys);
-	if (num_keys < 0)
+	if (num_keys <= 0)
 		return;
 
 	cur = keys;
@@ -900,7 +953,8 @@ app_list_monitor_thread(LPVOID arg)
 
 	/* now loop as changes are made or stop event is signaled */
 	while (TRUE) {
-		status = WaitForMultipleObjects(num_events, events, FALSE, INFINITE);
+		status = WaitForMultipleObjects(num_events, events, FALSE,
+			context->icon_retry_count ? EVENT_TIMEOUT_MS : INFINITE);
 		if (status == WAIT_FAILED) {
 			error = GetLastError();
 			break;
@@ -908,6 +962,12 @@ app_list_monitor_thread(LPVOID arg)
 
 		/* winpr doesn't support auto-reset event */
 		ResetEvent(events[status - WAIT_OBJECT_0]);
+
+		/* Timeout */
+		if (status == WAIT_TIMEOUT) {
+			retry_find_icon_file(shell);
+			continue;
+		}
 
 		/* Stop Event */
 		if (status == WAIT_OBJECT_0) {
@@ -942,13 +1002,9 @@ app_list_monitor_thread(LPVOID arg)
 			shell_rdp_debug(shell, "app_list_monitor_thread: loadIconEvent is signalled. %s\n", context->load_icon.key);
 			if (context->load_icon.key) {
 				entry = (struct app_entry *)HashTable_GetItemValue(context->table, (void*)context->load_icon.key);
-				if (entry && entry->icon) {
-					attach_app_list_namespace(shell);
-					if (!entry->icon_file)
-						entry->icon_file = find_icon_file(entry->icon);
-					if (entry->icon_file)
-						context->load_icon.image = load_icon_image(shell, entry->icon_file);
-					detach_app_list_namespace(shell);
+				if (entry && entry->icon_image) {
+					context->load_icon.image = entry->icon_image;
+					pixman_image_ref(context->load_icon.image);
 				}
 				shell_rdp_debug(shell, "app_list_monitor_thread: entry %p, image %p\n", entry, context->load_icon.image);
 			}
