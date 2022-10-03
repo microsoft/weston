@@ -727,7 +727,7 @@ app_list_start_rdp_notify(struct desktop_shell *shell)
 
 	keys = NULL;
 	num_keys = HashTable_GetKeys(context->table, (ULONG_PTR**)&keys);
-	if (num_keys <= 0)
+	if (num_keys < 0)
 		return;
 
 	cur = keys;
