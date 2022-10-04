@@ -68,7 +68,7 @@
 
 #define NUM_CONTROL_EVENT 5
 
-#define EVENT_TIMEOUT_MS 20000 // 2 seconds
+#define EVENT_TIMEOUT_MS 2000 // 2 seconds
 #define MAX_ICON_RETRY_COUNT 5
 
 struct app_list_context {
@@ -292,7 +292,9 @@ find_icon_file(struct app_entry *entry)
 
 	if (entry->icon_retry_count++ == 0)
 		context->icon_retry_count++;
-	shell_rdp_debug(entry->shell, "%s: icon (%s) search retry scheduled:(%d) global:(%d)\n",
+	else if (entry->icon_retry_count == MAX_ICON_RETRY_COUNT)
+		context->icon_retry_count--;
+	shell_rdp_debug(entry->shell, "%s: icon (%s) search retry:(%d) global:(%d)\n",
 		__func__, entry->icon_name, entry->icon_retry_count, context->icon_retry_count);
 	return false;
 
