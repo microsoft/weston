@@ -149,6 +149,8 @@ struct desktop_shell {
 	const struct weston_rdprail_api *rdprail_api;
 	void *rdp_backend;
 
+	bool use_wslpath;
+
 	struct weston_log_scope *debug;
 	uint32_t debugLevel;
 };

@@ -755,7 +755,7 @@ translate_to_windows_path(struct desktop_shell *shell, char *image_name, size_t 
 
 	attach_app_list_namespace(shell);
 
-	if (is_file_exist("/usr/bin/wslpath")) {
+	if (shell->use_wslpath && is_file_exist("/usr/bin/wslpath")) {
 		pid_t pid;
 		int pipe[2] = {};
 		int imageNameLength, len;

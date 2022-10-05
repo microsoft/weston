@@ -777,6 +777,11 @@ shell_configuration(struct desktop_shell *shell)
 					 shell->image_default_app_icon,
 					 shell->image_default_app_overlay_icon);
 
+	shell->use_wslpath = read_rdpshell_config_bool(
+		"WESTON_RDPRAIL_SHELL_USE_WSLPATH", false);
+	shell_rdp_debug(shell, "RDPRAIL-shell: WESTON_RDPRAIL_SHELL_USE_WSLPATH:%d\n",
+		shell->use_wslpath);
+
 	shell->workspaces.num = 1;
 }
 
