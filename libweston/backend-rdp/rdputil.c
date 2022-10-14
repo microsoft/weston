@@ -297,7 +297,8 @@ void *
 rdp_id_manager_lookup(struct rdp_id_manager *id_manager, UINT32 id)
 {
 	/* lookup can be done under compositor thread or after mutex held by rdp_id_manager_lock */
-	assert(id_manager->mutex_tid == rdp_get_tid());
+	assert(id_manager->mutex_tid == rdp_get_tid() ||
+	       id_manager->rdp_backend->compositor_tid == rdp_get_tid());
 
 	assert(id_manager->hash_table);
 	return hash_table_lookup(id_manager->hash_table, id);
