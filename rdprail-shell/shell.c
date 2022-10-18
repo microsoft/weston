@@ -296,6 +296,7 @@ shell_rdp_debug_print(struct weston_log_scope *scope, bool cont, char *fmt, ...)
 							timestr, oom);
 			}
 		}
+		va_end(ap);
 	}
 }
 
