@@ -3005,9 +3005,17 @@ desktop_surface_get_position(struct weston_desktop_surface *surface,
 			     void *shell_)
 {
 	struct shell_surface *shsurf = weston_desktop_surface_get_user_data(surface);
-
-	*x = shsurf->view->geometry.x;
-	*y = shsurf->view->geometry.y;
+	if (shsurf) {
+		*x = shsurf->view->geometry.x;
+		*y = shsurf->view->geometry.y;
+	} else {
+		/* Ideally libweston-desktop/xwayland.c must not call shell if
+		   the surface is not reported to shell (surface.state == XWAYLAND),
+		   but unfortunately this does happen, thus here workaround the crash
+		   by returning (0,0) in such case. */
+		*x = 0;
+		*y = 0;
+	}
 }
 
 static bool
