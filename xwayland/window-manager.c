@@ -2124,13 +2124,10 @@ weston_wm_window_handle_state(struct weston_wm_window *window,
 			if (weston_wm_window_is_maximized(window)) {
 				window->saved_width = window->width;
 				window->saved_height = window->height;
-				if (window->frame)
-					frame_set_flag(window->frame, FRAME_FLAG_MAXIMIZED);
+
 				if (window->shsurf)
 					xwayland_interface->set_maximized(window->shsurf);
 			} else if (window->shsurf) {
-				if (window->frame)
-					frame_unset_flag(window->frame, FRAME_FLAG_MAXIMIZED);
 				weston_wm_window_set_toplevel(window);
 			}
 		}
@@ -3206,15 +3203,12 @@ set_maximized(struct weston_surface *surface, bool is_maximized)
 			window->maximized_vert = 1;
 			window->saved_width = window->width;
 			window->saved_height = window->height;
-			frame_set_flag(window->frame, FRAME_FLAG_MAXIMIZED);
 			wm->server->compositor->xwayland_interface->set_maximized(window->shsurf);
 		}
-	}
-	else {
+	} else {
 		if (weston_wm_window_is_maximized(window)) {
 			window->maximized_horz = 0;
 			window->maximized_vert = 0;
-			frame_unset_flag(window->frame, FRAME_FLAG_MAXIMIZED);
 			weston_wm_window_set_toplevel(window);
 		}
 	}
@@ -3444,7 +3438,6 @@ xserver_map_shell_surface(struct weston_wm_window *window,
 	} else if (weston_wm_window_is_maximized(window)) {
 		window->saved_width = window->width;
 		window->saved_height = window->height;
-		frame_set_flag(window->frame, FRAME_FLAG_MAXIMIZED);
 		xwayland_interface->set_maximized(window->shsurf);
 	} else {
 		if (weston_wm_window_type_inactive(window)) {
