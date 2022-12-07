@@ -25,6 +25,7 @@
 
 #include "config.h"
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -202,6 +203,9 @@ weston_wm_get_selection_targets(struct weston_wm *wm)
 	FILE *fp;
 	char *logstr;
 	size_t logsize;
+
+	if (!seat)
+		return;
 
 	cookie = xcb_get_property(wm->conn,
 				  1, /* delete */
@@ -602,6 +606,7 @@ weston_wm_handle_selection_request(struct weston_wm *wm,
 	weston_log_continue("property %s\n",
 		get_atom_name(wm->conn, selection_request->property));
 
+	assert(selection_request->requestor != wm->selection_window);
 	wm->selection_request = *selection_request;
 	wm->incr = 0;
 	wm->flush_property_on_delete = 0;
@@ -646,6 +651,9 @@ weston_wm_handle_xfixes_selection_notify(struct weston_wm *wm,
 	       xfixes_selection_notify->owner);
 
 	if (xfixes_selection_notify->owner == XCB_WINDOW_NONE) {
+		if (!seat)
+			return 1;
+
 		if (wm->selection_owner != wm->selection_window) {
 			/* A real X client selection went away, not our
 			 * proxy selection.  Clear the wayland selection. */
@@ -729,18 +737,55 @@ weston_wm_set_selection(struct wl_listener *listener, void *data)
 				wm->selection_window,
 				wm->atom.clipboard,
 				XCB_TIME_CURRENT_TIME);
+
+	xcb_flush(wm->conn);
+}
+
+static void
+maybe_reassign_selection_seat(struct weston_wm *wm)
+{
+	struct weston_seat *seat;
+
+	/* If we already have a seat, keep it */
+	if (!wl_list_empty(&wm->selection_listener.link))
+		return;
+
+	seat = weston_wm_pick_seat(wm);
+	if (!seat)
+		return;
+
+	wl_list_remove(&wm->selection_listener.link);
+	wl_list_remove(&wm->seat_destroy_listener.link);
+
+	wl_signal_add(&seat->selection_signal, &wm->selection_listener);
+	wl_signal_add(&seat->destroy_signal, &wm->seat_destroy_listener);
+
+	weston_wm_set_selection(&wm->selection_listener, seat);
 }
 
 static void
 weston_wm_seat_created(struct wl_listener *listener, void *data)
 {
-	struct weston_seat *seat = data;
 	struct weston_wm *wm =
 		container_of(listener, struct weston_wm, seat_create_listener);
 
-	wl_signal_add(&seat->selection_signal, &wm->selection_listener);
+	maybe_reassign_selection_seat(wm);
+}
 
-	weston_wm_set_selection(&wm->selection_listener, seat);
+static void
+weston_wm_seat_destroyed(struct wl_listener *listener, void *data)
+{
+	struct weston_wm *wm =
+		container_of(listener, struct weston_wm, seat_destroy_listener);
+
+	wl_list_remove(&wm->selection_listener.link);
+	wl_list_init(&wm->selection_listener.link);
+
+	wl_list_remove(&wm->seat_destroy_listener.link);
+	wl_list_init(&wm->seat_destroy_listener.link);
+
+	/* Try to pick another available seat to fall back to */
+	maybe_reassign_selection_seat(wm);
 }
 
 void
@@ -750,6 +795,8 @@ weston_wm_selection_init(struct weston_wm *wm)
 	uint32_t values[1], mask;
 
 	wl_list_init(&wm->selection_listener.link);
+	wl_list_init(&wm->seat_create_listener.link);
+	wl_list_init(&wm->seat_destroy_listener.link);
 
 	wm->selection_request.requestor = XCB_NONE;
 
@@ -778,13 +825,20 @@ weston_wm_selection_init(struct weston_wm *wm)
 	xcb_xfixes_select_selection_input(wm->conn, wm->selection_window,
 					  wm->atom.clipboard, mask);
 
+	/* Try to set up a selection listener for any existing seat - we
+	 * have a clipboard manager that can copy a subset of available
+	 * selections so they don't disappear when the client owning
+	 * them quits, but to make this work we need to have a seat
+	 * to hang the selection off.
+	 *
+	 * If we have no seat or lose our seat we need to make sure we
+	 * eventually assign a new one, so we listen for seat creation
+	 * and destruction.
+	 */
 	wm->selection_listener.notify = weston_wm_set_selection;
-
+	wm->seat_destroy_listener.notify = weston_wm_seat_destroyed;
 	wm->seat_create_listener.notify = weston_wm_seat_created;
 	wl_signal_add(&wm->server->compositor->seat_created_signal,
 		      &wm->seat_create_listener);
-
-	seat = weston_wm_pick_seat(wm);
-	if (seat)
-		weston_wm_seat_created(&wm->seat_create_listener, seat);
+	maybe_reassign_selection_seat(wm);
 }
