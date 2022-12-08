@@ -313,7 +313,8 @@ rdp_output_repaint(struct weston_output *output_base, pixman_region32_t *damage,
 		b->rdp_peer->context->settings->HiDefRemoteApp) {
 		/* RAIL mode, repaint RAIL window */
 		rdp_rail_output_repaint(output_base, damage);
-	} else if (output_base->renderer_state) {
+	} else if (output->shadow_surface &&
+			output_base->renderer_state) {
 		/* Add above 'output_base->renderer_state' check since this turns NULL when RDP
 		   connection is disconnected and hit fault at pixman_renderer_output_set_buffer() */
 		pixman_renderer_output_set_buffer(output_base, output->shadow_surface);
