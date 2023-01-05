@@ -12,7 +12,7 @@ trigger:
   - working
   
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'ubuntu-20.04'
 
 variables:
   prefix: '/usr/local'
