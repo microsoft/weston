@@ -116,13 +116,6 @@ struct app_entry {
 	uint32_t icon_retry_count;
 };
 
-/* TODO: obtain additional path from $XDG_DATA_DIRS, default path is defined here */
-char *app_list_folder[] = {
-	"/usr/share/applications",
-	"/usr/local/share/applications",
-	"/var/lib/snapd/desktop/applications",
-};
-
 /* list of folders to look for icon in specific orders */
 /* TODO: follow icon search path desribed at "Icon Lookup" section at
 	 https://specifications.freedesktop.org/icon-theme-spec/icon-theme-spec-latest.html */
@@ -198,8 +191,8 @@ attach_app_list_namespace(struct desktop_shell *shell)
 {
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	assert(false == context->isAppListNamespaceAttached);
-	if (context && context->app_list_pidfd > 0) {
-		assert(context->weston_pidfd > 0);
+	if (context && context->app_list_pidfd >= 0) {
+		assert(context->weston_pidfd >= 0);
 		if (setns(context->app_list_pidfd, 0) == -1) {
 			shell_rdp_debug_error(shell, "attach_app_list_namespace failed %s\n", strerror(errno));
 		} else {
@@ -212,7 +205,7 @@ static void
 detach_app_list_namespace(struct desktop_shell *shell)
 {
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
-	if (context && context->weston_pidfd > 0 && context->isAppListNamespaceAttached) { 
+	if (context && context->weston_pidfd >= 0 && context->isAppListNamespaceAttached) { 
 		if (setns(context->weston_pidfd, 0) == -1) {
 			/* TODO: when failed to go back, this is fatal, should terminate weston and restart? */
 			shell_rdp_debug_error(shell, "detach_app_list_namespace failed %s\n", strerror(errno));
@@ -646,6 +639,7 @@ app_list_desktop_file_changed(struct desktop_shell *shell, char *folder, char *f
 		if (entry_old) {
 			if (HashTable_SetItemValue(context->table, key, (void*)entry) < 0) {
 				/* failed to update with new entry, remove this desktop entry as data is stale */
+				shell_rdp_debug(shell, "app list entry failed to update Key:%s\n", key);
 				app_list_desktop_file_removed(shell, file);
 				free_app_entry(entry);
 			} else {
@@ -655,13 +649,15 @@ app_list_desktop_file_changed(struct desktop_shell *shell, char *folder, char *f
 			}
 		} else {
 #if WINPR_VERSION_MAJOR >= 3
-			if (HashTable_Insert(context->table, key, (void *)entry) < 0)
+			if (HashTable_Insert(context->table, key, (void *)entry) < 0) {
 #else
-			if (HashTable_Add(context->table, key, (void *)entry) < 0)
+			if (HashTable_Add(context->table, key, (void *)entry) < 0) {
 #endif
+				shell_rdp_debug(shell, "app list entry failed to insert to hash: Key:%s\n", key);
 				free_app_entry(entry);
-			else if (context->isRdpNotifyStarted)
+			} else if (context->isRdpNotifyStarted) {
 				send_app_entry(shell, key, entry, true, false, false, false, false, false);
+			}
 		}
 	} else if (entry) {
 		shell_rdp_debug(shell, "app list entry failed to update: Key:%s\n", key);
@@ -672,7 +668,7 @@ app_list_desktop_file_changed(struct desktop_shell *shell, char *folder, char *f
 }
 
 static void
-app_list_update_all(struct desktop_shell *shell)
+app_list_update_all(struct desktop_shell *shell, char *app_list_folder[])
 {
 	char path[512];
 	DIR *dir;
@@ -680,7 +676,7 @@ app_list_update_all(struct desktop_shell *shell)
 	char *folder;
 	char *home;
 
-	for (int i = 0; i < (int)ARRAY_LENGTH(app_list_folder); i++) {
+	for (int i = 0; app_list_folder[i] != NULL; i++) {
 		attach_app_list_namespace(shell);
 		folder = app_list_folder[i];
 		if (*folder == '~') {
@@ -705,7 +701,7 @@ app_list_update_all(struct desktop_shell *shell)
 }
 
 static void
-app_list_start_rdp_notify(struct desktop_shell *shell)
+app_list_start_rdp_notify(struct desktop_shell *shell, char *app_list_folder[])
 {
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	struct app_entry *entry;
@@ -724,7 +720,7 @@ app_list_start_rdp_notify(struct desktop_shell *shell)
 		strcpy(context->lang_info.currentClientLanguageId,
 			context->lang_info.requestedClientLanguageId);
 		/* update with requested language */
-		app_list_update_all(shell);
+		app_list_update_all(shell, app_list_folder);
 	}
 
 	keys = NULL;
@@ -847,8 +843,20 @@ app_list_monitor_thread(LPVOID arg)
 	struct desktop_shell *shell = (struct desktop_shell *)arg;
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 	struct app_entry *entry;
-	int fd[ARRAY_LENGTH(app_list_folder)] = {};
-	int wd[ARRAY_LENGTH(app_list_folder)] = {};
+	/* TODO: obtain additional path from $XDG_DATA_DIRS, default path is defined here
+	         but env variable at user distro is not accessible from system-distro,
+	         thus, any additional path can be added by WESTON_RDPRAIL_SHELL_APP_LIST_PATH
+	         using .wslgconfig */     
+	#define CUSTOM_APP_LIST_FOLDER_INDEX 3
+	#define MAX_APP_LIST_FOLDER 128
+	char *app_list_folder[MAX_APP_LIST_FOLDER] = {
+		"/usr/share/applications",
+		"/usr/local/share/applications",
+		"/var/lib/snapd/desktop/applications",
+		NULL, /* always terminated witn NULL entry */
+	};
+	int fd[ARRAY_LENGTH(app_list_folder)] = {-1, -1, -1, -1};
+	int wd[ARRAY_LENGTH(app_list_folder)] = {-1, -1, -1, -1};
 	int app_list_folder_index[ARRAY_LENGTH(app_list_folder)] = {};
 	char *home;
 	char *folder;
@@ -899,8 +907,27 @@ app_list_monitor_thread(LPVOID arg)
 	events[num_events++] = context->findImageNameEvent;
 	assert(num_events == NUM_CONTROL_EVENT);
 
+	/* append optional folders */
+	folder = getenv("WESTON_RDPRAIL_SHELL_APP_LIST_PATH");
+	for (cur = CUSTOM_APP_LIST_FOLDER_INDEX; cur < MAX_APP_LIST_FOLDER-1; cur++) {
+		if (folder && *folder != '\0') {
+			char *s = strrchr(folder, ':');
+			if (s) {
+				app_list_folder[cur] = strndup(folder, s-folder);
+				folder = s+1;
+			} else {
+				app_list_folder[cur] = strdup(folder);
+				folder = NULL;
+			}
+		} else {
+			break;
+		}
+	}
+	assert(cur < MAX_APP_LIST_FOLDER);
+	app_list_folder[cur] = NULL; /* terminated with NULL entry */
+
 	if (shell->rdprail_api->notify_app_list) {
-		for (int i = 0; i < (int)ARRAY_LENGTH(app_list_folder); i++) {
+		for (int i = 0; app_list_folder[i] != NULL; i++) {
 			fd[num_watch] = inotify_init();
 			if (fd[num_watch] < 0) {
 				shell_rdp_debug_error(shell, "app_list_monitor_thread: inotify_init[%d] failed %s\n", i, strerror(errno));
@@ -914,7 +941,7 @@ app_list_monitor_thread(LPVOID arg)
 				if (!home) {
 					detach_app_list_namespace(shell);
 					close(fd[num_watch]);
-					fd[num_watch] = 0;
+					fd[num_watch] = -1;
 					continue;
 				}
 				copy_string(path, sizeof path, home);
@@ -926,7 +953,7 @@ app_list_monitor_thread(LPVOID arg)
 				shell_rdp_debug(shell, "app_list_monitor_thread: %s doesn't exist, skipping.\n", folder);
 				detach_app_list_namespace(shell);
 				close(fd[num_watch]);
-				fd[num_watch] = 0;
+				fd[num_watch] = -1;
 				continue;
 			}
 
@@ -936,7 +963,7 @@ app_list_monitor_thread(LPVOID arg)
 				shell_rdp_debug_error(shell, "app_list_monitor_thread: inotify_add_watch failed: %s\n", strerror(errno));
 				detach_app_list_namespace(shell);
 				close(fd[num_watch]);
-				fd[num_watch] = 0;
+				fd[num_watch] = -1;
 				continue;
 			}
 			detach_app_list_namespace(shell);
@@ -945,11 +972,12 @@ app_list_monitor_thread(LPVOID arg)
 			if (!events[num_events]) {
 				shell_rdp_debug_error(shell, "app_list_monitor_thread: GetFileHandleForFileDescriptor failed\n");
 				inotify_rm_watch(fd[num_watch], wd[num_watch]);
-				wd[num_watch] = 0;
+				wd[num_watch] = -1;
 				close(fd[num_watch]);
-				fd[num_watch] = 0;
+				fd[num_watch] = -1;
 				continue;
 			}
+			shell_rdp_debug(shell, "app_list_monitor_thread: monitor %s\n", folder);
 			app_list_folder_index[num_watch] = i;
 			num_events++;
 			num_watch++;
@@ -958,7 +986,7 @@ app_list_monitor_thread(LPVOID arg)
 
 		/* first scan folders to update all existing .desktop files */
 		if (num_watch)
-			app_list_update_all(shell);
+			app_list_update_all(shell, app_list_folder);
 	}
 
 	/* now loop as changes are made or stop event is signaled */
@@ -990,7 +1018,7 @@ app_list_monitor_thread(LPVOID arg)
 			shell_rdp_debug(shell, "app_list_monitor_thread: startRdpNotifyEvent is signalled. %d - %s\n",
 				context->isRdpNotifyStarted, context->lang_info.requestedClientLanguageId);
 			if (!context->isRdpNotifyStarted) {
-				app_list_start_rdp_notify(shell);
+				app_list_start_rdp_notify(shell, app_list_folder);
 				context->isRdpNotifyStarted = true;
 			}
 			continue;
@@ -1078,23 +1106,28 @@ app_list_monitor_thread(LPVOID arg)
 Exit:
 	assert(false == context->isAppListNamespaceAttached);
 
-	for (int i = 0; i < (int)ARRAY_LENGTH(app_list_folder); i++) {
+	for (int i = 0; i < num_watch; i++) {
 		if (events[i + NUM_CONTROL_EVENT])
 			CloseHandle(events[i + NUM_CONTROL_EVENT]);
-		if (fd[i] > 0) {
-			if (wd[i] > 0)
+		if (fd[i] != -1) {
+			if (wd[i] != -1)
 				inotify_rm_watch(fd[i], wd[i]);
 			close(fd[i]);
 		}
 	}
 
-	if (context->weston_pidfd > 0) {
-		close(context->weston_pidfd);
-		context->weston_pidfd = 0;
+	for (int i = CUSTOM_APP_LIST_FOLDER_INDEX; app_list_folder[i] != NULL; i++) {
+		free(app_list_folder[i]);
+		app_list_folder[i] = NULL;
 	}
-	if (context->app_list_pidfd > 0) {
+
+	if (context->weston_pidfd >= 0) {
+		close(context->weston_pidfd);
+		context->weston_pidfd = -1;
+	}
+	if (context->app_list_pidfd >= 0) {
 		close(context->app_list_pidfd);
-		context->app_list_pidfd = 0;
+		context->app_list_pidfd = -1;
 	}
 
 	ExitThread(error);
@@ -1107,6 +1140,9 @@ start_app_list_monitor(struct desktop_shell *shell)
 	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
 
 	context->isRdpNotifyStarted = false;
+
+	context->weston_pidfd = -1;
+	context->app_list_pidfd = -1;
 
 	context->stopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	if (!context->stopEvent)
@@ -1228,8 +1264,8 @@ stop_app_list_monitor(struct desktop_shell *shell)
 
 	context->isRdpNotifyStarted = false;
 
-	assert(context->weston_pidfd <= 0);
-	assert(context->app_list_pidfd <= 0);
+	assert(context->weston_pidfd < 0);
+	assert(context->app_list_pidfd < 0);
 }
 #endif // HAVE_WINPR && HAVE_GLIB
 
