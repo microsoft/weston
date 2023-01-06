@@ -234,6 +234,9 @@ shell_surface_update_child_surface_layers(struct shell_surface *shsurf);
 static void
 shell_backend_request_window_activate(void *shell_context, struct weston_seat *seat, struct weston_surface *surface);
 
+static void
+shell_backend_request_window_close(struct weston_surface *surface);
+
 #define ICON_STRIDE( W, BPP ) ((((W) * (BPP) + 31) / 32) * 4)
 
 #define TITLEBAR_GRAB_MARGIN_X (30)
@@ -699,6 +702,7 @@ shell_configuration(struct desktop_shell *shell)
 	struct weston_config_section *section;
 	char *s, *client;
 	bool allow_zap;
+	bool allow_alt_f4_to_close_app;
 	bool is_localmove_supported;
 
 	section = weston_config_get_section(wet_get_config(shell->compositor),
@@ -715,6 +719,13 @@ shell_configuration(struct desktop_shell *shell)
 	allow_zap = read_rdpshell_config_bool("WESTON_RDPRAIL_SHELL_ALLOW_ZAP", allow_zap);
 	shell->allow_zap = allow_zap;
 	shell_rdp_debug(shell, "RDPRAIL-shell: allow-zap:%d\n", shell->allow_zap);
+
+	/* default to allow alt+F4 to close app */
+	weston_config_section_get_bool(section,
+				       "alt-f4-to-close-app", &allow_alt_f4_to_close_app, true);
+	allow_alt_f4_to_close_app = read_rdpshell_config_bool("WESTON_RDPRAIL_SHELL_ALLOW_ALT_F4_TO_CLOSE_APP", allow_alt_f4_to_close_app);
+	shell->allow_alt_f4_to_close_app = allow_alt_f4_to_close_app;
+	shell_rdp_debug(shell, "RDPRAIL-shell: allow-alt-f4-to-close-app:%d\n", shell->allow_alt_f4_to_close_app);
 
 	/* set "none" to default to disable optional key-bindings */
 	weston_config_section_get_string(section,
@@ -3316,6 +3327,20 @@ terminate_binding(struct weston_keyboard *keyboard, const struct timespec *time,
 }
 
 static void
+close_focused_app_binding(struct weston_keyboard *keyboard, const struct timespec *time,
+		  uint32_t key, void *data)
+{
+	struct weston_surface *focus = keyboard->focus;
+	struct weston_surface *surface;
+
+	surface = weston_surface_get_main_surface(focus);
+	if (surface == NULL)
+		return;
+
+	shell_backend_request_window_close(surface);
+}
+
+static void
 rotate_grab_motion(struct weston_pointer_grab *grab,
 		   const struct timespec *time,
 		   struct weston_pointer_motion_event *event)
@@ -4269,6 +4294,11 @@ shell_add_bindings(struct weston_compositor *ec, struct desktop_shell *shell)
 		weston_compositor_add_key_binding(ec, KEY_BACKSPACE,
 					          MODIFIER_CTRL | MODIFIER_ALT,
 					          terminate_binding, ec);
+
+	if (shell->allow_alt_f4_to_close_app)
+		weston_compositor_add_key_binding(ec, KEY_F4,
+					          MODIFIER_ALT,
+					          close_focused_app_binding, ec);
 
 	/* fixed bindings */
 	weston_compositor_add_button_binding(ec, BTN_LEFT, 0,

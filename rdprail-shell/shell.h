@@ -117,6 +117,7 @@ struct desktop_shell {
 	} input_panel;
 
 	bool allow_zap;
+	bool allow_alt_f4_to_close_app;
 	uint32_t binding_modifier;
 
 	struct weston_layer minimized_layer;
