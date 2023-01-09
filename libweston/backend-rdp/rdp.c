@@ -750,6 +750,9 @@ rdp_peer_context_free(freerdp_peer* client, RdpPeerContext* context)
 
 	b = context->rdpBackend;
 
+	/* While RDP client is disconnected, keep compositor sleep state */
+	weston_compositor_sleep(b->compositor);
+
 	wl_list_remove(&context->item.link);
 
 	for (i = 0; i < ARRAY_LENGTH(context->events); i++) {
@@ -1059,6 +1062,13 @@ xf_peer_activate(freerdp_peer* client)
 			rdp_debug_error(b, "HiDef-RAIL is requested from client, but RAIL-shell is not used\n");
 			return FALSE;
 		}
+
+		/* do not wake up compositor yet, since in RAIL mode, there is no
+		   need to paint 'desktop', thus defer until window is created */
+	} else {
+		/* update RDP connection, wake up compositor to repaint 'desktop' */
+		weston_compositor_wake(b->compositor);
+		weston_compositor_damage_all(b->compositor);
 	}
 
 	/* override settings by env variables */

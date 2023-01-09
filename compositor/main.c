@@ -3607,7 +3607,8 @@ wet_main(int argc, char *argv[])
 	if (argc > 1)
 		goto out;
 
-	weston_compositor_wake(wet.compositor);
+	/* Until RDP connection is established, keep compositor sleep state */
+	weston_compositor_sleep(wet.compositor);
 
 	wl_display_run(display);
 

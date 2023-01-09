@@ -237,6 +237,8 @@ shell_backend_request_window_activate(void *shell_context, struct weston_seat *s
 static void
 shell_backend_request_window_close(struct weston_surface *surface);
 
+static void launch_desktop_shell_process(void *data);
+
 #define ICON_STRIDE( W, BPP ) ((((W) * (BPP) + 31) / 32) * 4)
 
 #define TITLEBAR_GRAB_MARGIN_X (30)
@@ -2172,7 +2174,7 @@ handle_metadata_change(struct wl_listener *listener, void *data)
 
 static void
 desktop_surface_added(struct weston_desktop_surface *desktop_surface,
-		      void *shell)
+		      void *data)
 {
 	struct weston_desktop_client *client =
 		weston_desktop_surface_get_client(desktop_surface);
@@ -2182,6 +2184,10 @@ desktop_surface_added(struct weston_desktop_surface *desktop_surface,
 	struct shell_surface *shsurf;
 	struct weston_surface *surface =
 		weston_desktop_surface_get_surface(desktop_surface);
+	struct desktop_shell *shell =
+		(struct desktop_shell *)data;
+	struct weston_compositor *ec = shell->compositor;
+	struct wl_event_loop *loop;
 
 	view = weston_desktop_surface_create_view(desktop_surface);
 	if (!view)
@@ -2199,7 +2205,7 @@ desktop_surface_added(struct weston_desktop_surface *desktop_surface,
 
 	weston_surface_set_label_func(surface, shell_surface_get_label);
 
-	shsurf->shell = (struct desktop_shell *) shell;
+	shsurf->shell = shell;
 	shsurf->unresponsive = 0;
 	shsurf->saved_position_valid = false;
 	shsurf->saved_rotation_valid = false;
@@ -2208,8 +2214,7 @@ desktop_surface_added(struct weston_desktop_surface *desktop_surface,
 	shsurf->fullscreen.black_view = NULL;
 	wl_list_init(&shsurf->fullscreen.transform.link);
 
-	shell_surface_set_output(
-		shsurf, get_default_output(shsurf->shell->compositor));
+	shell_surface_set_output(shsurf, get_default_output(ec));
 
 	wl_signal_init(&shsurf->destroy_signal);
 
@@ -2231,6 +2236,14 @@ desktop_surface_added(struct weston_desktop_surface *desktop_surface,
 	shsurf->metadata_listener.notify = handle_metadata_change;
 	weston_desktop_surface_add_metadata_listener(desktop_surface,
 		&shsurf->metadata_listener);
+
+	/* when surface is added, compositor is in wake state */
+	weston_compositor_wake(ec);
+	/* and, shell process (= focus_proxy) is running */
+	if (!shell->child.client) {
+		loop = wl_display_get_event_loop(ec->wl_display);
+		wl_event_loop_add_idle(loop, launch_desktop_shell_process, shell);
+	}
 }
 
 static void
@@ -3967,6 +3980,7 @@ launch_desktop_shell_process(void *data)
 {
 	struct desktop_shell *shell = data;
 
+	assert(!shell->child.client);
 	shell->child.client = weston_client_start(shell->compositor,
 						  shell->client);
 
@@ -4618,7 +4632,6 @@ wet_shell_init(struct weston_compositor *ec,
 	struct desktop_shell *shell;
 	struct workspace **pws;
 	unsigned int i;
-	struct wl_event_loop *loop;
 	char *debug_level;
 
 	shell = zalloc(sizeof *shell);
@@ -4701,8 +4714,7 @@ wet_shell_init(struct weston_compositor *ec,
 
 	setup_output_destroy_handler(ec, shell);
 
-	loop = wl_display_get_event_loop(ec->wl_display);
-	wl_event_loop_add_idle(loop, launch_desktop_shell_process, shell);
+	shell->child.client = NULL;
 
 	wl_list_for_each(seat, &ec->seat_list, link)
 		handle_seat_created(NULL, seat);

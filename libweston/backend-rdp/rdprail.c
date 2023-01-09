@@ -3191,6 +3191,44 @@ disp_client_monitor_layout_change(DispServerContext *context, const DISPLAY_CONT
 	return CHANNEL_RC_OK;
 }
 
+static void
+rdp_rail_idle_handler(struct wl_listener *listener, void *data)
+{
+	RAIL_POWER_DISPLAY_REQUEST displayRequest;
+	RdpPeerContext *peer_ctx = container_of(listener, RdpPeerContext,
+					       idle_listener);
+	struct rdp_backend *b = peer_ctx->rdpBackend;
+	RailServerContext *rail_ctx = peer_ctx->rail_server_context;
+
+	assert_compositor_thread(b);
+
+	rdp_debug(b, "%s is called on peer_ctx:%p\n", __func__, peer_ctx);
+
+	if (peer_ctx->clientStatusFlags & TS_RAIL_CLIENTSTATUS_POWER_DISPLAY_REQUEST_SUPPORTED) {
+		displayRequest.active = FALSE;
+		rail_ctx->ServerPowerDisplayRequest(rail_ctx, &displayRequest);
+	}
+}
+
+static void
+rdp_rail_wake_handler(struct wl_listener *listener, void *data)
+{
+	RAIL_POWER_DISPLAY_REQUEST displayRequest;
+	RdpPeerContext *peer_ctx = container_of(listener, RdpPeerContext,
+					       wake_listener);
+	struct rdp_backend *b = peer_ctx->rdpBackend;
+	RailServerContext *rail_ctx = peer_ctx->rail_server_context;
+
+	assert_compositor_thread(b);
+
+	rdp_debug(b, "%s is called on peer_ctx:%p\n", __func__, peer_ctx);
+
+	if (peer_ctx->clientStatusFlags & TS_RAIL_CLIENTSTATUS_POWER_DISPLAY_REQUEST_SUPPORTED) {
+		displayRequest.active = TRUE;
+		rail_ctx->ServerPowerDisplayRequest(rail_ctx, &displayRequest);
+	}
+}
+
 bool
 rdp_rail_peer_activate(freerdp_peer* client)
 {
@@ -3368,6 +3406,12 @@ rdp_rail_peer_activate(freerdp_peer* client)
 		WTSVirtualChannelManagerCheckFileDescriptor(peer_ctx->vcm);
 	}
 
+	/* subscribe idle/wake signal from compositor */
+	peer_ctx->idle_listener.notify = rdp_rail_idle_handler;
+	wl_signal_add(&b->compositor->idle_signal, &peer_ctx->idle_listener);
+	peer_ctx->wake_listener.notify = rdp_rail_wake_handler;
+	wl_signal_add(&b->compositor->wake_signal, &peer_ctx->wake_listener);
+
 	return TRUE;
 
 error_exit:
@@ -3418,40 +3462,6 @@ error_exit:
 	}
 
 	return FALSE;
-}
-
-static void
-rdp_rail_idle_handler(struct wl_listener *listener, void *data)
-{
-	RAIL_POWER_DISPLAY_REQUEST displayRequest;
-	RdpPeerContext *peer_ctx = container_of(listener, RdpPeerContext,
-					       idle_listener);
-	struct rdp_backend *b = peer_ctx->rdpBackend;
-	RailServerContext *rail_ctx = peer_ctx->rail_server_context;
-
-	assert_compositor_thread(b);
-
-	rdp_debug(b, "%s is called on peer_ctx:%p\n", __func__, peer_ctx);
-
-	displayRequest.active = FALSE;
-	rail_ctx->ServerPowerDisplayRequest(rail_ctx, &displayRequest);
-}
-
-static void
-rdp_rail_wake_handler(struct wl_listener *listener, void *data)
-{
-	RAIL_POWER_DISPLAY_REQUEST displayRequest;
-	RdpPeerContext *peer_ctx = container_of(listener, RdpPeerContext,
-					       wake_listener);
-	struct rdp_backend *b = peer_ctx->rdpBackend;
-	RailServerContext *rail_ctx = peer_ctx->rail_server_context;
-
-	assert_compositor_thread(b);
-
-	rdp_debug(b, "%s is called on peer_ctx:%p\n", __func__, peer_ctx);
-
-	displayRequest.active = TRUE;
-	rail_ctx->ServerPowerDisplayRequest(rail_ctx, &displayRequest);
 }
 
 static void
@@ -3577,36 +3587,19 @@ rdp_rail_sync_window_status(freerdp_peer *client)
 			if (rail_state && rail_state->window_id) {
 				if (api && api->request_window_icon)
 					api->request_window_icon(surface);
-			}
-			wl_list_for_each(sub, &surface->subsurface_list, parent_link) {
-				struct weston_surface_rail_state *sub_rail_state = sub->surface->backend_state;
-
-				if (sub->surface == surface)
-					continue;
-				if (!sub_rail_state || sub_rail_state->window_id == 0)
-					rdp_rail_create_window(NULL, sub->surface);
+				wl_list_for_each(sub, &surface->subsurface_list, parent_link) {
+					struct weston_surface_rail_state *sub_rail_state = sub->surface->backend_state;
+					if (sub->surface == surface)
+						continue;
+					if (!sub_rail_state || sub_rail_state->window_id == 0)
+						rdp_rail_create_window(NULL, sub->surface);
+				}
 			}
 		}
 	}
 
 	/* this assume repaint to be scheduled on idle loop, not directly from here */
 	weston_compositor_damage_all(b->compositor);
-
-	if (peer_ctx->clientStatusFlags & TS_RAIL_CLIENTSTATUS_POWER_DISPLAY_REQUEST_SUPPORTED) {
-		RAIL_POWER_DISPLAY_REQUEST displayRequest;
-
-		/* subscribe idle/wake signal from compositor */
-		peer_ctx->idle_listener.notify = rdp_rail_idle_handler;
-		wl_signal_add(&b->compositor->idle_signal, &peer_ctx->idle_listener);
-		peer_ctx->wake_listener.notify = rdp_rail_wake_handler;
-		wl_signal_add(&b->compositor->wake_signal, &peer_ctx->wake_listener);
-
-		displayRequest.active = TRUE;
-		rail_ctx->ServerPowerDisplayRequest(rail_ctx, &displayRequest);
-
-		/* Upon client connection, make sure compositor is in wake state */
-		weston_compositor_wake(b->compositor);
-	}
 }
 
 void
@@ -3831,7 +3824,6 @@ rdp_rail_peer_context_free(freerdp_peer *client, RdpPeerContext *context)
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
 	if (context->applist_server_context) {
 		struct rdp_backend *b = context->rdpBackend;
-
 		if (context->isAppListEnabled)
 			context->rdpBackend->rdprail_shell_api->stop_app_list_update(context->rdpBackend->rdprail_shell_context);
 		context->applist_server_context->Close(context->applist_server_context);
