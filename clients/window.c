@@ -1613,17 +1613,11 @@ window_destroy(struct window *window)
 }
 
 static struct widget *
-widget_find_widget(struct widget *widget, int32_t x, int32_t y)
+widget_find_widget(struct widget *widget, int32_t x, int32_t y, bool get_parent)
 {
 	struct widget *child, *target;
 	int alloc_x, alloc_y, width, height;
 	double scale;
-
-	wl_list_for_each(child, &widget->child_list, link) {
-		target = widget_find_widget(child, x, y);
-		if (target)
-			return target;
-	}
 
 	alloc_x = widget->allocation.x;
 	alloc_y = widget->allocation.y;
@@ -1641,6 +1635,15 @@ widget_find_widget(struct widget *widget, int32_t x, int32_t y)
 		height = widget->viewport_dest_height;
 	}
 
+	wl_list_for_each(child, &widget->child_list, link) {
+		target = widget_find_widget(child, x, y, get_parent);
+		if (target && get_parent) {
+			return widget;
+		} else if(target) {
+			return target;
+		}
+	}
+
 	if (alloc_x <= x && x < alloc_x + width &&
 	    alloc_y <= y && y < alloc_y + height) {
 		return widget;
@@ -1650,13 +1653,13 @@ widget_find_widget(struct widget *widget, int32_t x, int32_t y)
 }
 
 static struct widget *
-window_find_widget(struct window *window, int32_t x, int32_t y)
+window_find_widget(struct window *window, int32_t x, int32_t y, bool get_parent)
 {
 	struct surface *surface;
 	struct widget *widget;
 
 	wl_list_for_each(surface, &window->subsurface_list, link) {
-		widget = widget_find_widget(surface->widget, x, y);
+		widget = widget_find_widget(surface->widget, x, y, get_parent);
 		if (widget)
 			return widget;
 	}
@@ -2711,7 +2714,7 @@ input_ungrab(struct input *input)
 	input->grab = NULL;
 	if (input->pointer_focus) {
 		widget = window_find_widget(input->pointer_focus,
-					    input->sx, input->sy);
+					    input->sx, input->sy, false);
 		input_set_focus_widget(input, widget, input->sx, input->sy);
 	}
 }
@@ -2777,8 +2780,19 @@ pointer_handle_enter(void *data, struct wl_pointer *pointer,
 	input->sx = sx;
 	input->sy = sy;
 
-	widget = window_find_widget(window, sx, sy);
+	widget = window_find_widget(window, sx, sy, false);
 	input_set_focus_widget(input, widget, sx, sy);
+	widget = window_find_widget(window, sx, sy, true);
+	
+	if (widget) {
+		if (widget->motion_handler) {
+			if(widget->motion_handler(input->focus_widget,
+							input, time, sx, sy,
+							widget->user_data) != CURSOR_LEFT_PTR) {
+				input_set_focus_widget(input, widget, sx, sy);
+			}
+		}
+	}
 }
 
 static void
@@ -2798,7 +2812,7 @@ pointer_handle_motion(void *data, struct wl_pointer *pointer,
 	struct input *input = data;
 	struct window *window = input->pointer_focus;
 	struct widget *widget;
-	int cursor;
+	int cursor, parent_cursor;
 	float sx = wl_fixed_to_double(sx_w);
 	float sy = wl_fixed_to_double(sy_w);
 
@@ -2820,7 +2834,7 @@ pointer_handle_motion(void *data, struct wl_pointer *pointer,
 		return;
 
 	if (!(input->grab && input->grab_button)) {
-		widget = window_find_widget(window, sx, sy);
+		widget = window_find_widget(window, sx, sy, false);
 		input_set_focus_widget(input, widget, sx, sy);
 	}
 
@@ -2837,6 +2851,21 @@ pointer_handle_motion(void *data, struct wl_pointer *pointer,
 			cursor = widget->default_cursor;
 	} else
 		cursor = CURSOR_LEFT_PTR;
+
+	
+	widget = window_find_widget(window, sx, sy, true);
+	
+	if (widget) {
+		if (widget->motion_handler) {
+			parent_cursor = widget->motion_handler(input->focus_widget,
+							input, time, sx, sy,
+							widget->user_data);
+			if(parent_cursor != CURSOR_LEFT_PTR) {
+				input_set_focus_widget(input, widget, sx, sy);
+				cursor = parent_cursor;
+			}
+		}
+	}
 
 	input_set_pointer_image(input, cursor);
 }
@@ -3320,7 +3349,7 @@ touch_handle_down(void *data, struct wl_touch *wl_touch,
 	else
 		widget = window_find_widget(input->touch_focus,
 					    wl_fixed_to_double(x_w),
-					    wl_fixed_to_double(y_w));
+					    wl_fixed_to_double(y_w), false);
 	if (widget) {
 		struct touch_point *tp = xmalloc(sizeof *tp);
 		if (tp) {
