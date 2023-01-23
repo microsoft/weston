@@ -170,7 +170,8 @@ weston_desktop_xwayland_surface_committed(struct weston_desktop_surface *dsurfac
 	if (surface->added)
 		weston_desktop_api_committed(surface->desktop, surface->surface,
 					     sx, sy);
-	else
+
+	if (surface->state == XWAYLAND)
 		weston_view_update_transform(surface->view);
 }
 
