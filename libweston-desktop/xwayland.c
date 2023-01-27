@@ -80,6 +80,13 @@ weston_desktop_xwayland_surface_change_state(struct weston_desktop_xwayland_surf
 	assert(!parent || state == TRANSIENT);
 
 	if (to_add && surface->added) {
+		/* at restoring from maximized/fullscreen, let shell knows */
+		if (state == TOPLEVEL) {
+			if (surface->state == MAXIMIZED)
+				weston_desktop_api_maximized_requested(surface->desktop, surface->surface, false);
+			else if (surface->state == FULLSCREEN)
+				weston_desktop_api_fullscreen_requested(surface->desktop, surface->surface, false, NULL);
+		}
 		surface->state = state;
 		return;
 	}

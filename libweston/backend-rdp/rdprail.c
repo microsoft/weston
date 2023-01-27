@@ -79,6 +79,7 @@ struct rdp_rail_dispatch_data {
 	union {
 		RAIL_SYSPARAM_ORDER sys_param;
 		RAIL_SYSCOMMAND_ORDER sys_command;
+		RAIL_SYSMENU_ORDER sys_menu;
 		RAIL_ACTIVATE_ORDER activate;
 		RAIL_EXEC_ORDER exec;
 		RAIL_WINDOW_MOVE_ORDER window_move;
@@ -541,7 +542,7 @@ rail_client_Syscommand_callback(bool freeOnly, void *arg)
 		break;
 	}
 
-	rdp_debug(b,
+	rdp_debug_verbose(b,
 		  "Client: ClientSyscommand: WindowId:0x%x, surface:0x%p, command:%s (0x%x)\n",
 		  syscommand->windowId, surface, commandString,
 		  syscommand->command);
@@ -555,6 +556,30 @@ rail_client_Syscommand(RailServerContext *context, const RAIL_SYSCOMMAND_ORDER *
 {
 	RDP_DISPATCH_TO_DISPLAY_LOOP(context, sys_command, arg,
 				     rail_client_Syscommand_callback);
+	return CHANNEL_RC_OK;
+}
+
+static void
+rail_client_Sysmenu_callback(bool freeOnly, void *arg)
+{
+	struct rdp_rail_dispatch_data *data = wl_container_of(arg, data, task_base);
+	const RAIL_SYSMENU_ORDER *sysmenu = &data->sys_menu;
+	freerdp_peer *client = data->client;
+	RdpPeerContext *peer_ctx = (RdpPeerContext *)client->context;
+	struct rdp_backend *b = peer_ctx->rdpBackend;
+
+	rdp_debug_verbose(b,
+		  "Client: ClientSyscommand: WindowId:0x%x, left:%d, top:%d\n",
+		  sysmenu->windowId, sysmenu->left, sysmenu->top);
+
+	free(data);
+}
+
+static UINT
+rail_client_Sysmenu(RailServerContext* context, const RAIL_SYSMENU_ORDER* arg)
+{
+	RDP_DISPATCH_TO_DISPLAY_LOOP(context, sys_menu, arg,
+				     rail_client_Sysmenu_callback);
 	return CHANNEL_RC_OK;
 }
 
@@ -1386,6 +1411,25 @@ rdp_rail_update_cursor(struct weston_surface *surface)
 	return 0;
 }
 
+static char *
+rdp_showstate_to_string(uint32_t showstate)
+{
+	switch (showstate) {
+	case RDP_WINDOW_HIDE:
+		return "Hide";
+	case RDP_WINDOW_SHOW_MINIMIZED:
+		return "Minimized";
+	case RDP_WINDOW_SHOW_MAXIMIZED:
+		return "Maximized";
+	case RDP_WINDOW_SHOW_FULLSCREEN:
+		return "Fullscreen";
+	case RDP_WINDOW_SHOW:
+		return "Normal";
+	default:
+		return "Unknown";
+	}
+}
+
 static void
 rdp_rail_create_window(struct wl_listener *listener, void *data)
 {
@@ -1648,6 +1692,9 @@ rdp_rail_create_window(struct wl_listener *listener, void *data)
 	rail_state->isWindowCreated = TRUE;
 	rail_state->get_label = (void *)-1; /* label to be re-checked at update. */
 	rail_state->taskbarButton = window_state_order.TaskbarButton;
+	assert(window_state_order.showState == WINDOW_HIDE);
+	rail_state->showState = RDP_WINDOW_HIDE;
+	rail_state->showState_requested = RDP_WINDOW_SHOW; // show window at following update.
 	pixman_region32_init_rect(&rail_state->damage, 0, 0,
 				  surface->width_from_buffer,
 				  surface->height_from_buffer);
@@ -2100,7 +2147,7 @@ rdp_rail_update_window(struct weston_surface *surface,
 	    rail_state->clientPos.y != newClientPos.y ||
 	    rail_state->clientPos.width != newClientPos.width ||
 	    rail_state->clientPos.height != newClientPos.height ||
-	    rail_state->is_minimized != rail_state->is_minimized_requested ||
+	    rail_state->showState != rail_state->showState_requested ||
 	    rail_state->get_label != surface->get_label ||
 	    rail_state->forceUpdateWindowState) {
   		window_order_info.windowId = window_id;
@@ -2124,40 +2171,46 @@ rdp_rail_update_window(struct weston_surface *surface,
 			}
 		}
 
-		if (rail_state->forceUpdateWindowState ||
-			rail_state->is_minimized != rail_state->is_minimized_requested) {
-			window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_SHOW;
-
-			window_state_order.showState = rail_state->is_minimized_requested ? WINDOW_SHOW_MINIMIZED : WINDOW_SHOW;
-
-			rail_state->is_minimized = rail_state->is_minimized_requested;
-
-			rdp_debug_verbose(b, "WindowUpdate(0x%x - is_minimized:%d)\n",
+		if (rail_state->showState != rail_state->showState_requested) {
+			rdp_debug_verbose(b, "WindowUpdate(0x%x - showState:%s -> %s)\n",
 					  window_id,
-					  rail_state->is_minimized_requested);
-		}
-
-		if (rail_state->is_maximized != rail_state->is_maximized_requested) {
-			rdp_debug_verbose(b, "WindowUpdate(0x%x - is_maximized:%d)\n",
-					  window_id,
-					  rail_state->is_maximized_requested);
-			rail_state->is_maximized = rail_state->is_maximized_requested;
-		}
-
-		if (rail_state->is_fullscreen != rail_state->is_fullscreen_requested) {
-			rdp_debug_verbose(b, "WindowUpdate(0x%x - is_fullscreen:%d)\n",
-					  window_id,
-					  rail_state->is_fullscreen_requested);
-			rail_state->is_fullscreen = rail_state->is_fullscreen_requested;
-
-			window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_STYLE;
-			if (rail_state->is_fullscreen)
-				window_state_order.style = RAIL_WINDOW_FULLSCREEN_STYLE;
-			else
+					  rdp_showstate_to_string(rail_state->showState),
+					  rdp_showstate_to_string(rail_state->showState_requested));
+			/* if exiting fullscreen, restore window style to normal style */
+			if (rail_state->showState == RDP_WINDOW_SHOW_FULLSCREEN) {
+				window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_STYLE;
 				window_state_order.style = RAIL_WINDOW_NORMAL_STYLE;
-			window_state_order.extendedStyle = WS_EX_LAYERED;
-			/* force update window geometry */
-			rail_state->forceUpdateWindowState = true;
+				window_state_order.extendedStyle = WS_EX_LAYERED;
+				/* force update window geometry */
+				rail_state->forceUpdateWindowState = true;
+			}
+			window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_SHOW;
+			switch (rail_state->showState_requested) {
+			case RDP_WINDOW_HIDE:
+				window_state_order.showState = WINDOW_HIDE;
+				break;
+			case RDP_WINDOW_SHOW:
+				window_state_order.showState = WINDOW_SHOW;
+				break;
+			case RDP_WINDOW_SHOW_MINIMIZED:
+				window_state_order.showState = WINDOW_SHOW_MINIMIZED;
+				break;
+			case RDP_WINDOW_SHOW_MAXIMIZED:
+				window_state_order.showState = WINDOW_SHOW_MAXIMIZED;
+				break;
+			case RDP_WINDOW_SHOW_FULLSCREEN:
+				/* fullscreen is treat as normal window at Window's client */
+				window_state_order.showState = WINDOW_SHOW;
+				/* entering fullscreen mode, change window style */
+				window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_STYLE;
+				window_state_order.style = RAIL_WINDOW_FULLSCREEN_STYLE;
+				/* force update window geometry */
+				rail_state->forceUpdateWindowState = true;
+				break;
+			default:
+				assert(false);
+			}
+			rail_state->showState = rail_state->showState_requested;
 		}
 
 		if (rail_state->forceUpdateWindowState ||
@@ -2286,7 +2339,7 @@ rdp_rail_update_window(struct weston_surface *surface,
 			window_state_order.visibilityRects = &window_vis;
 			window_state_order.clientAreaWidth = newClientPos.width;
 			window_state_order.clientAreaHeight = newClientPos.height;
-			if (!rail_state->is_fullscreen) {
+			if (rail_state->showState != RDP_WINDOW_SHOW_FULLSCREEN) {
 				/* when window is not in fullscreen, there should be 'some' area for title bar,
 				   thus substracting 32 pixels out from window size for client area, this value
 				   does not need to be accurate at all, all here need to tell RDP client is that
@@ -2942,8 +2995,8 @@ rdp_insert_window_zorder_array(struct weston_view *view,
 	   minimized), those won't included in z order list. */
 	if (rail_state &&
 	    rail_state->isWindowCreated &&
-	    !rail_state->is_minimized &&
-	    !rail_state->is_minimized_requested) {
+	    rail_state->showState != RDP_WINDOW_SHOW_MINIMIZED &&
+	    rail_state->showState_requested != RDP_WINDOW_SHOW_MINIMIZED) {
 		if (iCurrent >= WindowIdArraySize) {
 			rdp_debug_error(b, "%s: more windows in tree than ID manager tracking (%d vs %d)\n",
 					__func__, iCurrent, WindowIdArraySize);
@@ -3276,6 +3329,7 @@ rdp_rail_peer_activate(freerdp_peer* client)
 	rail_ctx->ClientExec = rail_client_Exec;
 	rail_ctx->ClientActivate = rail_client_Activate;
 	rail_ctx->ClientSyscommand = rail_client_Syscommand;
+	rail_ctx->ClientSysmenu = rail_client_Sysmenu;
 	rail_ctx->ClientSysparam = rail_client_ClientSysparam;
 	rail_ctx->ClientGetAppidReq = rail_client_ClientGetAppidReq;
 	rail_ctx->ClientWindowMove = rail_client_WindowMove;
@@ -4178,12 +4232,9 @@ rdp_rail_dump_window_iter(void *element, void *data)
 	}
 	fprintf(fp, "    parent_surface:%p, isCursor:%d, isWindowCreated:%d\n",
 		rail_state->parent_surface, rail_state->isCursor, rail_state->isWindowCreated);
-	fprintf(fp, "    isWindowMinimized:%d, isWindowMinimizedRequested:%d\n",
-		rail_state->is_minimized, rail_state->is_minimized_requested);
-	fprintf(fp, "    isWindowMaximized:%d, isWindowMaximizedRequested:%d\n",
-		rail_state->is_maximized, rail_state->is_maximized_requested);
-	fprintf(fp, "    isWindowFullscreen:%d, isWindowFullscreenRequested:%d\n",
-		rail_state->is_fullscreen, rail_state->is_fullscreen_requested);
+	fprintf(fp, "    showState:%s, showState_requested:%s\n",
+		rdp_showstate_to_string(rail_state->showState),
+		rdp_showstate_to_string(rail_state->showState_requested));
 	fprintf(fp, "    forceRecreateSurface:%d, error:%d\n",
 		rail_state->forceRecreateSurface, rail_state->error);
 	fprintf(fp, "    isUdatePending:%d, isFirstUpdateDone:%d\n",

@@ -108,6 +108,8 @@ struct shell_surface {
 
 	int32_t saved_x, saved_y;
 	bool saved_position_valid;
+	uint32_t saved_showstate;
+	bool saved_showstate_valid;
 	bool saved_rotation_valid;
 	int unresponsive, grabbed;
 	uint32_t resize_edges;
@@ -1747,7 +1749,6 @@ unset_fullscreen(struct shell_surface *shsurf)
 
 	if (!rail_state)
 		return;
-	rail_state->is_fullscreen_requested = false;
 
 	/* Unset the fullscreen output, driver configuration and transforms. */
 	wl_list_remove(&shsurf->fullscreen.transform.link);
@@ -1756,6 +1757,12 @@ unset_fullscreen(struct shell_surface *shsurf)
 	if (shsurf->fullscreen.black_view)
 		weston_surface_destroy(shsurf->fullscreen.black_view->surface);
 	shsurf->fullscreen.black_view = NULL;
+
+	if (shsurf->saved_showstate_valid)
+		rail_state->showState_requested = shsurf->saved_showstate;
+	else
+		rail_state->showState_requested = RDP_WINDOW_SHOW;
+	shsurf->saved_showstate_valid = false;
 
 	if (shsurf->saved_position_valid)
 		weston_view_set_position(shsurf->view,
@@ -1769,6 +1776,7 @@ unset_fullscreen(struct shell_surface *shsurf)
 		               &shsurf->rotation.transform.link);
 		shsurf->saved_rotation_valid = false;
 	}
+
 }
 
 static void
@@ -1781,11 +1789,16 @@ unset_maximized(struct shell_surface *shsurf)
 
 	if (!rail_state)
 		return;
-	rail_state->is_maximized_requested = false;
 
 	/* if shell surface has already output assigned, leave where it is. (don't move to primary). */
 	if (!shsurf->output)
 		shell_surface_set_output(shsurf, get_default_output(surface->compositor));
+
+	if (shsurf->saved_showstate_valid)
+		rail_state->showState_requested = shsurf->saved_showstate;
+	else
+		rail_state->showState_requested = RDP_WINDOW_SHOW;
+	shsurf->saved_showstate_valid = false;
 
 	if (shsurf->snapped.is_snapped) {
 		/* Restore to snap state.
@@ -1825,11 +1838,15 @@ set_minimized(struct weston_surface *surface)
 
 	if (!rail_state)
 		return;
-	rail_state->is_minimized_requested = true;
 
 	assert(weston_surface_get_main_surface(view->surface) == view->surface);
 
 	shsurf = get_shell_surface(surface);
+
+	shsurf->saved_showstate = rail_state->showState;
+	shsurf->saved_showstate_valid = true;
+	rail_state->showState_requested = RDP_WINDOW_SHOW_MINIMIZED;
+
 	current_ws = get_current_workspace(shsurf->shell);
 
 	weston_layer_entry_remove(&view->layer_link);
@@ -1857,11 +1874,17 @@ set_unminimized(struct weston_surface *surface)
 
 	if (!rail_state)
 		return;
-	rail_state->is_minimized_requested = false;
 
 	assert(weston_surface_get_main_surface(view->surface) == view->surface);
 
 	shsurf = get_shell_surface(surface);
+
+	if (shsurf->saved_showstate_valid)
+		rail_state->showState_requested = shsurf->saved_showstate;
+	else
+		rail_state->showState_requested = RDP_WINDOW_SHOW;
+	shsurf->saved_showstate_valid = false;
+
 	current_ws = get_current_workspace(shsurf->shell);
 
 	weston_layer_entry_remove(&view->layer_link);
@@ -1874,7 +1897,15 @@ set_unminimized(struct weston_surface *surface)
 static void
 set_unsnap(struct shell_surface *shsurf, int grabX, int grabY)
 {
+	struct weston_surface *surface =
+		weston_desktop_surface_get_surface(shsurf->desktop_surface);
+	struct weston_surface_rail_state *rail_state =
+		(struct weston_surface_rail_state *)surface->backend_state;
+
 	if (!shsurf->snapped.is_snapped)
+		return;
+
+	if (!rail_state)
 		return;
 
 	/*
@@ -1887,6 +1918,8 @@ set_unsnap(struct shell_surface *shsurf, int grabX, int grabY)
 	}
 
 	weston_desktop_surface_set_size(shsurf->desktop_surface, shsurf->snapped.saved_width, shsurf->snapped.saved_height);*/
+	rail_state->showState_requested = RDP_WINDOW_SHOW;
+	shsurf->saved_showstate_valid = false;
 	shsurf->snapped.is_snapped = false;
 }
 
@@ -2207,6 +2240,7 @@ desktop_surface_added(struct weston_desktop_surface *desktop_surface,
 
 	shsurf->shell = shell;
 	shsurf->unresponsive = 0;
+	shsurf->saved_showstate_valid = false;
 	shsurf->saved_position_valid = false;
 	shsurf->saved_rotation_valid = false;
 	shsurf->desktop_surface = desktop_surface;
@@ -2421,6 +2455,8 @@ desktop_surface_committed(struct weston_desktop_surface *desktop_surface,
 		weston_desktop_surface_get_user_data(desktop_surface);
 	struct weston_surface *surface =
 		weston_desktop_surface_get_surface(desktop_surface);
+	struct weston_surface_rail_state *rail_state =
+		(struct weston_surface_rail_state *)surface->backend_state;
 	struct weston_view *view = shsurf->view;
 	struct desktop_shell *shell = data;
 	bool was_fullscreen;
@@ -2450,16 +2486,22 @@ desktop_surface_committed(struct weston_desktop_surface *desktop_surface,
 	    was_maximized == shsurf->state.maximized)
 	    return;
 
-	if (was_fullscreen)
+	if (was_fullscreen && !shsurf->state.fullscreen)
 		unset_fullscreen(shsurf);
-	if (was_maximized)
+	if (was_maximized && !shsurf->state.maximized)
 		unset_maximized(shsurf);
 
-	if ((shsurf->state.fullscreen || shsurf->state.maximized) &&
-	    !shsurf->saved_position_valid) {
-		shsurf->saved_x = shsurf->view->geometry.x;
-		shsurf->saved_y = shsurf->view->geometry.y;
-		shsurf->saved_position_valid = true;
+	if ((shsurf->state.fullscreen || shsurf->state.maximized)) {
+		if (!shsurf->saved_position_valid) {
+			shsurf->saved_x = shsurf->view->geometry.x;
+			shsurf->saved_y = shsurf->view->geometry.y;
+			shsurf->saved_position_valid = true;
+		}
+
+		if (!shsurf->saved_showstate_valid) {
+			shsurf->saved_showstate = rail_state ? rail_state->showState : RDP_WINDOW_HIDE;
+			shsurf->saved_showstate_valid = true;
+		}
 
 		if (!wl_list_empty(&shsurf->rotation.transform.link)) {
 			wl_list_remove(&shsurf->rotation.transform.link);
@@ -2541,9 +2583,14 @@ set_fullscreen(struct shell_surface *shsurf, bool fullscreen,
 
 	if (!rail_state)
 		return;
-	rail_state->is_fullscreen_requested = fullscreen;
 
 	if (fullscreen) {
+		/* if window is created as fullscreen, always set previous state as normal */
+		shsurf->saved_showstate = weston_surface_is_mapped(surface) ? \
+			rail_state->showState : RDP_WINDOW_SHOW;
+		shsurf->saved_showstate_valid = true;
+		rail_state->showState_requested = RDP_WINDOW_SHOW_FULLSCREEN;
+
 		/* handle clients launching in fullscreen */
 		if (output == NULL && !weston_surface_is_mapped(surface)) {
 			/* Set the output to the one that has focus currently. */
@@ -2556,8 +2603,18 @@ set_fullscreen(struct shell_surface *shsurf, bool fullscreen,
 		width = shsurf->output->width;
 		height = shsurf->output->height;
 	} else if (weston_desktop_surface_get_maximized(desktop_surface)) {
+		shsurf->saved_showstate = rail_state->showState;
+		shsurf->saved_showstate_valid = true;
+		rail_state->showState_requested = RDP_WINDOW_SHOW_MAXIMIZED;
 		get_maximized_size(shsurf, &width, &height);
+	} else {
+		if (shsurf->saved_showstate_valid)
+			rail_state->showState_requested = shsurf->saved_showstate;
+		else
+			rail_state->showState_requested = RDP_WINDOW_SHOW;
+		shsurf->saved_showstate_valid = false;
 	}
+
 	weston_desktop_surface_set_fullscreen(desktop_surface, fullscreen);
 	weston_desktop_surface_set_size(desktop_surface, width, height);
 }
@@ -2677,12 +2734,17 @@ set_maximized(struct shell_surface *shsurf, bool maximized)
 
 	if (!rail_state)
 		return;
-	rail_state->is_maximized_requested = maximized;
 
 	if (maximized) {
 		struct weston_output *output;
 
-		 if (!weston_surface_is_mapped(surface))
+		/* if window is created as maximized, always set previous state as normal */
+		shsurf->saved_showstate = weston_surface_is_mapped(surface) ? \
+			rail_state->showState : RDP_WINDOW_SHOW;
+		shsurf->saved_showstate_valid = true;
+		rail_state->showState_requested = RDP_WINDOW_SHOW_MAXIMIZED;
+
+		if (!weston_surface_is_mapped(surface))
 			output = get_focused_output(surface->compositor);
 		else
 			/* TODO: Need to revisit here for local move. */
@@ -2691,6 +2753,12 @@ set_maximized(struct shell_surface *shsurf, bool maximized)
 		shell_surface_set_output(shsurf, output);
 
 		get_maximized_size(shsurf, &width, &height);
+	} else {
+		if (shsurf->saved_showstate_valid)
+			rail_state->showState_requested = shsurf->saved_showstate;
+		else
+			rail_state->showState_requested = RDP_WINDOW_SHOW;
+		shsurf->saved_showstate_valid = false;
 	}
 	weston_desktop_surface_set_maximized(desktop_surface, maximized);
 	weston_desktop_surface_set_size(desktop_surface, width, height);
@@ -2728,6 +2796,11 @@ desktop_surface_set_window_icon(struct weston_desktop_surface *desktop_surface,
 static void
 shell_backend_request_window_minimize(struct weston_surface *surface)
 {
+	struct shell_surface *shsurf = get_shell_surface(surface);
+
+	if (!shsurf)
+		return;
+
 	set_minimized(surface);
 }
 
@@ -2776,9 +2849,16 @@ shell_backend_request_window_restore(struct weston_surface *surface)
 	if (!rail_state)
 		return;
 
-	if (rail_state->is_minimized_requested) {
+	if (rail_state->showState == RDP_WINDOW_SHOW_MINIMIZED) {
 		set_unminimized(surface);
-	} else 	if (shsurf->state.maximized) {
+	} else if (shsurf->state.fullscreen) {
+		/* fullscreen is treated as normal (aka restored) state in
+		   Windows client, thus there should be not be 'restore'
+		   request to be made while in fullscreen state. */
+		shell_rdp_debug(shsurf->shell,
+			 "%s: surface:%p is requested to be restored while in fullscreen\n",
+			__func__, surface);
+	} else if (shsurf->state.maximized) {
 		api = shsurf->shell->xwayland_surface_api;
 		if (!api) {
 			api = weston_xwayland_surface_get_api(shsurf->shell->compositor);

@@ -200,6 +200,13 @@ struct weston_rdp_shared_memory {
 	char name[RDP_SHARED_MEMORY_NAME_SIZE + 1]; // +1 for NULL
 };
 
+/* weston_surface_rail_state.showState_requested */
+#define RDP_WINDOW_HIDE 0x00
+#define RDP_WINDOW_SHOW_MINIMIZED 0x02
+#define RDP_WINDOW_SHOW_MAXIMIZED 0x03
+#define RDP_WINDOW_SHOW_FULLSCREEN 0x04
+#define RDP_WINDOW_SHOW 0x05
+
 struct weston_surface_rail_state {
 	struct wl_listener destroy_listener;
 	struct wl_listener repaint_listener;
@@ -217,12 +224,8 @@ struct weston_surface_rail_state {
 	uint32_t parent_window_id;
 	bool isCursor;
 	bool isWindowCreated;
-	bool is_minimized;
-	bool is_minimized_requested;
-	bool is_maximized;
-	bool is_maximized_requested;
-	bool is_fullscreen;
-	bool is_fullscreen_requested;
+	uint32_t showState_requested;
+	uint32_t showState;
 	bool forceRecreateSurface;
 	bool forceUpdateWindowState;
 	bool error;
