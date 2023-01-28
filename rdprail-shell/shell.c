@@ -2499,7 +2499,11 @@ desktop_surface_committed(struct weston_desktop_surface *desktop_surface,
 		}
 
 		if (!shsurf->saved_showstate_valid) {
-			shsurf->saved_showstate = rail_state ? rail_state->showState : RDP_WINDOW_HIDE;
+			if (shsurf->state.fullscreen)
+				rail_state->showState_requested = RDP_WINDOW_SHOW_FULLSCREEN;
+			else
+				rail_state->showState_requested = RDP_WINDOW_SHOW_MAXIMIZED;
+			shsurf->saved_showstate = rail_state ? rail_state->showState : RDP_WINDOW_SHOW;
 			shsurf->saved_showstate_valid = true;
 		}
 

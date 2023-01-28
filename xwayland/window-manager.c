@@ -2100,14 +2100,17 @@ weston_wm_window_handle_state(struct weston_wm_window *window,
 	    update_state(action, &window->fullscreen)) {
 		weston_wm_window_set_net_wm_state(window);
 		if (window->fullscreen) {
-			window->saved_width = window->width;
-			window->saved_height = window->height;
-
+			if (!weston_wm_window_is_maximized(window)) {
+				window->saved_width = window->width;
+				window->saved_height = window->height;
+			}
 			if (window->shsurf)
 				xwayland_interface->set_fullscreen(window->shsurf,
 								   NULL);
-		} else {
-			if (window->shsurf)
+		} else if (window->shsurf) {
+			if (weston_wm_window_is_maximized(window))
+				xwayland_interface->set_maximized(window->shsurf);
+			else
 				weston_wm_window_set_toplevel(window);
 		}
 	} else {
@@ -2122,13 +2125,18 @@ weston_wm_window_handle_state(struct weston_wm_window *window,
 
 		if (maximized != weston_wm_window_is_maximized(window)) {
 			if (weston_wm_window_is_maximized(window)) {
-				window->saved_width = window->width;
-				window->saved_height = window->height;
-
+				if (!window->fullscreen) {
+					window->saved_width = window->width;
+					window->saved_height = window->height;
+				}
 				if (window->shsurf)
 					xwayland_interface->set_maximized(window->shsurf);
 			} else if (window->shsurf) {
-				weston_wm_window_set_toplevel(window);
+				if (window->fullscreen)
+					xwayland_interface->set_fullscreen(window->shsurf,
+									   NULL);
+				else
+					weston_wm_window_set_toplevel(window);
 			}
 		}
 	}
@@ -2511,9 +2519,14 @@ weston_wm_handle_button(struct weston_wm *wm, xcb_generic_event_t *event)
 		window->maximized_vert = !window->maximized_vert;
 		weston_wm_window_set_net_wm_state(window);
 		if (weston_wm_window_is_maximized(window)) {
-			window->saved_width = window->width;
-			window->saved_height = window->height;
+			if (!window->fullscreen) {
+				window->saved_width = window->width;
+				window->saved_height = window->height;
+			}
 			xwayland_interface->set_maximized(window->shsurf);
+		} else if (window->fullscreen) {
+			xwayland_interface->set_fullscreen(window->shsurf,
+							   NULL);
 		} else {
 			weston_wm_window_set_toplevel(window);
 		}
@@ -3196,26 +3209,32 @@ static void
 set_maximized(struct weston_surface *surface, bool is_maximized)
 {
 	struct weston_wm_window *window = get_wm_window(surface);
-	struct weston_wm *wm;
+	const struct weston_desktop_xwayland_interface *xwayland_interface;
 
 	if (!window || !window->wm)
 		return;
 
-	wm = window->wm;
+	xwayland_interface = window->wm->server->compositor->xwayland_interface;
 
 	if (is_maximized) {
 		if (!weston_wm_window_is_maximized(window)) {
 			window->maximized_horz = 1;
 			window->maximized_vert = 1;
-			window->saved_width = window->width;
-			window->saved_height = window->height;
-			wm->server->compositor->xwayland_interface->set_maximized(window->shsurf);
+			if (!window->fullscreen) {
+				window->saved_width = window->width;
+				window->saved_height = window->height;
+			}
+			xwayland_interface->set_maximized(window->shsurf);
 		}
 	} else {
 		if (weston_wm_window_is_maximized(window)) {
 			window->maximized_horz = 0;
 			window->maximized_vert = 0;
-			weston_wm_window_set_toplevel(window);
+			if (window->fullscreen)
+				xwayland_interface->set_fullscreen(window->shsurf,
+								   NULL);
+			else
+				weston_wm_window_set_toplevel(window);
 		}
 	}
 	weston_wm_window_set_net_wm_state(window);
