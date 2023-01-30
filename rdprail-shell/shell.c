@@ -1215,6 +1215,13 @@ move_grab_motion(struct weston_pointer_grab *grab,
 	if (!shsurf)
 		return;
 
+	/* if local move is expected, but recieved the mouse move,
+	   then cacenl local move. */
+	if (shsurf->shell->is_localmove_pending) {
+		shell_rdp_debug(shsurf->shell, "%s: mouse move is detected while attempting local move\n", __func__);
+		shsurf->shell->is_localmove_pending = false;
+	}
+
 	surface = weston_desktop_surface_get_surface(shsurf->desktop_surface);
 
 	constrain_position(move, &cx, &cy);
