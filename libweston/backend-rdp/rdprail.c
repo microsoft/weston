@@ -542,7 +542,7 @@ rail_client_Syscommand_callback(bool freeOnly, void *arg)
 		break;
 	}
 
-	rdp_debug_verbose(b,
+	rdp_debug(b,
 		  "Client: ClientSyscommand: WindowId:0x%x, surface:0x%p, command:%s (0x%x)\n",
 		  syscommand->windowId, surface, commandString,
 		  syscommand->command);
@@ -3169,7 +3169,7 @@ disp_monitor_layout_change_callback(bool freeOnly, void *dataIn)
 	RdpPeerContext *peerCtx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = peerCtx->rdpBackend;
 	RDPGFX_RESET_GRAPHICS_PDU reset_graphics = {};
-	MONITOR_DEF *reset_monitor_def;
+	MONITOR_DEF *reset_monitor_def = NULL;
 
 	assert_compositor_thread(b);
 
@@ -3292,16 +3292,18 @@ rdp_rail_peer_activate(freerdp_peer* client)
 	RdpPeerContext *peer_ctx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = peer_ctx->rdpBackend;
 	rdpSettings *settings = client->context->settings;
-	RailServerContext *rail_ctx;
-	RdpgfxServerContext *gfx_ctx;
-	DispServerContext *disp_ctx;
+	RailServerContext *rail_ctx = NULL;
+	RdpgfxServerContext *gfx_ctx = NULL;
+	DispServerContext *disp_ctx = NULL;
 	bool rail_server_started = false;
 	bool disp_server_opened = false;
 	bool rail_grfx_server_opened = false;
 #ifdef HAVE_FREERDP_GFXREDIR_H
+	GfxRedirServerContext *redir_ctx = NULL;
 	bool gfxredir_server_opened = false;
 #endif /* HAVE_FREERDP_GFXREDIR_H */
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
+	RdpAppListServerContext *applist_ctx = NULL;
 	bool applist_server_opened = false;
 	RDPAPPLIST_SERVER_CAPS_PDU app_list_caps = {};
 #endif /* HAVE_FREERDP_RDPAPPLIST_H */
@@ -3407,7 +3409,6 @@ rdp_rail_peer_activate(freerdp_peer* client)
 	rail_grfx_server_opened = TRUE;
 
 #ifdef HAVE_FREERDP_GFXREDIR_H
-	GfxRedirServerContext *redir_ctx;
 	/* open Graphics Redirection channel. */
 	if (b->use_gfxredir) {
 
@@ -3426,7 +3427,6 @@ rdp_rail_peer_activate(freerdp_peer* client)
 #endif /* HAVE_FREERDP_GFXREDIR_H */
 
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
-	RdpAppListServerContext *applist_ctx;
 	/* open Application List channel. */
 	if (b->rdprail_shell_name && b->use_rdpapplist) {
 		applist_ctx = b->rdpapplist_server_context_new(peer_ctx->vcm);
@@ -3673,12 +3673,26 @@ rdp_rail_send_window_minmax_info(
 	RdpPeerContext *peer_ctx;
 	RailServerContext *rail_ctx;
 	RAIL_MINMAXINFO_ORDER minmax_order;
+	int dummyX = 0, dummyY = 0;
 
 	if (!b->rdp_peer || !b->rdp_peer->context->settings->HiDefRemoteApp) {
 		return;
 	}
 
 	peer_ctx = (RdpPeerContext *)b->rdp_peer->context;
+
+	/* apply global to output transform, and translate to client coordinate */
+	if (surface->output) {
+		to_client_coordinate(peer_ctx, surface->output,
+				     &maxPosSize->x, &maxPosSize->y,
+				     &maxPosSize->width, &maxPosSize->height);
+		to_client_coordinate(peer_ctx, surface->output,
+				     &dummyX, &dummyY,
+				     &minTrackSize->width, &minTrackSize->height);
+		to_client_coordinate(peer_ctx, surface->output,
+				     &dummyX, &dummyY,
+				     &maxTrackSize->width, &maxTrackSize->height);
+	}
 
 	/* Inform the RDP client about the minimum/maximum width and height allowed
 	 * on this window.
