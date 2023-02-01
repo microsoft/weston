@@ -384,8 +384,6 @@ void rdp_rail_peer_context_free(freerdp_peer *client, RdpPeerContext *context);
 void rdp_rail_output_repaint(struct weston_output *output, pixman_region32_t *damage);
 bool rdp_drdynvc_init(freerdp_peer *client);
 void rdp_drdynvc_destroy(RdpPeerContext *context);
-void rdp_rail_start_window_move(struct weston_surface *surface, int pointerGrabX, int pointerGrabY, struct weston_size minSize, struct weston_size maxSize);
-void rdp_rail_end_window_move(struct weston_surface *surface);
 
 // rdpdisp.c
 bool

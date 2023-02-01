@@ -114,6 +114,10 @@ struct weston_rdprail_shell_api {
 	/** Query window geometry
 	  */
 	void (*get_window_geometry)(struct weston_surface *surface, struct weston_geometry *geometry);
+
+	/** Request to send window minmax info
+	  */
+	void (*request_window_minmax_info)(struct weston_surface *surface);
 };
 
 #define WESTON_RDPRAIL_API_NAME "weston_rdprail_api_v1"
@@ -134,6 +138,13 @@ struct weston_rdprail_app_list_data {
 	pixman_image_t *appIcon;
 };
 
+struct weston_rdp_rail_window_pos {
+	int32_t x;
+	int32_t y;
+	uint32_t width;
+	uint32_t height;
+};
+
 struct weston_rdprail_api {
 	/** Initialize
 	 */
@@ -144,12 +155,18 @@ struct weston_rdprail_api {
 	/** Start a local window move operation
 	 */
 	void (*start_window_move)(struct weston_surface *surface, 
-		int pointerGrabX, int pointerGrabY, 
-		struct weston_size minSize, struct weston_size maxSize);
+		int pointerGrabX, int pointerGrabY);
 
 	/** End local window move operation
 	 */
 	void (*end_window_move)(struct weston_surface *surface);
+
+	/** Send window min/max information.
+	 */
+	void (*send_window_minmax_info)(struct weston_surface* surface,
+		struct weston_rdp_rail_window_pos* maxPosSize,
+		struct weston_size* minTrackSize,
+		struct weston_size* maxTrackSize);
 
 	/** Set window icon
 	 */
@@ -183,13 +200,6 @@ weston_rdprail_get_api(struct weston_compositor *compositor)
 
 	return (const struct weston_rdprail_api *)api;
 }
-
-struct weston_rdp_rail_window_pos {
-	int32_t x;
-	int32_t y;
-	uint32_t width;
-	uint32_t height;
-};
 
 #define RDP_SHARED_MEMORY_NAME_SIZE (32 + 4 + 2)
 

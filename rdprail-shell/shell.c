@@ -503,6 +503,45 @@ get_default_view(struct weston_surface *surface)
 }
 
 static void
+shell_send_minmax_info(struct weston_surface *surface)
+{
+	struct shell_surface *shsurf = get_shell_surface(surface);
+	struct desktop_shell *shell;
+	struct weston_output *output;
+	struct weston_rdp_rail_window_pos maxPosSize;
+	struct weston_size min_size;
+	struct weston_size max_size;
+
+	if (!shsurf)
+		return;
+
+	shell = shsurf->shell;
+
+	if (shell->rdprail_api->send_window_minmax_info) {
+		/* minmax info is based on primary monitor */
+		/* https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-minmaxinfo */
+		output = get_default_output(shell->compositor);
+		assert(output);
+
+		maxPosSize.x = 0;
+		maxPosSize.y = 0;
+		maxPosSize.width = output->width;
+		maxPosSize.height = output->height;
+
+		min_size = weston_desktop_surface_get_min_size(shsurf->desktop_surface);
+		max_size = weston_desktop_surface_get_max_size(shsurf->desktop_surface);
+		if (max_size.width == 0)
+			max_size.width = output->width;
+		if (max_size.height == 0)
+			max_size.height = output->height;
+
+		shell->rdprail_api->send_window_minmax_info(
+			weston_desktop_surface_get_surface(shsurf->desktop_surface),
+			&maxPosSize, &min_size, &max_size);
+	}
+}
+
+static void
 shell_grab_start(struct shell_grab *grab,
 		 const struct weston_pointer_grab_interface *interface,
 		 struct shell_surface *shsurf,
@@ -526,24 +565,18 @@ shell_grab_start(struct shell_grab *grab,
 		(interface == &move_grab_interface) && 
 		shell->rdprail_api->start_window_move) {
 
-		struct weston_size min_size;
-		struct weston_size max_size;
-
 		if (grab->shsurf->snapped.is_snapped) {
 			set_unsnap(grab->shsurf, wl_fixed_to_int(pointer->grab_x), wl_fixed_to_int(pointer->grab_y));
 		}
-
-		min_size = weston_desktop_surface_get_min_size(shsurf->desktop_surface);
-		max_size = weston_desktop_surface_get_max_size(shsurf->desktop_surface);
-		
 		shell->is_localmove_pending = true;
+
+		shell_send_minmax_info(
+			weston_desktop_surface_get_surface(shsurf->desktop_surface));
 
 		shell->rdprail_api->start_window_move(
 			weston_desktop_surface_get_surface(shsurf->desktop_surface),
 			wl_fixed_to_int(pointer->grab_x),
-			wl_fixed_to_int(pointer->grab_y),
-			min_size,
-			max_size);
+			wl_fixed_to_int(pointer->grab_y));
 	} else if (grab->shsurf->snapped.is_snapped) {
 		/** Cancel snap state on anything but a move grab
 		 */
@@ -4713,6 +4746,7 @@ static const struct weston_rdprail_shell_api rdprail_shell_api = {
 	.request_window_icon = shell_backend_request_window_icon,
 	.request_launch_shell_process = shell_backend_launch_shell_process,
 	.get_window_geometry = shell_backend_get_window_geometry,
+	.request_window_minmax_info = shell_send_minmax_info,
 };
 
 WL_EXPORT int
