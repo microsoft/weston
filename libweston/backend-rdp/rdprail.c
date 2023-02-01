@@ -542,7 +542,7 @@ rail_client_Syscommand_callback(bool freeOnly, void *arg)
 		break;
 	}
 
-	rdp_debug(b,
+	rdp_debug_verbose(b,
 		  "Client: ClientSyscommand: WindowId:0x%x, surface:0x%p, command:%s (0x%x)\n",
 		  syscommand->windowId, surface, commandString,
 		  syscommand->command);
@@ -3707,13 +3707,13 @@ rdp_rail_send_window_minmax_info(
 	minmax_order.maxTrackWidth = maxTrackSize->width;
 	minmax_order.maxTrackHeight = maxTrackSize->height;
 
-	rdp_debug(b,
+	rdp_debug_verbose(b,
 		  "Minmax order: maxPosX:%d, maxPosY:%d, maxWidth:%d, maxHeight:%d\n",
 		  minmax_order.maxPosX,
 		  minmax_order.maxPosY,
 		  minmax_order.maxWidth,
 		  minmax_order.maxHeight);
-	rdp_debug(b,
+	rdp_debug_verbose(b,
 		  "Minmax order: minTrackWidth:%d, minTrackHeight:%d, maxTrackWidth:%d, maxTrackHeight:%d\n",
 		  minmax_order.minTrackWidth,
 		  minmax_order.minTrackHeight,
