@@ -153,6 +153,7 @@ struct shell_surface {
 		int height;
 		int saved_x;
 		int saved_y;
+		int saved_surface_width;
 		int saved_width; // based on window geometry
 		int saved_height; // based on window geometry
 		int last_grab_x;
@@ -1942,7 +1943,7 @@ grab_unsnap_motion(struct weston_pointer_grab *grab)
 		weston_desktop_surface_get_surface(shsurf->desktop_surface);
 	struct weston_surface_rail_state *rail_state =
 		(struct weston_surface_rail_state *)surface->backend_state;
-	int x, y, diff_x;
+	int cx, cy, dx;
 
 	if (!shsurf->snapped.is_snapped)
 		return;
@@ -1962,18 +1963,23 @@ grab_unsnap_motion(struct weston_pointer_grab *grab)
 
 	/* Reposition the window such that the mouse remain within the 
 	 * new bound of the window after resize. */
-	x = wl_fixed_to_int(pointer->x),
-	y = wl_fixed_to_int(pointer->y);
-	diff_x = -(shsurf->snapped.saved_width / 2);
+	dx = wl_fixed_to_int(move->dx);
+	if (abs(dx) < surface->width / 2) {
+		/* keep left edge pos, resize from right edge */
+		cx = shsurf->view->geometry.x;
+	} else {
+		/* keep right edge pos, resize from left edge */
+		cx = (shsurf->view->geometry.x + surface->width) - shsurf->snapped.saved_surface_width;
+	}
+	cy = shsurf->view->geometry.y + wl_fixed_to_int(move->dy);
+	weston_view_set_position(shsurf->view, cx, cy);
+	move->dx = wl_fixed_from_int(cx - wl_fixed_to_int(pointer->x));
 
-	x -= diff_x;
-	weston_view_set_position(shsurf->view, x, y);
-	move->dx = wl_fixed_from_int(diff_x);
-
-	shell_rdp_debug_verbose(shsurf->shell, "%s: restore surface:%p at (%d,%d) (%dx%d)\n",
-			__func__, surface, x, y,
+	shell_rdp_debug(shsurf->shell, "%s: restore surface:%p at (%d,%d) (%dx%d), new move_dx:%d\n",
+			__func__, surface, cx, cy,
 			shsurf->snapped.saved_width,
-			shsurf->snapped.saved_height);
+			shsurf->snapped.saved_height,
+			wl_fixed_to_int(move->dx));
 }
 
 static struct desktop_shell *
@@ -3012,6 +3018,7 @@ shell_backend_request_window_snap(struct weston_surface *surface, int x, int y, 
 		shsurf->snapped.saved_x = shsurf->view->geometry.x;
 		shsurf->snapped.saved_y = shsurf->view->geometry.y;
 		/* saved_width and height is based on window geometry */
+		shsurf->snapped.saved_surface_width = surface->width;
 		shsurf->snapped.saved_width = geometry.width;
 		shsurf->snapped.saved_height = geometry.height;
 	}
