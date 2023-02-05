@@ -1975,7 +1975,7 @@ grab_unsnap_motion(struct weston_pointer_grab *grab)
 	weston_view_set_position(shsurf->view, cx, cy);
 	move->dx = wl_fixed_from_int(cx - wl_fixed_to_int(pointer->x));
 
-	shell_rdp_debug(shsurf->shell, "%s: restore surface:%p at (%d,%d) (%dx%d), new move_dx:%d\n",
+	shell_rdp_debug_verbose(shsurf->shell, "%s: restore surface:%p at (%d,%d) (%dx%d), new move_dx:%d\n",
 			__func__, surface, cx, cy,
 			shsurf->snapped.saved_width,
 			shsurf->snapped.saved_height,
