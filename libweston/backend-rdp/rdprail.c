@@ -859,6 +859,12 @@ rail_client_LangbarInfo(RailServerContext *context,
 	return CHANNEL_RC_OK;
 }
 
+/* GUID_CHTIME_BOPOMOFO is not defined in FreeRDP */
+#define GUID_CHTIME_BOPOMOFO \
+{ \
+	0xB115690A, 0xEA02, 0x48D5, 0xA2, 0x31, 0xE3, 0x57, 0x8D, 0x2F, 0xDF, 0x80 \
+}
+
 static char *
 languageGuid_to_string(const GUID *guid)
 {
@@ -868,6 +874,7 @@ languageGuid_to_string(const GUID *guid)
 	static const struct lang_GUID c_GUID_KORIME = GUID_MSIME_KOR;
 	static const struct lang_GUID c_GUID_CHSIME = GUID_CHSIME;
 	static const struct lang_GUID c_GUID_CHTIME = GUID_CHTIME;
+	static const struct lang_GUID c_GUID_CHTIME_BOPOMOFO = GUID_CHTIME_BOPOMOFO;
 	static const struct lang_GUID c_GUID_PROFILE_NEWPHONETIC = GUID_PROFILE_NEWPHONETIC;
 	static const struct lang_GUID c_GUID_PROFILE_CHANGJIE = GUID_PROFILE_CHANGJIE;
 	static const struct lang_GUID c_GUID_PROFILE_QUICK = GUID_PROFILE_QUICK;
@@ -888,6 +895,8 @@ languageGuid_to_string(const GUID *guid)
 		return "GUID_CHSIME";
 	else if (UuidEqual(guid, (GUID *)&c_GUID_CHTIME, &rpc_status))
 		return "GUID_CHTIME";
+	else if (UuidEqual(guid, (GUID *)&c_GUID_CHTIME_BOPOMOFO, &rpc_status))
+		return "GUID_CHTIME_BOPOMOFO";
 	else if (UuidEqual(guid, (GUID *)&c_GUID_PROFILE_NEWPHONETIC, &rpc_status))
 		return "GUID_PROFILE_NEWPHONETIC";
 	else if (UuidEqual(guid, (GUID *)&c_GUID_PROFILE_CHANGJIE, &rpc_status))
@@ -920,7 +929,7 @@ rail_client_LanguageImeInfo_callback(bool freeOnly, void *arg)
 	struct rdp_backend *b = peer_ctx->rdpBackend;
 	uint32_t new_keyboard_layout = 0;
 	struct xkb_keymap *keymap = NULL;
-	struct xkb_rule_names xkbRuleNames;
+	struct xkb_rule_names xkbRuleNames = {};
 	char *s;
 
 	assert_compositor_thread(b);
@@ -957,6 +966,7 @@ rail_client_LanguageImeInfo_callback(bool freeOnly, void *arg)
 			static const struct lang_GUID c_GUID_KORIME = GUID_MSIME_KOR;
 			static const struct lang_GUID c_GUID_CHSIME = GUID_CHSIME;
 			static const struct lang_GUID c_GUID_CHTIME = GUID_CHTIME;
+			static const struct lang_GUID c_GUID_CHTIME_BOPOMOFO = GUID_CHTIME_BOPOMOFO;
 
 			RPC_STATUS rpc_status;
 			if (UuidEqual(&languageImeInfo->LanguageProfileCLSID,
@@ -970,6 +980,9 @@ rail_client_LanguageImeInfo_callback(bool freeOnly, void *arg)
 				new_keyboard_layout = KBD_CHINESE_SIMPLIFIED_US;
 			else if (UuidEqual(&languageImeInfo->LanguageProfileCLSID,
 					   (GUID *)&c_GUID_CHTIME, &rpc_status))
+				new_keyboard_layout = KBD_CHINESE_TRADITIONAL_US;
+			else if (UuidEqual(&languageImeInfo->LanguageProfileCLSID,
+					   (GUID *)&c_GUID_CHTIME_BOPOMOFO, &rpc_status))
 				new_keyboard_layout = KBD_CHINESE_TRADITIONAL_US;
 			else
 				new_keyboard_layout = KBD_US;
@@ -988,6 +1001,8 @@ rail_client_LanguageImeInfo_callback(bool freeOnly, void *arg)
 					weston_seat_update_keymap(peer_ctx->item.seat, keymap);
 					xkb_keymap_unref(keymap);
 					settings->KeyboardLayout = new_keyboard_layout;
+					rdp_debug(b, "%s: new keyboard layout: 0x%x\n",
+						__func__, new_keyboard_layout);
 				}
 			}
 			if (!keymap) {
