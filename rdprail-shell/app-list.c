@@ -128,6 +128,9 @@ char *icon_folder[] = {
 	"/usr/share/icons/hicolor/24x24/apps/",
 	"/usr/share/icons/hicolor/22x22/apps/",
 	"/usr/share/icons/hicolor/16x16/apps/",
+	"/var/lib/flatpak/exports/share/icons/hicolor/96x96/apps/",
+	"/var/lib/flatpak/exports/share/icons/hicolor/128x128/apps/",
+	"/var/lib/flatpak/exports/share/icons/hicolor/48x48/apps/",
 	"/usr/share/icons/HighContrast/96x96/apps/",
 	"/usr/share/icons/HighContrast/128x128/apps/",
 	"/usr/share/icons/HighContrast/48x48/apps/",
@@ -847,12 +850,13 @@ app_list_monitor_thread(LPVOID arg)
 	         but env variable at user distro is not accessible from system-distro,
 	         thus, any additional path can be added by WESTON_RDPRAIL_SHELL_APP_LIST_PATH
 	         using .wslgconfig */     
-	#define CUSTOM_APP_LIST_FOLDER_INDEX 3
+	#define CUSTOM_APP_LIST_FOLDER_INDEX 4
 	#define MAX_APP_LIST_FOLDER 128
 	char *app_list_folder[MAX_APP_LIST_FOLDER] = {
 		"/usr/share/applications",
 		"/usr/local/share/applications",
 		"/var/lib/snapd/desktop/applications",
+		"/var/lib/flatpak/exports/share/applications",
 		NULL, /* always terminated witn NULL entry */
 	};
 	int fd[ARRAY_LENGTH(app_list_folder)] = {-1, -1, -1, -1};
