@@ -1008,7 +1008,7 @@ convert_rdp_keyboard_to_xkb_rule_names(
 		xkbRuleNames->variant = 0;
 	}
 	/* when no layout, default to "us" */
-	else if (!xkbRuleNames->layout) {
+	if (!xkbRuleNames->layout) {
 		xkbRuleNames->layout = "us";
 		xkbRuleNames->variant = 0;
 	}
@@ -1540,7 +1540,7 @@ xf_input_synchronize_event(rdpInput *input, UINT32 flags)
 static BOOL
 xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 {
-	uint32_t scan_code, vk_code, full_code;
+	uint32_t scan_code, vk_code, full_code, keyboard_locale;
 	enum wl_keyboard_key_state keyState;
 	freerdp_peer *client = input->context->peer;
 	RdpPeerContext *peerContext = (RdpPeerContext *)input->context;
@@ -1565,8 +1565,17 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 
 	if (keyboard && notify) {
 		full_code = code;
-		if (flags & KBD_FLAGS_EXTENDED)
+		/* On Windows 10 client, certain locale's keyboard layout reports extended 
+		   bit for right shift key (scancode 0x36) due to bug, so drop the bit here. */
+		keyboard_locale = client->context->settings->KeyboardLayout & 0xFFFF;
+		if (code == 0x36 && /* Right shift key */
+		    (keyboard_locale == KBD_CHINESE_TRADITIONAL_US ||
+		     keyboard_locale == KBD_CHINESE_SIMPLIFIED_US ||
+		     keyboard_locale == KBD_JAPANESE)) {
+			flags &= ~KBD_FLAGS_EXTENDED;
+		} else if (flags & KBD_FLAGS_EXTENDED) {
 			full_code |= KBD_FLAGS_EXTENDED;
+		}
 
 		/* Korean keyboard support */
 		/* WinPR's GetVirtualKeyCodeFromVirtualScanCode() can't handle hangul/hanja keys */
