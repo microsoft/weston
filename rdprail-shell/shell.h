@@ -130,10 +130,10 @@ struct desktop_shell {
 
 	struct timespec startup_time;
 
-	bool is_localmove_supported;
-	bool is_localmove_pending;
+	bool is_local_move_supported;
+	bool is_local_resize_supported;
 
-	bool is_localresize_supported;
+	bool is_local_moveresize_pending;
 
 	void *app_list_context;
 	char *distroName;
