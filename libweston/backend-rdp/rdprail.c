@@ -770,8 +770,8 @@ rail_client_ClientGetAppidReq_callback(bool freeOnly, void *arg)
 			goto Exit;
 		}
 
-		rdp_debug(b, "Client: ClientGetAppidReq: pid:%d appId:%s\n",
-			  (uint32_t)pid, appId);
+		rdp_debug(b, "Client: ClientGetAppidReq: pid:%d appId:%s WindowId:0x%x\n",
+			  (uint32_t)pid, appId, getAppidReq->windowId);
 		rdp_debug_verbose(b,
 				  "Client: ClientGetAppidReq: pid:%d imageName:%s\n",
 				  (uint32_t)pid, imageName);
@@ -3456,9 +3456,20 @@ rdp_rail_peer_activate(freerdp_peer* client)
 
 		rdp_debug(b, "Server AppList caps version:%d\n", RDPAPPLIST_CHANNEL_VERSION);
 		app_list_caps.version = RDPAPPLIST_CHANNEL_VERSION;
+		rdp_debug(b, "    appListProviderName:%s\n", b->rdprail_shell_name);
 		if (!utf8_string_to_rail_string(b->rdprail_shell_name,
 						&app_list_caps.appListProviderName))
 			goto error_exit;
+#if RDPAPPLIST_CHANNEL_VERSION >= 4
+		/* assign unique id */
+		char *s = getenv("WSLG_SERVICE_ID");
+		if (!s)
+			s = b->rdprail_shell_name;
+		rdp_debug(b, "    appListProviderUniqueId:%s\n", s);
+		if (!utf8_string_to_rail_string(s,
+						&app_list_caps.appListProviderUniqueId))
+			goto error_exit;
+#endif /* RDPAPPLIST_CHANNEL_VERSION >= 4 */
 		if (applist_ctx->ApplicationListCaps(applist_ctx, &app_list_caps) != CHANNEL_RC_OK)
 			goto error_exit;
 		free(app_list_caps.appListProviderName.string);
@@ -4620,6 +4631,7 @@ rdp_rail_notify_app_list(void *rdp_backend,
 	rdp_debug(b, "    newAppId: %d\n", app_list_data->newAppId);
 	rdp_debug(b, "    deleteAppId: %d\n", app_list_data->deleteAppId);
 	rdp_debug(b, "    deleteAppProvider: %d\n", app_list_data->deleteAppProvider);
+	rdp_debug(b, "    associateWindowId: %d\n", app_list_data->associateWindowId);
 	rdp_debug(b, "    appId: %s\n", app_list_data->appId);
 	rdp_debug(b, "    appGroup: %s\n", app_list_data->appGroup);
 	rdp_debug(b, "    appExecPath: %s\n", app_list_data->appExecPath);
@@ -4627,8 +4639,35 @@ rdp_rail_notify_app_list(void *rdp_backend,
 	rdp_debug(b, "    appDesc: %s\n", app_list_data->appDesc);
 	rdp_debug(b, "    appIcon: %p\n", app_list_data->appIcon);
 	rdp_debug(b, "    appProvider: %s\n", app_list_data->appProvider);
+	rdp_debug(b, "    appWindowId: 0x%x\n", app_list_data->appWindowId);
 
-	if (app_list_data->deleteAppId) {
+	if (app_list_data->associateWindowId) {
+		RDPAPPLIST_ASSOCIATE_WINDOW_ID_PDU associate_window_id = {};
+
+		assert(app_list_data->appProvider == NULL);
+		associate_window_id.flags = RDPAPPLIST_FIELD_ID | RDPAPPLIST_FIELD_WINDOW_ID;
+		associate_window_id.appWindowId = app_list_data->appWindowId;
+		if (app_list_data->appId == NULL ||
+		    !utf8_string_to_rail_string(app_list_data->appId, &associate_window_id.appId))
+			goto Exit_associateWindowId;
+
+		if (app_list_data->appGroup &&
+		    utf8_string_to_rail_string(app_list_data->appGroup, &associate_window_id.appGroup)) {
+			associate_window_id.flags |= RDPAPPLIST_FIELD_GROUP;
+		}
+		if (app_list_data->appExecPath &&
+		    utf8_string_to_rail_string(app_list_data->appExecPath, &associate_window_id.appExecPath)) {
+			associate_window_id.flags |= RDPAPPLIST_FIELD_EXECPATH;
+		}
+		if (app_list_data->appDesc &&
+		    utf8_string_to_rail_string(app_list_data->appDesc, &associate_window_id.appDesc)) {
+			associate_window_id.flags |= RDPAPPLIST_FIELD_DESC;
+		}
+		applist_ctx->AssociateWindowId(applist_ctx, &associate_window_id);
+	Exit_associateWindowId:
+		free(associate_window_id.appId.string);
+		free(associate_window_id.appGroup.string);
+	} else if (app_list_data->deleteAppId) {
 		RDPAPPLIST_DELETE_APPLIST_PDU delete_app_list = {};
 
 		assert(app_list_data->appProvider == NULL);

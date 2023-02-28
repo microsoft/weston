@@ -204,5 +204,6 @@ pixman_image_t *app_list_load_icon_file(struct desktop_shell *shell, const char 
 bool app_list_start_backend_update(struct desktop_shell *shell, char *clientLanguageId);
 void app_list_stop_backend_update(struct desktop_shell *shell);
 void app_list_find_image_name(struct desktop_shell *shell, pid_t pid, char *image_name, size_t image_name_size, bool is_wayland);
+void app_list_associate_window_app_id(struct desktop_shell *shell, pid_t pid, char *app_id, uint32_t window_id);
 // img-load.c
 pixman_image_t *load_icon_image(struct desktop_shell *shell, const char *filename);

@@ -28,7 +28,7 @@ if not dep_wpr.found()
 	endif
 endif
 
-dep_rdpapplist = dependency('rdpapplist', version: '>= 1.0.0', required: false)
+dep_rdpapplist = dependency('rdpapplist', version: '>= 2.0.0', required: false)
 if dep_rdpapplist.found()
 	config_h.set('HAVE_FREERDP_RDPAPPLIST_H', '1')
 endif

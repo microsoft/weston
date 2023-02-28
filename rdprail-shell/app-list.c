@@ -66,7 +66,7 @@
 
 #if HAVE_GLIB && HAVE_WINPR
 
-#define NUM_CONTROL_EVENT 5
+#define NUM_CONTROL_EVENT 6
 
 #define EVENT_TIMEOUT_MS 2000 // 2 seconds
 #define MAX_ICON_RETRY_COUNT 5
@@ -79,6 +79,7 @@ struct app_list_context {
 	HANDLE stopRdpNotifyEvent;  // control event: wait index 2
 	HANDLE loadIconEvent;       // control event: wait index 3
 	HANDLE findImageNameEvent;  // control event: wait index 4
+	HANDLE associateWindowAppIdEvent;// control event: wait index 5
 	HANDLE replyEvent;
 	bool isRdpNotifyStarted;
 	bool isAppListNamespaceAttached;
@@ -97,6 +98,11 @@ struct app_list_context {
 		char *image_name;
 		size_t image_name_size;
 	} find_image_name;
+	struct {
+		pid_t pid;
+		char *app_id;
+		uint32_t window_id;
+	} associate_window_app_id;
 	struct {
 		char requestedClientLanguageId[32]; // 32 = RDPAPPLIST_LANG_SIZE.
 		char currentClientLanguageId[32];
@@ -387,6 +393,41 @@ send_app_entry(struct desktop_shell *shell, char *key, struct app_entry *entry,
 
 	if (app_list_data.appIcon)
 		pixman_image_unref(app_list_data.appIcon);
+}
+
+static void
+send_associate_window_app_id(struct desktop_shell *shell, pid_t pid, char *app_id, uint32_t window_id)
+{
+	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
+	struct weston_rdprail_app_list_data app_list_data = {};
+	struct app_entry *entry;
+	char *app_exec = NULL;
+	char *app_desc = NULL;
+
+	if (!shell->rdprail_api->notify_app_list)
+		return;
+
+	entry = (struct app_entry *)HashTable_GetItemValue(context->table, app_id);
+	if (entry) {
+		app_exec = entry->try_exec ? entry->try_exec : entry->exec;
+		app_desc = entry->name;
+	}
+
+	if (!app_exec) {
+		/*TODO: obtain from /proc/[pid]/cmdline */
+	}
+
+	if (!app_desc)
+		app_desc = app_id;
+
+	app_list_data.associateWindowId = true;
+	app_list_data.appId = app_id;
+	app_list_data.appGroup = NULL;
+	app_list_data.appExecPath = app_exec;
+	app_list_data.appDesc = app_desc;
+	app_list_data.appWindowId = window_id;
+
+	shell->rdprail_api->notify_app_list(shell->rdp_backend, &app_list_data);
 }
 
 static void
@@ -909,6 +950,7 @@ app_list_monitor_thread(LPVOID arg)
 	events[num_events++] = context->stopRdpNotifyEvent;
 	events[num_events++] = context->loadIconEvent;
 	events[num_events++] = context->findImageNameEvent;
+	events[num_events++] = context->associateWindowAppIdEvent;
 	assert(num_events == NUM_CONTROL_EVENT);
 
 	/* append optional folders */
@@ -1084,6 +1126,22 @@ app_list_monitor_thread(LPVOID arg)
 			continue;
 		}
 
+		/* Associate Window/AppId event */
+		if (status == WAIT_OBJECT_0 + 5) {
+			shell_rdp_debug_verbose(shell, "app_list_monitor_thread: associateWindowAppIdEvent is signalled. pid:%d, app_id:%s, window_id:0x%x\n",
+				context->associate_window_app_id.pid,
+				context->associate_window_app_id.app_id,
+				context->associate_window_app_id.window_id);
+
+			send_associate_window_app_id(shell,
+				context->associate_window_app_id.pid,
+				context->associate_window_app_id.app_id,
+				context->associate_window_app_id.window_id);
+
+			SetEvent(context->replyEvent);
+			continue;
+		}
+
 		/* Somethings are changed in watch folders */
 		if (shell->rdprail_api->notify_app_list && num_watch) {
 			len = read(fd[status - WAIT_OBJECT_0 - NUM_CONTROL_EVENT], buf, sizeof buf); 
@@ -1173,6 +1231,11 @@ start_app_list_monitor(struct desktop_shell *shell)
 		goto Error_Exit;
 
 	/* bManualReset = TRUE, ideally here needs FALSE, but winpr doesn't support it */
+	context->associateWindowAppIdEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	if (!context->associateWindowAppIdEvent)
+		goto Error_Exit;
+
+	/* bManualReset = TRUE, ideally here needs FALSE, but winpr doesn't support it */
 	context->replyEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	if (!context->replyEvent)
 		goto Error_Exit;
@@ -1188,6 +1251,11 @@ Error_Exit:
 	if (context->replyEvent) {
 		CloseHandle(context->replyEvent);
 		context->replyEvent = NULL;
+	}
+
+	if (context->associateWindowAppIdEvent) {
+		CloseHandle(context->associateWindowAppIdEvent);
+		context->associateWindowAppIdEvent = NULL;
 	}
 
 	if (context->findImageNameEvent) {
@@ -1244,6 +1312,11 @@ stop_app_list_monitor(struct desktop_shell *shell)
 	if (context->replyEvent) {
 		CloseHandle(context->replyEvent);
 		context->replyEvent = NULL;
+	}
+
+	if (context->associateWindowAppIdEvent) {
+		CloseHandle(context->associateWindowAppIdEvent);
+		context->associateWindowAppIdEvent = NULL;
 	}
 
 	if (context->findImageNameEvent) {
@@ -1325,6 +1398,33 @@ void app_list_find_image_name(struct desktop_shell *shell, pid_t pid, char *imag
 		context->find_image_name.is_wayland = false;
 		context->find_image_name.image_name = NULL;
 		context->find_image_name.image_name_size = 0;
+	}
+#endif
+	return;
+}
+
+void app_list_associate_window_app_id(struct desktop_shell *shell, pid_t pid, char *app_id, uint32_t window_id)
+{
+#if HAVE_WINPR && HAVE_GLIB
+	struct app_list_context *context = (struct app_list_context *)shell->app_list_context;
+
+	if (context) {
+		assert(context->associate_window_app_id.pid == (pid_t) 0);
+		assert(context->associate_window_app_id.app_id == NULL);
+		assert(context->associate_window_app_id.window_id == 0);
+		context->associate_window_app_id.pid = pid;
+		context->associate_window_app_id.app_id = app_id;
+		context->associate_window_app_id.window_id = window_id;
+
+		/* signal worker thread to load icon at worker thread */
+		SetEvent(context->associateWindowAppIdEvent);
+		WaitForSingleObject(context->replyEvent, INFINITE);
+		/* here must reset since winpr doesn't support auto reset event */
+		ResetEvent(context->replyEvent);
+
+		context->associate_window_app_id.pid = (pid_t) 0;
+		context->associate_window_app_id.app_id = NULL;
+		context->associate_window_app_id.window_id = 0;
 	}
 #endif
 	return;

@@ -165,6 +165,10 @@ struct shell_surface {
 		bool is_icon_set;
 	} icon;
 
+	struct {
+		bool is_window_app_id_associated;
+	} app_id;
+
 	struct wl_listener metadata_listener;
 };
 
@@ -2612,12 +2616,6 @@ desktop_surface_committed(struct weston_desktop_surface *desktop_surface,
 		wl_list_for_each(view, &surface->views, surface_link)
 			weston_view_update_transform(view);
 	}
-
-	if (!shsurf->icon.is_icon_set) {
-		/* TODO hook to meta data change notification */
-		shell_surface_set_window_icon(desktop_surface, 0, 0, 0, NULL, NULL);
-		shsurf->icon.is_icon_set = true;
-	}
 }
 
 static void
@@ -4632,6 +4630,7 @@ shell_backend_get_app_id(void *shell_context, struct weston_surface *surface, ch
 {
 	struct desktop_shell *shell = (struct desktop_shell *)shell_context;
 	struct weston_desktop_surface *desktop_surface;
+	struct weston_surface_rail_state *rail_state; 
 	struct shell_surface *shsurf;
 	const struct weston_xwayland_surface_api *api; 
 	pid_t pid;
@@ -4652,30 +4651,34 @@ shell_backend_get_app_id(void *shell_context, struct weston_surface *surface, ch
 	if (!desktop_surface)
 		return -1;
 
-	/* obtain application id specified via wayland interface */
-	id = weston_desktop_surface_get_app_id(desktop_surface);
-	if (id) {
-		strncpy(app_id, id, app_id_size);
-	} else {
-		/* if app_id is not specified via wayland interface,
-		   obtain class name from X server for X app, and use as app_id */
-		shsurf = weston_desktop_surface_get_user_data(desktop_surface);
-		if (shsurf) {
-			api = shsurf->shell->xwayland_surface_api;
-			if (!api) {
-				api = weston_xwayland_surface_get_api(shsurf->shell->compositor);
-				shsurf->shell->xwayland_surface_api = api;
-			}
-			if (api && api->is_xwayland_surface(surface)) {
-				class_name = api->get_class_name(surface);
-				if (class_name) {
-					strncpy(app_id, class_name, app_id_size);
-					free(class_name);
-					/* app_id is from Xwayland */
-					is_wayland = false;
-				}
-			}
+	shsurf = weston_desktop_surface_get_user_data(desktop_surface);
+	if (!shsurf) 
+		return -1;
+
+	rail_state = (struct weston_surface_rail_state *)surface->backend_state;
+	if (!rail_state)
+		return -1;
+
+	/* first obtain class name from X server for X app, and use as app_id */
+	api = shsurf->shell->xwayland_surface_api;
+	if (!api) {
+		api = weston_xwayland_surface_get_api(shsurf->shell->compositor);
+		shsurf->shell->xwayland_surface_api = api;
+	}
+	if (api && api->is_xwayland_surface(surface)) {
+		class_name = api->get_class_name(surface);
+		if (class_name) {
+			strncpy(app_id, class_name, app_id_size);
+			free(class_name);
+			/* app_id is from Xwayland */
+			is_wayland = false;
 		}
+	}
+	/* if not, obtain application id specified via wayland interface */
+	if (app_id[0] == '\0') {
+		id = weston_desktop_surface_get_app_id(desktop_surface);
+		if (id) 
+			strncpy(app_id, id, app_id_size);
 	}
 
 	/* obtain pid for execuable path */
@@ -4697,8 +4700,21 @@ shell_backend_get_app_id(void *shell_context, struct weston_surface *surface, ch
 		strncpy(image_name, app_id, image_name_size);
 	}
 
-	shell_rdp_debug_verbose(shell, "shell_backend_get_app_id: 0x%p: pid:%d, app_id:%s, image_name:%s\n",
-		surface, pid, app_id, image_name);
+	shell_rdp_debug_verbose(shell, "shell_backend_get_app_id: 0x%p: pid:%d, app_id:%s, windowId:0x%x, image_name:%s\n",
+		surface, pid, app_id, rail_state->window_id, image_name);
+
+	/* obtain window icon for app */
+	if (!shsurf->icon.is_icon_set) {
+		/* TODO hook to meta data change notification */
+		shell_surface_set_window_icon(desktop_surface, 0, 0, 0, NULL, NULL);
+		shsurf->icon.is_icon_set = true;
+	}
+
+	/* associate window and app_id at client side */
+	if (!shsurf->app_id.is_window_app_id_associated && app_id[0] != '\0') {
+		app_list_associate_window_app_id(shsurf->shell, pid, app_id, rail_state->window_id);
+		shsurf->app_id.is_window_app_id_associated = true;
+	}
 
 	return pid;
 }
