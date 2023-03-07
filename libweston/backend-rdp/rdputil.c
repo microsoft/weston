@@ -364,7 +364,7 @@ dump_id_manager_state(FILE *fp, struct rdp_id_manager *id_manager, char* title)
 	fprintf(fp,"\n");
 }
 
-bool
+static bool
 rdp_event_loop_add_fd(struct wl_event_loop *loop, int fd, uint32_t mask, wl_event_loop_fd_func_t func, void *data, struct wl_event_source **event_source)
 {
 	*event_source = wl_event_loop_add_fd(loop, fd, 0, func, data);

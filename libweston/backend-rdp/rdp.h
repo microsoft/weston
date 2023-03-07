@@ -367,9 +367,6 @@ void rdp_id_manager_for_each(struct rdp_id_manager *id_manager, hash_table_itera
 BOOL rdp_id_manager_allocate_id(struct rdp_id_manager *id_manager, void *object, UINT32 *new_id);
 void rdp_id_manager_free_id(struct rdp_id_manager *id_manager, UINT32 id);
 void dump_id_manager_state(FILE *fp, struct rdp_id_manager *id_manager, char* title);
-bool rdp_defer_rdp_task_to_display_loop(RdpPeerContext *peerCtx, wl_event_loop_fd_func_t func, void *data, struct wl_event_source **event_source);
-void rdp_defer_rdp_task_done(RdpPeerContext *peerCtx);
-bool rdp_event_loop_add_fd(struct wl_event_loop *loop, int fd, uint32_t mask, wl_event_loop_fd_func_t func, void *data, struct wl_event_source **event_source);
 void rdp_dispatch_task_to_display_loop(RdpPeerContext *peerCtx, rdp_loop_task_func_t func, struct rdp_loop_task *task);
 bool rdp_initialize_dispatch_task_event_source(RdpPeerContext *peerCtx);
 void rdp_destroy_dispatch_task_event_source(RdpPeerContext *peerCtx);
