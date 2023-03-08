@@ -898,25 +898,25 @@ error_exit:
 }
 
 /* client's reply with error for data request, clean up */
-static int
-clipboard_data_source_fail(int fd, uint32_t mask, void *arg)
+static void
+clipboard_data_source_fail(bool freeOnly, void *arg)
 {
-	struct rdp_clipboard_data_source *source = (struct rdp_clipboard_data_source *)arg;
+	struct rdp_clipboard_data_source *source = wl_container_of(arg, source, task_base);
 	freerdp_peer *client = (freerdp_peer *)source->context;
 	RdpPeerContext *ctx = (RdpPeerContext *)client->context;
 	struct rdp_backend *b = ctx->rdpBackend;
 
-	rdp_debug_clipboard_verbose(b, "RDP %s (%p:%s) fd:%d\n", __func__,
-				    source, clipboard_data_source_state_to_string(source), fd);
+	rdp_debug_clipboard(b, "RDP %s (%p:%s) fd:%d\n", __func__,
+			    source,
+			    clipboard_data_source_state_to_string(source),
+			    source->data_source_fd);
 
 	assert_compositor_thread(b);
 
-	assert(source->data_source_fd == fd);
 	/* this data source must be tracked as inflight */
 	assert(source == ctx->clipboard_inflight_client_data_source);
-
-	wl_event_source_remove(source->transfer_event_source);
-	source->transfer_event_source = NULL;
+	/* transfer event source must not be set */
+	assert(source->transfer_event_source == NULL);
 
 	/* if data was received, but failed for another reason then keep data
 	 * and format index for future request,	otherwise data is purged at
@@ -942,8 +942,6 @@ clipboard_data_source_fail(int fd, uint32_t mask, void *arg)
 	/* clear inflight data source from client to server. */
 	ctx->clipboard_inflight_client_data_source = NULL;
 	clipboard_data_source_unref(source);
-
-	return 0;
 }
 
 /* Send client's clipboard data to the requesting application at server side */
@@ -1668,14 +1666,18 @@ clipboard_client_format_data_response(CliprdrServerContext *context, const CLIPR
 				    source->data_response_fail_count);
 
 	assert(source->transfer_event_source == NULL);
-	ret = rdp_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
-				    success ? clipboard_data_source_write : clipboard_data_source_fail,
-				    source, &source->transfer_event_source);
-	if (!ret) {
-		source->state = RDP_CLIPBOARD_SOURCE_FAILED;
-		weston_log("Client: %s (%p:%s) rdp_event_loop_add_fd failed\n",
-			   __func__, source, clipboard_data_source_state_to_string(source));
-		return -1;
+	if (success) {
+		ret = rdp_event_loop_add_fd(loop, source->data_source_fd, WL_EVENT_WRITABLE,
+					    clipboard_data_source_write,
+					    source, &source->transfer_event_source);
+		if (!ret) {
+			source->state = RDP_CLIPBOARD_SOURCE_FAILED;
+			weston_log("Client: %s (%p:%s) rdp_event_loop_add_fd failed\n",
+				   __func__, source, clipboard_data_source_state_to_string(source));
+			return -1;
+		}
+	} else {
+		rdp_dispatch_task_to_display_loop(ctx, clipboard_data_source_fail, &source->task_base);
 	}
 
 	return 0;
