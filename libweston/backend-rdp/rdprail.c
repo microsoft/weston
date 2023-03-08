@@ -3054,8 +3054,11 @@ rdp_rail_sync_window_zorder(struct weston_compositor *compositor)
 	if (!b->enable_window_zorder_sync)
 		return;
 
+	numWindowId = peer_ctx->windowId.id_used;
+	if (numWindowId == 0)
+		return;
 	/* +1 for marker window (aka proxy_surface) */
-	numWindowId = peer_ctx->windowId.id_used + 1;
+	numWindowId++;
 	windowIdArray = xzalloc(numWindowId * sizeof(uint32_t));
 
 	rdp_debug_verbose(b, "Dump Window Z order\n");
@@ -3083,21 +3086,22 @@ rdp_rail_sync_window_zorder(struct weston_compositor *compositor)
 		}
 	}
 	assert(iCurrent <= numWindowId);
-	assert(iCurrent > 0);
-	rdp_debug_verbose(b, "    send Window Z order: numWindowIds:%d\n",
-			  iCurrent);
+	if (iCurrent > 0) {
+		rdp_debug_verbose(b, "    send Window Z order: numWindowIds:%d\n",
+				  iCurrent);
 
-	window_order_info.fieldFlags = WINDOW_ORDER_TYPE_DESKTOP |
-				       WINDOW_ORDER_FIELD_DESKTOP_ZORDER |
-				       WINDOW_ORDER_FIELD_DESKTOP_ACTIVE_WND;
-	monitored_desktop_order.activeWindowId = windowIdArray[0];
-	monitored_desktop_order.numWindowIds = iCurrent;
-	monitored_desktop_order.windowIds = windowIdArray;
+		window_order_info.fieldFlags = WINDOW_ORDER_TYPE_DESKTOP |
+					       WINDOW_ORDER_FIELD_DESKTOP_ZORDER |
+					       WINDOW_ORDER_FIELD_DESKTOP_ACTIVE_WND;
+		monitored_desktop_order.activeWindowId = windowIdArray[0];
+		monitored_desktop_order.numWindowIds = iCurrent;
+		monitored_desktop_order.windowIds = windowIdArray;
 
-	client->context->update->window->MonitoredDesktop(client->context,
-							  &window_order_info,
-							  &monitored_desktop_order);
-	client->DrainOutputBuffer(client);
+		client->context->update->window->MonitoredDesktop(client->context,
+								  &window_order_info,
+								  &monitored_desktop_order);
+		client->DrainOutputBuffer(client);
+	}
 
 Exit:
 	free(windowIdArray);
