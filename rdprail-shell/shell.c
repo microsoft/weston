@@ -4138,7 +4138,10 @@ launch_desktop_shell_process(void *data)
 {
 	struct desktop_shell *shell = data;
 
-	assert(!shell->child.client);
+	/* check if it's already running */
+	if (shell->child.client)
+		return;
+
 	shell->child.client = weston_client_start(shell->compositor,
 						  shell->client);
 
