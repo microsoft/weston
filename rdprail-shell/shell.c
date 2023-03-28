@@ -1957,6 +1957,7 @@ grab_unsnap_motion(struct weston_pointer_grab *grab)
 
 	/* window is no longer in snap state */
 	shsurf->snapped.is_snapped = false;
+	rail_state->isWindowSnapped = false;
 	rail_state->showState_requested = RDP_WINDOW_SHOW;
 	shsurf->saved_showstate_valid = false;
 
@@ -1979,7 +1980,7 @@ grab_unsnap_motion(struct weston_pointer_grab *grab)
 	weston_view_set_position(shsurf->view, cx, cy);
 	move->dx = wl_fixed_from_int(cx - wl_fixed_to_int(pointer->x));
 
-	shell_rdp_debug_verbose(shsurf->shell, "%s: restore surface:%p at (%d,%d) (%dx%d), new move_dx:%d\n",
+	shell_rdp_debug(shsurf->shell, "%s: restore surface:%p at (%d,%d) (%dx%d), new move_dx:%d\n",
 			__func__, surface, cx, cy,
 			shsurf->snapped.saved_width,
 			shsurf->snapped.saved_height,
@@ -2921,6 +2922,7 @@ shell_backend_request_window_restore(struct weston_surface *surface)
 		weston_view_set_position(shsurf->view, 
 			shsurf->snapped.saved_x, shsurf->snapped.saved_y);
 		shsurf->snapped.is_snapped = false;
+		rail_state->isWindowSnapped = false;
 	} else if (shsurf->state.fullscreen) {
 		/* fullscreen is treated as normal (aka restored) state in
 		   Windows client, thus there should be not be 'restore'
@@ -2976,9 +2978,11 @@ shell_backend_request_window_snap(struct weston_surface *surface, int x, int y, 
 	struct weston_view *view;
 	struct shell_surface *shsurf = get_shell_surface(surface);
 	struct weston_geometry geometry;
+	struct weston_surface_rail_state *rail_state =
+		(struct weston_surface_rail_state *)surface->backend_state;
 
 	view = get_default_view(surface);
-	if (!view || !shsurf)
+	if (!view || !shsurf || !rail_state)
 		return;
 
 	if (shsurf->shell->is_localmove_pending) {
@@ -3021,6 +3025,7 @@ shell_backend_request_window_snap(struct weston_surface *surface, int x, int y, 
 		shsurf->snapped.saved_height = geometry.height;
 	}
 	shsurf->snapped.is_snapped = true;
+	rail_state->isWindowSnapped = true;
 
 	if (surface->width != width || surface->height != height) {
 		struct weston_desktop_surface *desktop_surface =

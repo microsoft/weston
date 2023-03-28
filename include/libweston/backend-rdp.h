@@ -236,6 +236,7 @@ struct weston_surface_rail_state {
 	uint32_t parent_window_id;
 	bool isCursor;
 	bool isWindowCreated;
+	bool isWindowSnapped;
 	uint32_t showState_requested;
 	uint32_t showState;
 	bool forceRecreateSurface;
