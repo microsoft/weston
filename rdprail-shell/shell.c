@@ -1947,7 +1947,8 @@ grab_unsnap_motion(struct weston_pointer_grab *grab)
 		weston_desktop_surface_get_surface(shsurf->desktop_surface);
 	struct weston_surface_rail_state *rail_state =
 		(struct weston_surface_rail_state *)surface->backend_state;
-	int cx, cy, dx;
+	int cx, cy;
+	float dx, move_dx;
 
 	if (!shsurf->snapped.is_snapped)
 		return;
@@ -1961,30 +1962,37 @@ grab_unsnap_motion(struct weston_pointer_grab *grab)
 	rail_state->showState_requested = RDP_WINDOW_SHOW;
 	shsurf->saved_showstate_valid = false;
 
+	/* Reposition the window such that the mouse remain within the 
+	 * new bound of the window after resize. */
+	dx = wl_fixed_to_double(move->dx) / surface->width;
+	dx = fabsf(dx);
+	cx = wl_fixed_to_int(pointer->x) - (int)(shsurf->snapped.saved_surface_width * dx);
+	cy = shsurf->view->geometry.y;
+
+	/* adjust move->dx with new position */
+	move_dx = wl_fixed_from_int(cx - wl_fixed_to_int(pointer->x));
+
+	shell_rdp_debug_verbose(shsurf->shell, "%s: restore surface:%p at (%d,%d) size:%dx%d from (%d,%d) size:%dx%d\n",
+			__func__, surface,
+			cx, cy,
+			shsurf->snapped.saved_width, shsurf->snapped.saved_height,
+			(int)shsurf->view->geometry.x, (int)shsurf->view->geometry.y,
+			surface->width, surface->height);
+	shell_rdp_debug_verbose(shsurf->shell, "%s: restore surface:%p, grab ratio:%f, move_dx:%d->%d\n",
+			__func__, surface,
+			dx,
+			wl_fixed_to_int(move->dx), wl_fixed_to_int(move_dx));
+
 	/* restore original size */
 	weston_desktop_surface_set_size(shsurf->desktop_surface,
 			shsurf->snapped.saved_width,
 			shsurf->snapped.saved_height);
 
-	/* Reposition the window such that the mouse remain within the 
-	 * new bound of the window after resize. */
-	dx = wl_fixed_to_int(move->dx);
-	if (abs(dx) < surface->width / 2) {
-		/* keep left edge pos, resize from right edge */
-		cx = shsurf->view->geometry.x;
-	} else {
-		/* keep right edge pos, resize from left edge */
-		cx = (shsurf->view->geometry.x + surface->width) - shsurf->snapped.saved_surface_width;
-	}
-	cy = shsurf->view->geometry.y + wl_fixed_to_int(move->dy);
+	/* and move to new position reletive to pointer */
 	weston_view_set_position(shsurf->view, cx, cy);
-	move->dx = wl_fixed_from_int(cx - wl_fixed_to_int(pointer->x));
 
-	shell_rdp_debug(shsurf->shell, "%s: restore surface:%p at (%d,%d) (%dx%d), new move_dx:%d\n",
-			__func__, surface, cx, cy,
-			shsurf->snapped.saved_width,
-			shsurf->snapped.saved_height,
-			wl_fixed_to_int(move->dx));
+	/* update move_dx based on new position */
+	move->dx = move_dx;
 }
 
 static struct desktop_shell *
