@@ -358,16 +358,14 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 					     &snap_rect.y,
 					     &snap_rect.width,
 					     &snap_rect.height);
-			if (is_window_shadow_remoting_disabled(peer_ctx)) {
-				/* offset window shadow area */
-				/* window_geometry here is last commited geometry */
-				api->get_window_geometry(surface,
-							 &geometry);
-				snap_rect.x -= geometry.x;
-				snap_rect.y -= geometry.y;
-				snap_rect.width += (surface->width - geometry.width);
-				snap_rect.height += (surface->height - geometry.height);
-			}
+			/* offset window shadow area as there is no shadow when snapped */
+			/* window_geometry here is last commited geometry */
+			api->get_window_geometry(surface,
+						 &geometry);
+			snap_rect.x -= geometry.x;
+			snap_rect.y -= geometry.y;
+			snap_rect.width += (surface->width - geometry.width);
+			snap_rect.height += (surface->height - geometry.height);
 			api->request_window_snap(surface,
 						 snap_rect.x,
 						 snap_rect.y,
@@ -440,7 +438,8 @@ rail_client_WindowMove_callback(bool freeOnly, void *arg)
 					     &windowMoveRect.y,
 					     &windowMoveRect.width,
 					     &windowMoveRect.height);
-			if (is_window_shadow_remoting_disabled(peer_ctx)) {
+			if (is_window_shadow_remoting_disabled(peer_ctx) ||
+				rail_state->isWindowSnapped) {
 				/* offset window shadow area */
 				/* window_geometry here is last commited geometry */
 				api->get_window_geometry(surface,
@@ -2086,7 +2085,8 @@ rdp_rail_update_window(struct weston_surface *surface,
 				  __func__, rail_state->window_id);
 	}
 
-	if (is_window_shadow_remoting_disabled(peer_ctx)) { 
+	if (is_window_shadow_remoting_disabled(peer_ctx) ||
+		rail_state->isWindowSnapped) {
 		/* drop window shadow area */
 		api->get_window_geometry(surface, &geometry);
 
@@ -2132,8 +2132,8 @@ rdp_rail_update_window(struct weston_surface *surface,
 				     &newClientPos.width,
 				     &newClientPos.height);
 
-		if (is_window_shadow_remoting_disabled(peer_ctx) &&
-			!rail_state->isWindowSnapped) {
+		if (is_window_shadow_remoting_disabled(peer_ctx) ||
+			rail_state->isWindowSnapped) {
 			to_client_coordinate(peer_ctx, surface->output,
 					     &window_margin_left,
 					     &window_margin_top,
@@ -2621,7 +2621,8 @@ rdp_rail_update_window(struct weston_surface *surface,
 			}
 			/* damage_box represents damaged area in contentBuffer */
 			/* if it's not remoting window shadow, exclude the area from damage_box */
-			if (is_window_shadow_remoting_disabled(peer_ctx)) {
+			if (is_window_shadow_remoting_disabled(peer_ctx) ||
+				rail_state->isWindowSnapped) {
 				if (damage_box.x1 < content_buffer_window_geometry.x)
 					damage_box.x1 = content_buffer_window_geometry.x;
 				if (damage_box.x2 > content_buffer_window_geometry.x + content_buffer_window_geometry.width)
