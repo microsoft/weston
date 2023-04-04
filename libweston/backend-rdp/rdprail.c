@@ -333,7 +333,7 @@ rail_client_SnapArrange_callback(bool freeOnly, void *arg)
 	pixman_rectangle32_t snap_rect;
 	struct weston_geometry geometry;
 
-	rdp_debug(b, "Client: SnapArrange: WindowId:0x%x at (%d, %d) %dx%d\n",
+	rdp_debug_verbose(b, "Client: SnapArrange: WindowId:0x%x at (%d, %d) %dx%d\n",
 		  snap->windowId,
 		  snap->left,
 		  snap->top,
