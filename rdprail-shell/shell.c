@@ -1848,10 +1848,16 @@ unset_maximized(struct shell_surface *shsurf)
 	shsurf->saved_showstate_valid = false;
 
 	if (shsurf->snapped.is_snapped) {
-		/* Restore to snap state.
-		 */
-		weston_desktop_surface_set_size(shsurf->desktop_surface, shsurf->snapped.width, shsurf->snapped.height);
-		weston_view_set_position(shsurf->view, shsurf->snapped.x, shsurf->snapped.y);
+		/* If previously snapped state, don't go back to snap, but restore */
+		/* weston_desktop_surface_set_size() expects the size in window geometry coordinates */
+		/* saved_width and saved_height is already based on window geometry. */
+		weston_desktop_surface_set_size(
+			shsurf->desktop_surface,
+			shsurf->snapped.saved_width, shsurf->snapped.saved_height);
+		weston_view_set_position(shsurf->view, 
+			shsurf->snapped.saved_x, shsurf->snapped.saved_y);
+		shsurf->snapped.is_snapped = false;
+		rail_state->isWindowSnapped = false;
 	} else {
 		/* Restore to previous size or make up one if the window started maximized.
 		 */
