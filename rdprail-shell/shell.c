@@ -2008,13 +2008,13 @@ grab_unsnap_motion(struct weston_pointer_grab *grab)
 	/* adjust move->dx based on new position */
 	move_dx = wl_fixed_from_int(cx) - pointer->grab_x;
 
-	shell_rdp_debug(shsurf->shell, "%s: restore surface:%p at (%d,%d) size:%dx%d from (%d,%d) size:%dx%d\n",
+	shell_rdp_debug_verbose(shsurf->shell, "%s: restore surface:%p at (%d,%d) size:%dx%d from (%d,%d) size:%dx%d\n",
 			__func__, surface,
 			cx, cy,
 			shsurf->snapped.saved_width, shsurf->snapped.saved_height,
 			(int)shsurf->view->geometry.x, (int)shsurf->view->geometry.y,
 			surface->width, surface->height);
-	shell_rdp_debug(shsurf->shell, "%s: restore surface:%p, geometry_offset:%d, grab_ratio:%f, move_dx:%d->%d\n",
+	shell_rdp_debug_verbose(shsurf->shell, "%s: restore surface:%p, geometry_offset:%d, grab_ratio:%f, move_dx:%d->%d\n",
 			__func__, surface, geometry_offset, dx,
 			wl_fixed_to_int(move->dx), wl_fixed_to_int(move_dx));
 
@@ -2052,11 +2052,11 @@ grab_unmaximized_motion(struct weston_pointer_grab *grab)
 
 	/* Reposition the window such that the mouse remain within the 
 	 * new bound of the window after resize. */
-	/* calc based on pointer position based on current (snapped) window size */
+	/* calc based on pointer position based on current (maximized) window size */
 	/* move->dx is offset of pointer position from window origin */
 	dx = wl_fixed_to_double(move->dx) / surface->width;
 	dx = fabsf(dx);
-	/* calc the distance based on unsnapped window size */
+	/* calc the distance based on restored window size */
 	cx = shsurf->maximized.saved_width * dx;
 	/* add window geometry offset */
 	cx += geometry_offset;
@@ -2066,13 +2066,13 @@ grab_unmaximized_motion(struct weston_pointer_grab *grab)
 	/* adjust move->dx based on new position */
 	move_dx = wl_fixed_from_int(cx) - pointer->grab_x;
 
-	shell_rdp_debug(shsurf->shell, "%s: restore surface:%p at (%d,%d) size:%dx%d from (%d,%d) size:%dx%d\n",
+	shell_rdp_debug_verbose(shsurf->shell, "%s: restore surface:%p at (%d,%d) size:%dx%d from (%d,%d) size:%dx%d\n",
 			__func__, surface,
 			cx, cy,
 			shsurf->maximized.saved_width, shsurf->maximized.saved_height,
 			(int)shsurf->view->geometry.x, (int)shsurf->view->geometry.y,
 			surface->width, surface->height);
-	shell_rdp_debug(shsurf->shell, "%s: restore surface:%p, geometry_offset:%d, grab_ratio:%f, move_dx:%d->%d\n",
+	shell_rdp_debug_verbose(shsurf->shell, "%s: restore surface:%p, geometry_offset:%d, grab_ratio:%f, move_dx:%d->%d\n",
 			__func__, surface, geometry_offset, dx,
 			wl_fixed_to_int(move->dx), wl_fixed_to_int(move_dx));
 
