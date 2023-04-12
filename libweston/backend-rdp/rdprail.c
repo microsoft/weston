@@ -2090,7 +2090,7 @@ rdp_rail_update_window(struct weston_surface *surface,
 		/* drop window shadow area */
 		api->get_window_geometry(surface, &geometry);
 
-		if (!rail_state->isWindowSnapped) {
+		if (is_window_shadow_remoting_disabled(peer_ctx)) {
 			/* calculate window margin from input extents */
 			if (geometry.x > max(0, surface->input.extents.x1))
 				window_margin_left = geometry.x -
@@ -2301,11 +2301,14 @@ rdp_rail_update_window(struct weston_surface *surface,
 		}
 
 		if (is_window_shadow_remoting_disabled(peer_ctx)) {
-			if (rail_state->forceUpdateWindowState ||
-			    rail_state->window_margin_left != window_margin_left ||
-			    rail_state->window_margin_top != window_margin_top ||
-			    rail_state->window_margin_right != window_margin_right ||
-			    rail_state->window_margin_bottom != window_margin_bottom) {
+			/* Due to how mstsc/msrdc works, window margin must not be set
+			   while window is snapped unless they are changed. */
+			if ((rail_state->forceUpdateWindowState &&
+				!rail_state->isWindowSnapped) ||
+				rail_state->window_margin_left != window_margin_left ||
+				rail_state->window_margin_top != window_margin_top ||
+				rail_state->window_margin_right != window_margin_right ||
+				rail_state->window_margin_bottom != window_margin_bottom) {
 				/* add resize margin area */
 				window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_RESIZE_MARGIN_X |
 								WINDOW_ORDER_FIELD_RESIZE_MARGIN_Y;
