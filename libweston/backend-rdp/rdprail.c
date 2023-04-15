@@ -1001,6 +1001,14 @@ rail_client_LanguageImeInfo_callback(bool freeOnly, void *arg)
 						__func__, new_keyboard_layout,
 						settings->KeyboardType,
 						settings->KeyboardSubType);
+
+                                rdp_debug_error(b, "%s: Resetting default keymap\n", __func__);
+                                keymap = xkb_keymap_new_from_names(peer_ctx->item.seat->compositor->xkb_context,
+                                                                   &peer_ctx->item.seat->compositor->xkb_names,
+                                                                   0);
+                                weston_seat_update_keymap(peer_ctx->item.seat, keymap);
+                                xkb_keymap_unref(keymap);
+                                settings->KeyboardLayout = new_keyboard_layout;
 			}
 		}
 	}
