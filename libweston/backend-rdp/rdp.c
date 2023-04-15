@@ -1007,11 +1007,6 @@ convert_rdp_keyboard_to_xkb_rule_names(
 		xkbRuleNames->layout = "us";
 		xkbRuleNames->variant = 0;
 	}
-	/* when no layout, default to "us" */
-	if (!xkbRuleNames->layout) {
-		xkbRuleNames->layout = "us";
-		xkbRuleNames->variant = 0;
-	}
 
 	weston_log("%s: matching model=%s layout=%s variant=%s options=%s\n", __FUNCTION__,
 		xkbRuleNames->model, xkbRuleNames->layout, xkbRuleNames->variant, xkbRuleNames->options);
