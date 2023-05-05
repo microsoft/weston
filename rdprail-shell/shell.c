@@ -44,6 +44,7 @@
 #include <libweston/config-parser.h>
 #include "shared/helpers.h"
 #include "shared/timespec-util.h"
+#include "shared/image-loader.h"
 #include <libweston-desktop/libweston-desktop.h>
 #include <libweston/libweston.h>
 #include <libweston/backend.h>
@@ -802,14 +803,14 @@ shell_configuration(struct desktop_shell *shell)
 	/* default icon path is provided from WSL via enviromment variable */
 	s = getenv("WSL2_DEFAULT_APP_ICON");
 	if (s && (strcmp(s, "disabled") != 0))
-		shell->image_default_app_icon = load_icon_image(shell, s);
+		shell->image_default_app_icon = load_image(s);
 	shell_rdp_debug(shell, "RDPRAIL-shell: WSL2_DEFAULT_APP_ICON:%s (loaded:%s)\n",
 		s, shell->image_default_app_icon ? "yes" : "no");
 
 	/* default overlay icon path is provided from WSL via enviromment variable */
 	s = getenv("WSL2_DEFAULT_APP_OVERLAY_ICON");
 	if (s && (strcmp(s, "disabled") != 0))
-		shell->image_default_app_overlay_icon = load_icon_image(shell, s);
+		shell->image_default_app_overlay_icon = load_image(s);
 	shell_rdp_debug(shell, "RDPRAIL-shell: WSL2_DEFAULT_APP_OVERLAY_ICON:%s (loaded:%s)\n",
 		s, shell->image_default_app_overlay_icon ? "yes" : "no");
 

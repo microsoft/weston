@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 #ifdef HAVE_LIBRSVG2
 #include <librsvg/rsvg.h>
@@ -36,27 +37,26 @@
 
 #include "shell.h"
 
-#include "shared/image-loader.h"
-
 #ifdef HAVE_LIBRSVG2
-static pixman_image_t *
-load_svg(struct desktop_shell *shell, const char *filename)
+pixman_image_t *
+load_image_svg(struct desktop_shell *shell, const void *data, uint32_t data_len, const char *filename)
 {
 	GError *error = NULL;
 	RsvgHandle *rsvg = NULL;
 	cairo_surface_t *surface = NULL;
 	cairo_t *cr = NULL;
 	pixman_image_t *image = NULL;
+	cairo_status_t status;
 
 	/* DEPRECATED: g_type_init(); rsvg_init(); */
 	/* rsvg_init has been deprecated since version 2.36 and should not be used
 	   in newly-written code. Use g_type_init() */
 	/* g_type_init has been deprecated since version 2.36 and should not be used
 	   in newly-written code. the type system is now initialised automatically. */
-	rsvg = rsvg_handle_new_from_file(filename, &error);
+	rsvg = rsvg_handle_new_from_data(data, data_len, &error);
 	if (!rsvg) {
-		shell_rdp_debug(shell, "%s: rsvg_handle_new_from_file failed %s\n",
-			__func__, filename);
+		shell_rdp_debug(shell, "%s: rsvg_handle_new_from_file failed %s %s\n",
+			__func__, filename, error ? error->message : "(no error message)");
 		goto Exit;
 	}
 
@@ -102,6 +102,12 @@ load_svg(struct desktop_shell *shell, const char *filename)
 	pixman_image_ref(image);
 
 Exit:
+	status = cairo_status(cr);
+	if (status != CAIRO_STATUS_SUCCESS) {
+		shell_rdp_debug(shell, "%s: cairo status error %s\n",
+			__func__, cairo_status_to_string(status));
+	}
+
 	if (cr)
 		cairo_destroy(cr);
 
@@ -123,18 +129,76 @@ Exit:
 	/* rsvg_term has been deprecated since version 2.36 and should not be used
 	   in newly-written code. There is no need to de-initialize librsvg. */
 
-	return image;
-}
-#endif // HAVE_LIBRSVG2
+	if (error)
+		g_error_free(error);
 
-pixman_image_t *
-load_icon_image(struct desktop_shell *shell, const char *filename)
-{
-	pixman_image_t *image;
-	image = load_image(filename);
-#ifdef HAVE_LIBRSVG2
-	if (!image)
-		image = load_svg(shell, filename);
-#endif // HAVE_LIBRSVG2
 	return image;
 }
+
+void *
+load_file_svg(struct desktop_shell *shell, const char *filename, uint32_t *data_len)
+{
+	FILE *fp;
+	void *data = NULL;
+	int len, ret;
+
+	fp = fopen(filename, "rb");
+	if (!fp) {
+		shell_rdp_debug(shell, "%s: fopen failed %s %s\n",
+			__func__, filename, strerror(errno));
+		goto Fail;
+	}
+
+	if (fseek(fp, 0, SEEK_END) != 0) {
+		shell_rdp_debug(shell, "%s: fseek failed %s %s\n",
+			__func__, filename, strerror(errno));
+		goto Fail;
+	}
+	len = ftell(fp);
+	rewind(fp);
+
+	data = malloc(len);
+	if (!data) {
+		shell_rdp_debug(shell, "%s: malloc(%d) failed %s %s\n",
+			__func__, len, filename, strerror(errno));
+		goto Fail;
+	}
+
+	ret = fread(data, 1, len, fp);
+	if (ret != len) {
+		shell_rdp_debug(shell, "%s: fread failed, expect %d but returned %d %s %s\n",
+			__func__, len, ret, filename, strerror(errno));
+		goto Fail;
+	}
+
+	goto Exit;
+
+Fail:
+	if (fp)
+		fclose(fp);
+
+	if (data)
+		free(data);
+
+	data = NULL;
+	len = 0;
+
+Exit:
+	*data_len = len; 
+
+	return data;
+}
+#else
+pixman_image_t *
+load_image_svg(struct desktop_shell *, const void *, uint32_t)
+{
+	return NULL;
+}
+
+void *
+load_file_svg(struct desktop_shell *, const char *, uint32_t *data_len)
+{
+	*data_len = 0;
+	return NULL;
+}
+#endif // HAVE_LIBRSVG2
