@@ -174,9 +174,6 @@ load_file_svg(struct desktop_shell *shell, const char *filename, uint32_t *data_
 	goto Exit;
 
 Fail:
-	if (fp)
-		fclose(fp);
-
 	if (data)
 		free(data);
 
@@ -184,6 +181,9 @@ Fail:
 	len = 0;
 
 Exit:
+	if (fp)
+		fclose(fp);
+
 	*data_len = len; 
 
 	return data;
