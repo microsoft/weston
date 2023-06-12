@@ -904,6 +904,7 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{KBD_SLOVENIAN, "si", 0},
 	{KBD_ESTONIAN, "ee", 0},
 	{KBD_LATVIAN, "lv", 0},
+	{KBD_LITHUANIAN, "lt", 0},
 	{KBD_LITHUANIAN_IBM, "lt", "ibm"},
 	// 0x429 (KBD_FARSI) is for Persian(Iran)
 	// TODO: define exact match with Windows layout in Xkb.
