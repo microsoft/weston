@@ -957,7 +957,7 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{KBD_INUKTITUT_LATIN, "ca", "ike"},
 	{KBD_CANADIAN_FRENCH_LEGACY, "ca", "fr-legacy"},
 	{KBD_SERBIAN_CYRILLIC, "rs", 0},
-	{KBD_CANADIAN_FRENCH, "ca", "fr-legacy"},
+	{KBD_CANADIAN_FRENCH, "ca", 0},
 	{KBD_SWISS_FRENCH, "ch", "fr"},
 	{KBD_BOSNIAN, "ba", 0},
 	{KBD_IRISH, 0, 0},
