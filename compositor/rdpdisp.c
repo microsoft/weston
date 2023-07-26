@@ -280,18 +280,41 @@ disp_monitor_validate_and_compute_layout(struct weston_compositor *ec)
 	} else {
 		i = 0;
 
-		/* no scaling is used or monitor placement is too complex to scale in weston space, fallback to 1.0f */
-		wl_list_for_each(iter, &ec->head_list, compositor_link) {
-			rdpMonitor *head = api->head_get_rdpmonitor(iter);
+		struct wet_rdp_params *rdp_params = wet_get_rdp_params(ec);
+		if (rdp_params->debug_desktop_scaling_factor)
+		{
+			float scale = rdp_params->debug_desktop_scaling_factor / 100.0f;
 
-			rectWeston[i].width = head->width;
-			rectWeston[i].height = head->height;
-			rectWeston[i].x = head->x + abs(upperLeftX);
-			rectWeston[i].y = head->y + abs(upperLeftY);
-			head->attributes.desktopScaleFactor = 0.0;
-			assert(rectWeston[i].x >= 0);
-			assert(rectWeston[i].y >= 0);
-			i++;
+			weston_log("Forcing debug desktop scaling factor [%2f] uniformly on all monitors\n", scale);
+
+			wl_list_for_each(iter, &ec->head_list, compositor_link) {
+				rdpMonitor *head = api->head_get_rdpmonitor(iter);
+
+				rectWeston[i].width = head->width / scale;
+				rectWeston[i].height = head->height / scale;
+				rectWeston[i].x = (head->x + abs(upperLeftX)) / scale;
+				rectWeston[i].y = (head->y + abs(upperLeftY)) / scale;
+				head->attributes.desktopScaleFactor = rdp_params->debug_desktop_scaling_factor;
+				assert(rectWeston[i].x >= 0);
+				assert(rectWeston[i].y >= 0);
+				i++;
+			}
+		}
+		else
+		{
+			/* no scaling is used or monitor placement is too complex to scale in weston space, fallback to 1.0f */
+			wl_list_for_each(iter, &ec->head_list, compositor_link) {
+				rdpMonitor *head = api->head_get_rdpmonitor(iter);
+
+				rectWeston[i].width = head->width;
+				rectWeston[i].height = head->height;
+				rectWeston[i].x = head->x + abs(upperLeftX);
+				rectWeston[i].y = head->y + abs(upperLeftY);
+				head->attributes.desktopScaleFactor = 0.0;
+				assert(rectWeston[i].x >= 0);
+				assert(rectWeston[i].y >= 0);
+				i++;
+			}
 		}
 	}
 
