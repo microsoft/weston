@@ -3707,6 +3707,7 @@ rdp_rail_send_window_minmax_info(
 	struct weston_compositor *compositor = surface->compositor;
 	struct weston_surface_rail_state *rail_state = surface->backend_state;
 	struct rdp_backend *b = to_rdp_backend(compositor);
+	struct weston_output *output = rdp_output_get_primary(compositor);
 	RdpPeerContext *peer_ctx;
 	RailServerContext *rail_ctx;
 	RAIL_MINMAXINFO_ORDER minmax_order;
@@ -3719,14 +3720,16 @@ rdp_rail_send_window_minmax_info(
 	peer_ctx = (RdpPeerContext *)b->rdp_peer->context;
 
 	/* apply global to output transform, and translate to client coordinate */
-	if (surface->output) {
-		to_client_coordinate(peer_ctx, surface->output,
+	/* minmax info is based on primary monitor */
+	/* https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-minmaxinfo */
+	if (output) {
+		to_client_coordinate(peer_ctx, output,
 				     &maxPosSize->x, &maxPosSize->y,
 				     &maxPosSize->width, &maxPosSize->height);
-		to_client_coordinate(peer_ctx, surface->output,
+		to_client_coordinate(peer_ctx, output,
 				     &dummyX, &dummyY,
 				     &minTrackSize->width, &minTrackSize->height);
-		to_client_coordinate(peer_ctx, surface->output,
+		to_client_coordinate(peer_ctx, output,
 				     &dummyX, &dummyY,
 				     &maxTrackSize->width, &maxTrackSize->height);
 	}

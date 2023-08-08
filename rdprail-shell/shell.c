@@ -541,8 +541,8 @@ shell_send_minmax_info(struct weston_surface *surface)
 		output = get_default_output(shell->compositor);
 		assert(output);
 
-		maxPosSize.x = 0;
-		maxPosSize.y = 0;
+		maxPosSize.x = output->x;
+		maxPosSize.y = output->y;
 		maxPosSize.width = output->width;
 		maxPosSize.height = output->height;
 
@@ -848,11 +848,8 @@ shell_configuration(struct desktop_shell *shell)
 struct weston_output *
 get_default_output(struct weston_compositor *compositor)
 {
-	if (wl_list_empty(&compositor->output_list))
-		return NULL;
-
-	return container_of(compositor->output_list.next,
-			    struct weston_output, link);
+	const struct weston_rdp_output_api *api = weston_rdp_output_get_api(compositor);
+	return api->output_get_primary(compositor);
 }
 
 static struct weston_output *
@@ -2935,6 +2932,10 @@ set_maximized(struct shell_surface *shsurf, bool maximized)
 		shsurf->maximized.saved_surface_width = surface->width;
 		shsurf->maximized.saved_width = geometry.width;
 		shsurf->maximized.saved_height = geometry.height;
+
+		/* send current minmax info to client */
+		shell_send_minmax_info
+			(weston_desktop_surface_get_surface(shsurf->desktop_surface));
 	} else {
 		if (shsurf->saved_showstate_valid)
 			rail_state->showState_requested = shsurf->saved_showstate;

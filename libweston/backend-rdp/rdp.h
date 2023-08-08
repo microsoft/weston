@@ -340,6 +340,7 @@ struct rdp_loop_task {
 void convert_rdp_keyboard_to_xkb_rule_names(UINT32 KeyboardType, UINT32 KeyboardSubType, UINT32 KeyboardLayout, struct xkb_rule_names *xkbRuleNames);
 struct rdp_head * rdp_head_create(struct weston_compositor *compositor, BOOL isPrimary, rdpMonitor *config);
 void rdp_head_destroy(struct weston_compositor *compositor, struct rdp_head *head);
+struct weston_output *rdp_output_get_primary(struct weston_compositor *compositor);
 
 // rdputil.c
 pid_t rdp_get_tid(void);

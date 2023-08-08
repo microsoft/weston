@@ -450,6 +450,22 @@ rdp_head_get_rdpmonitor(const struct weston_head *base)
 	return &h->config;
 }
 
+struct weston_output *
+rdp_output_get_primary(struct weston_compositor *compositor)
+{
+	struct rdp_backend *b = to_rdp_backend(compositor);
+	struct weston_head *iter;
+	wl_list_for_each(iter, &compositor->head_list, compositor_link) {
+		rdpMonitor *cur = rdp_head_get_rdpmonitor(iter);
+		if (cur->is_primary)
+			return iter->output;
+	}
+
+	rdp_debug_error(b, "%s: Didn't find primary output, return the first one\n", __func__);
+	return container_of(compositor->output_list.next,
+			    struct weston_output, link);
+}
+
 static int
 rdp_output_enable(struct weston_output *base)
 {
@@ -1992,6 +2008,7 @@ rdp_generate_session_tls(struct rdp_backend *b)
 static const struct weston_rdp_output_api api = {
 	rdp_head_get_rdpmonitor,
 	rdp_output_set_mode,
+	rdp_output_get_primary,
 };
 
 static int create_vsock_fd(int port)

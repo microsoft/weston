@@ -46,6 +46,9 @@ struct weston_rdp_output_api {
 
 	/** Set mode for an output */
 	void (*output_set_mode)(struct weston_output *base, struct weston_mode *mode);
+
+	/** Get primary output */
+	struct weston_output *(*output_get_primary)(struct weston_compositor *compositor);
 };
 
 static inline const struct weston_rdp_output_api *
