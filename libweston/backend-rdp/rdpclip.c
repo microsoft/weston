@@ -244,7 +244,8 @@ clipboard_process_text_utf8(struct rdp_clipboard_data_source *source, bool is_se
 						data_contents.data,
 						data_size,
 						NULL, NULL);
-		assert(data_contents.size == data_size);
+		if (data_contents.size != data_size)
+			goto error_return;
 	}
 
 	/* swap the data_contents with new one */
