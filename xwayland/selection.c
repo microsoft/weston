@@ -336,6 +336,8 @@ weston_wm_send_selection_notify(struct weston_wm *wm, xcb_atom_t property)
 	xcb_send_event(wm->conn, 0, /* propagate */
 		       wm->selection_request.requestor,
 		       XCB_EVENT_MASK_NO_EVENT, (char *) &selection_notify);
+
+	xcb_flush(wm->conn);
 }
 
 static void
@@ -467,7 +469,6 @@ weston_wm_read_data_source(int fd, uint32_t mask, void *data)
 		/* Non-incr transfer all done. */
 		weston_wm_flush_source_data(wm);
 		weston_wm_send_selection_notify(wm, wm->selection_request.property);
-		xcb_flush(wm->conn);
 		if (wm->property_source)
 			wl_event_source_remove(wm->property_source);
 		wm->property_source = NULL;
@@ -791,7 +792,6 @@ weston_wm_seat_destroyed(struct wl_listener *listener, void *data)
 void
 weston_wm_selection_init(struct weston_wm *wm)
 {
-	struct weston_seat *seat;
 	uint32_t values[1], mask;
 
 	wl_list_init(&wm->selection_listener.link);
