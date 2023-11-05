@@ -147,6 +147,7 @@ char *icon_folder[] = {
 	"/usr/share/icons/HighContrast/22x22/apps/",
 	"/usr/share/icons/HighContrast/16x16/apps/",
 	"/usr/share/icons/hicolor/scalable/apps/", /* use scalable(= svg) only when no png. */
+	"/var/lib/flatpak/exports/share/icons/hicolor/scalable/apps/", /* use scalable(= svg) only when no png. */
 	"/usr/share/icons/HighContrast/scalable/apps/", /* use scalable (= svg) only when no png. */
 };
 
