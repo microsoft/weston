@@ -3629,6 +3629,7 @@ rdp_rail_sync_window_status(freerdp_peer *client)
 	RailServerContext *rail_ctx = peer_ctx->rail_server_context;
 	rdpUpdate *update = b->rdp_peer->context->update;
 	struct weston_view *view;
+	bool anyWindowCreated = false;
 
 	assert_compositor_thread(b);
 
@@ -3729,11 +3730,15 @@ rdp_rail_sync_window_status(freerdp_peer *client)
 						rdp_rail_create_window(NULL, sub->surface);
 				}
 			}
+			anyWindowCreated = true;
 		}
 	}
 
 	/* this assume repaint to be scheduled on idle loop, not directly from here */
-	weston_compositor_damage_all(b->compositor);
+	if (anyWindowCreated) {
+		weston_compositor_wake(b->compositor);
+		weston_compositor_damage_all(b->compositor);
+	}
 }
 
 static void
