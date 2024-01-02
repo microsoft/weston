@@ -3711,7 +3711,7 @@ rdp_rail_sync_window_status(freerdp_peer *client)
 
 	peer_ctx->activationRailCompleted = true;
 
-	wl_list_for_each(view, &b->compositor->view_list, link) {
+	wl_list_for_each_reverse(view, &b->compositor->view_list, link) {
 		struct weston_surface *surface = view->surface;
 		struct weston_subsurface *sub;
 		struct weston_surface_rail_state *rail_state = surface->backend_state;
@@ -3722,7 +3722,7 @@ rdp_rail_sync_window_status(freerdp_peer *client)
 			if (rail_state && rail_state->window_id) {
 				if (api && api->request_window_icon)
 					api->request_window_icon(surface);
-				wl_list_for_each(sub, &surface->subsurface_list, parent_link) {
+				wl_list_for_each_reverse(sub, &surface->subsurface_list, parent_link) {
 					struct weston_surface_rail_state *sub_rail_state = sub->surface->backend_state;
 					if (sub->surface == surface)
 						continue;
@@ -3734,8 +3734,10 @@ rdp_rail_sync_window_status(freerdp_peer *client)
 		}
 	}
 
-	/* this assume repaint to be scheduled on idle loop, not directly from here */
 	if (anyWindowCreated) {
+		/* resync window zorder with RDP client */
+		peer_ctx->is_window_zorder_dirty = true;
+		/* this assume repaint to be scheduled on idle loop, not directly from here */
 		weston_compositor_wake(b->compositor);
 		weston_compositor_damage_all(b->compositor);
 	}
