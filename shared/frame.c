@@ -209,7 +209,7 @@ frame_button_cancel(struct frame_button *button)
 }
 
 static void
-frame_button_repaint(struct frame_button *button, cairo_t *cr)
+frame_button_repaint(struct frame_button *button, cairo_t *cr, uint32_t flags)
 {
 	int x, y;
 
@@ -224,24 +224,30 @@ frame_button_repaint(struct frame_button *button, cairo_t *cr)
 	cairo_save(cr);
 
 	if (button->flags & FRAME_BUTTON_DECORATED) {
-		cairo_set_line_width(cr, 1);
+		cairo_set_line_width(cr, 0);
 
 		cairo_set_source_rgb(cr, 0.0, 0.0, 0.0);
-		cairo_rectangle(cr, x, y, 25, 16);
+		cairo_rectangle(cr, x, y, 42, 28);
 
 		cairo_stroke_preserve(cr);
 
 		if (button->press_count) {
 			cairo_set_source_rgb(cr, 0.7, 0.7, 0.7);
-		} else if (button->hover_count) {
-			cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+		} else if (button->hover_count) {			
+			if(button->status_effect == FRAME_STATUS_CLOSE) {
+				cairo_set_source_rgb(cr, 0.768, 0.184, 0.109);
+			} else {
+				cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+			}
 		} else {
-			cairo_set_source_rgb(cr, 0.88, 0.88, 0.88);
+			if (flags & THEME_FRAME_ACTIVE) {
+				cairo_set_source_rgb(cr, 0.941, 0.953, 0.976);
+			} else {
+				cairo_set_source_rgb(cr, 0.7, 0.7, 0.7);
+			}
 		}
 
 		cairo_fill (cr);
-
-		x += 4;
 	}
 
 	cairo_set_source_surface(cr, button->icon, x, y);
@@ -357,17 +363,6 @@ frame_create(struct theme *t, int32_t width, int32_t height, uint32_t buttons,
 			                                          icon,
 			                                          FRAME_STATUS_MENU,
 			                                          FRAME_BUTTON_CLICK_DOWN);
-		} else {
-			char *name = file_name_with_datadir("icon_window.png");
-
-			if (!name)
-				goto free_frame;
-
-			button = frame_button_create(frame,
-			                             name,
-			                             FRAME_STATUS_MENU,
-			                             FRAME_BUTTON_CLICK_DOWN);
-			free(name);
 		}
 		if (!button)
 			goto free_frame;
@@ -585,27 +580,25 @@ frame_refresh_geometry(struct frame *frame)
 	x_l = t->width + frame->shadow_margin;
 	y = t->width + frame->shadow_margin;
 	wl_list_for_each(button, &frame->buttons, link) {
-		const int button_padding = 4;
+		const int button_padding = 0;
 		w = cairo_image_surface_get_width(button->icon);
 		h = cairo_image_surface_get_height(button->icon);
 
-		if (button->flags & FRAME_BUTTON_DECORATED)
-			w += 10;
 
 		if (button->flags & FRAME_BUTTON_ALIGN_RIGHT) {
 			x_r -= w;
 
 			button->allocation.x = x_r;
 			button->allocation.y = y;
-			button->allocation.width = w + 1;
-			button->allocation.height = h + 1;
+			button->allocation.width = w;
+			button->allocation.height = h;
 
 			x_r -= button_padding;
 		} else {
 			button->allocation.x = x_l;
 			button->allocation.y = y;
-			button->allocation.width = w + 1;
-			button->allocation.height = h + 1;
+			button->allocation.width = w;
+			button->allocation.height = h;
 
 			x_l += w;
 			x_l += button_padding;
@@ -1028,7 +1021,7 @@ frame_repaint(struct frame *frame, cairo_t *cr)
 	cairo_restore(cr);
 
 	wl_list_for_each(button, &frame->buttons, link)
-		frame_button_repaint(button, cr);
+		frame_button_repaint(button, cr, flags);
 
 	frame_status_clear(frame, FRAME_STATUS_REPAINT);
 }

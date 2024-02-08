@@ -391,9 +391,9 @@ theme_create(void)
 	if (t == NULL)
 		return NULL;
 
-	t->margin = 32;
-	t->width = 6;
-	t->titlebar_height = 27;
+	t->margin = 20;
+	t->width = 0;
+	t->titlebar_height = 28;
 	t->frame_radius = 3;
 	t->shadow = cairo_image_surface_create (CAIRO_FORMAT_ARGB32, 128, 128);
 	cr = cairo_create(t->shadow);
