@@ -871,6 +871,14 @@ struct rdp_to_xkb_keyboard_layout {
 /* 0x1040c is for French (Standard, AZERTY) */
 #define KBD_FRENCH_STANDARD_AZERTY 0x1040c
 #endif
+#ifndef KBD_UKRAINIAN_ENHANCED
+/* 0x20422 is for Ukrainian (Enhanced) */
+#define KBD_UKRAINIAN_ENHANCED 0x20422
+#endif
+#ifndef KBD_UKRAINIAN_UNICODE
+/* 0xa0000422 is for Ukrainian - Unicode 2.1 */
+#define KBD_UKRAINIAN_UNICODE 0xa0000422
+#endif
 
 static const
 struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
@@ -926,6 +934,8 @@ struct rdp_to_xkb_keyboard_layout rdp_keyboards[] = {
 	{KBD_TURKISH_F, "tr", "f"},
 	{KBD_URDU, "in", "urd-phonetic3"},
 	{KBD_UKRAINIAN, "ua", 0},
+	{KBD_UKRAINIAN_ENHANCED, "ua", "enhanced"},
+	{KBD_UKRAINIAN_UNICODE, "ua", "unicode"},
 	{KBD_BELARUSIAN, "by", 0},
 	{KBD_SLOVENIAN, "si", 0},
 	{KBD_ESTONIAN, "ee", 0},
