@@ -2222,27 +2222,21 @@ rdp_backend_create(struct weston_compositor *compositor,
 
 	compositor->backend = &b->base;
 
-	fd = use_vsock_fd(config->port);
-	/* if we are using VSOCK to connect to the rdp backend, we don't need to enforce the TLS
-	   encryption, since FreeRDP will consider AF_UNIX and AF_VSOCK as a local connection */
-	if (fd <= 0 || config->env_socket)
-	{
-		if (!b->rdp_key && (!b->server_cert || !b->server_key)) {
+	if (!b->rdp_key && (!b->server_cert || !b->server_key)) {
 	#if HAVE_OPENSSL
-			rdp_generate_session_tls(b);
+		rdp_generate_session_tls(b);
 	#else
-			rdp_debug_error(b, "the RDP compositor requires keys and an optional certificate for RDP or TLS security ("
-					"--rdp4-key or --rdp-tls-cert/--rdp-tls-key)\n");
-			goto err_free_strings;
+		rdp_debug_error(b, "the RDP compositor requires keys and an optional certificate for RDP or TLS security ("
+				"--rdp4-key or --rdp-tls-cert/--rdp-tls-key)\n");
+		goto err_free_strings;
 	#endif
-		}
+	}
 
-		/* activate TLS only if certificate/key are available */
-		if (is_tls_enabled(b)) {
-			rdp_debug_error(b, "TLS support activated\n");
-		} else if (!b->rdp_key) {
-			goto err_free_strings;
-		}
+	/* activate TLS only if certificate/key are available */
+	if (is_tls_enabled(b)) {
+		rdp_debug_error(b, "TLS support activated\n");
+	} else if (!b->rdp_key) {
+		goto err_free_strings;
 	}
 
 	if (weston_compositor_set_presentation_clock_software(compositor) < 0)
@@ -2263,8 +2257,9 @@ rdp_backend_create(struct weston_compositor *compositor,
 		b->listener = freerdp_listener_new();
 		b->listener->PeerAccepted = rdp_incoming_peer;
 		b->listener->param4 = b;
+		fd = use_vsock_fd(config->port);
 		if (fd > 0) {
-			rdp_debug_error(b, "Using VSOCK for incoming connections: %d\n", fd);
+			rdp_debug(b, "Using VSOCK for incoming connections: %d\n", fd);
 
 			if (!b->listener->OpenFromSocket(b->listener, fd)) {
 				rdp_debug_error(b, "unable opem from socket fd: %d\n", fd);
