@@ -3492,6 +3492,7 @@ rdp_rail_peer_activate(freerdp_peer* client)
 #endif /* HAVE_FREERDP_GFXREDIR_H */
 
 #ifdef HAVE_FREERDP_RDPAPPLIST_H
+#if 0
 	/* open Application List channel. */
 	if (b->rdprail_shell_name && b->use_rdpapplist) {
 		applist_ctx = b->rdpapplist_server_context_new(peer_ctx->vcm);
@@ -3524,6 +3525,7 @@ rdp_rail_peer_activate(freerdp_peer* client)
 			goto error_exit;
 		free(app_list_caps.appListProviderName.string);
 	}
+#endif
 #endif /* HAVE_FREERDP_RDPAPPLIST_H */
 
 	/* wait graphics channel (and optionally graphics redir channel) reponse from client */
@@ -4076,7 +4078,7 @@ rdp_drdynvc_init(freerdp_peer *client)
 	peer_ctx->drdynvc_server_context = vc_ctx;
 
 	/* Force Dynamic virtual channel to exchange caps */
-	if (WTSVirtualChannelManagerGetDrdynvcState(peer_ctx->vcm) == DRDYNVC_STATE_NONE) {
+	if (WTSVirtualChannelManagerGetDrdynvcState(peer_ctx->vcm) != DRDYNVC_STATE_READY) {
 		int waitRetry = 0;
 
 		client->activated = TRUE;
@@ -4088,7 +4090,8 @@ rdp_drdynvc_init(freerdp_peer *client)
 			}
 			usleep(10000); /* wait 0.01 sec. */
 			client->CheckFileDescriptor(client);
-			WTSVirtualChannelManagerCheckFileDescriptor(peer_ctx->vcm);
+			if (WTSVirtualChannelManagerIsChannelJoined(peer_ctx->vcm, "drdynvc"))
+				WTSVirtualChannelManagerCheckFileDescriptor(peer_ctx->vcm);
 		}
 	}
 

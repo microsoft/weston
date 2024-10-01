@@ -28,6 +28,11 @@
 
 #include <freerdp/version.h>
 
+#if FREERDP_VERSION_MAJOR >= 3
+/* temporal workaround for SETTINGS_DEPRECATED */
+#define FREERDP_SETTINGS_INTERNAL_USE
+#endif
+
 #include <freerdp/freerdp.h>
 #include <freerdp/listener.h>
 #include <freerdp/update.h>

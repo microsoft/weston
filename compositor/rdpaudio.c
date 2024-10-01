@@ -41,6 +41,7 @@
 #include <libweston/libweston.h>
 #include <shared/xalloc.h>
 
+#if 0
 static AUDIO_FORMAT rdp_audio_supported_audio_formats[] = {
 		{ WAVE_FORMAT_PCM, 2, 44100, 176400, 4, 16, 0, NULL },
 	};
@@ -669,10 +670,12 @@ rdp_audio_client_activated(RdpsndServerContext* context)
 		weston_log("RDPAudio - No agreeded format.\n");
 	}
 }
+#endif
 
 void *
 rdp_audio_out_init(struct weston_compositor *c, HANDLE vcm)
 {
+#if 0
 	struct audio_out_private *priv;
 	char *s;
 
@@ -727,7 +730,6 @@ rdp_audio_out_init(struct weston_compositor *c, HANDLE vcm)
 	/* Calling Initialize does Start as well */
 	if (priv->rdpsnd_server_context->Initialize(priv->rdpsnd_server_context, TRUE) != 0)
 		goto Error_Exit;
-
 	return priv;
 
 Error_Exit:
@@ -746,13 +748,16 @@ Error_Exit:
 
 	free(priv);
 	return NULL;
+#else
+	return (void *)rdp_audio_out_init;
+#endif
 }
 
 void
 rdp_audio_out_destroy(void *audio_out_private)
 {
+#if 0
 	struct audio_out_private *priv = audio_out_private;
-
 	if (priv->rdpsnd_server_context) {
 
 		if (priv->pulseAudioSinkThread) {
@@ -796,4 +801,5 @@ rdp_audio_out_destroy(void *audio_out_private)
 		priv->rdpsnd_server_context = NULL;
 	}
 	free(priv);
+#endif
 }

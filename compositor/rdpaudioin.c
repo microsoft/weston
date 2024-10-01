@@ -42,6 +42,7 @@
 #include <libweston/libweston.h>
 #include <shared/xalloc.h>
 
+#if 0
 static AUDIO_FORMAT rdp_audioin_supported_audio_formats[] = {
 		{ WAVE_FORMAT_PCM, 1, 44100, 88200, 2, 16, 0, NULL },
 	};
@@ -462,12 +463,13 @@ rdp_audioin_source_thread(void *context)
 
 	return NULL;
 }
+#endif
 
 void *
 rdp_audio_in_init(struct weston_compositor *c, HANDLE vcm)
 {
+#if 0
 	struct audio_in_private *priv;
-
 	priv = xzalloc(sizeof *priv);
 	priv->audin_server_context = audin_server_context_new(vcm);
 	if (!priv->audin_server_context) {
@@ -541,11 +543,15 @@ Error_Exit:
 	free(priv);
 
 	return NULL; // Continue without audio
+#else
+	return (void *)rdp_audio_in_init;
+#endif
 }
 
 void
 rdp_audio_in_destroy(void *audio_in_private)
 {
+#if 0
 	struct audio_in_private *priv = audio_in_private;
 	if (priv->audin_server_context) {
 
@@ -577,4 +583,5 @@ rdp_audio_in_destroy(void *audio_in_private)
 		priv->audin_server_context = NULL;
 	}
 	free(priv);
+#endif
 }

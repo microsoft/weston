@@ -732,9 +732,16 @@ rdp_peer_context_new(freerdp_peer* client, RdpPeerContext* context)
 	if (!context->rfx_context)
 		return FALSE;
 
+#if FREERDP_VERSION_MAJOR >= 3
+	rfx_context_set_mode(context->rfx_context, RLGR3);
+	rfx_context_reset(context->rfx_context,
+			  client->context->settings->DesktopWidth,
+			  client->context->settings->DesktopHeight);
+#else
 	context->rfx_context->mode = RLGR3;
 	context->rfx_context->width = client->context->settings->DesktopWidth;
 	context->rfx_context->height = client->context->settings->DesktopHeight;
+#endif
 	rfx_context_set_pixel_format(context->rfx_context, DEFAULT_PIXEL_FORMAT);
 
 	context->nsc_context = nsc_context_new();
@@ -824,7 +831,7 @@ rdp_client_activity(int fd, uint32_t mask, void *data)
 		goto out_clean;
 	}
 
-	if (peerCtx && peerCtx->vcm)
+	if (peerCtx && peerCtx->vcm && WTSVirtualChannelManagerIsChannelJoined(peerCtx->vcm, "drdynvc"))
 	{
 		if (!WTSVirtualChannelManagerCheckFileDescriptor(peerCtx->vcm)) {
 			rdp_debug_error(rdpBackend, "failed to check FreeRDP WTS VC file descriptor for %p\n", client);
@@ -1108,6 +1115,7 @@ xf_peer_activate(freerdp_peer* client)
 		settings->AudioPlayback ||
 		settings->AudioCapture) {
 
+		peerCtx->vcm = WTSOpenServerA((LPSTR)peerCtx);
 		if (!peerCtx->vcm) {
 			rdp_debug_error(b, "Virtual channel is required for RAIL, clipboard, audio playback/capture\n");
 			goto error_exit;
@@ -1560,7 +1568,11 @@ xf_input_synchronize_event(rdpInput *input, UINT32 flags)
 }
 
 static BOOL
+#if FREERDP_VERSION_MAJOR >= 3
+xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT8 code)
+#else
 xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
+#endif
 {
 	uint32_t scan_code, vk_code, full_code, keyboard_locale;
 	enum wl_keyboard_key_state keyState;
@@ -1577,11 +1589,15 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 	if (!(peerContext->item.flags & RDP_PEER_ACTIVATED))
 		return TRUE;
 
-	if (flags & KBD_FLAGS_DOWN) {
-		keyState = WL_KEYBOARD_KEY_STATE_PRESSED;
-		notify = 1;
-	} else if (flags & KBD_FLAGS_RELEASE) {
+	if (flags & KBD_FLAGS_RELEASE) {
 		keyState = WL_KEYBOARD_KEY_STATE_RELEASED;
+		notify = 1;
+	} else {
+#if FREERDP_VERSION_MAJOR < 3
+		/* KBD_FLAGS_DOWN was removed in FreeRDP 3 */
+		assert(flags & KBD_FLAGS_DOWN);
+#endif
+		keyState = WL_KEYBOARD_KEY_STATE_PRESSED;
 		notify = 1;
 	}
 
@@ -1631,7 +1647,11 @@ xf_input_keyboard_event(rdpInput *input, UINT16 flags, UINT16 code)
 			if (flags & KBD_FLAGS_EXTENDED)
 				vk_code |= KBDEXT;
 
+#if FREERDP_VERSION_MAJOR >= 3
+		scan_code = GetKeycodeFromVirtualKeyCode(vk_code, WINPR_KEYCODE_TYPE_XKB);
+#else
 		scan_code = GetKeycodeFromVirtualKeyCode(vk_code, KEYCODE_TYPE_EVDEV);
+#endif
 		/*weston_log("code=%x ext=%d vk_code=%x scan_code=%x\n", code, (flags & KBD_FLAGS_EXTENDED) ? 1 : 0,
 				vk_code, scan_code);*/
 
@@ -1800,6 +1820,21 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 
 	settings = client->context->settings;
 	/* configure security settings */
+#if FREERDP_VERSION_MAJOR >= 3
+	if (is_tls_enabled(b)) {
+		if (using_session_tls(b)) {
+			rdpPrivateKey* key = freerdp_key_new_from_pem(b->server_key_content);
+			freerdp_settings_set_pointer_len(settings, FreeRDP_RdpServerRsaKey, key, 1);
+			rdpCertificate* cert = freerdp_certificate_new_from_pem(b->server_cert_content);
+			freerdp_settings_set_pointer_len(settings, FreeRDP_RdpServerCertificate, cert, 1);
+		} else {
+			/*TODO*/
+		}
+	} else {
+		freerdp_settings_set_bool(settings, FreeRDP_TlsSecurity, FALSE);
+	}
+	freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, FALSE);
+#else
 	if (b->rdp_key)
 		settings->RdpKeyFile = strdup(b->rdp_key);
 	if (is_tls_enabled(b)) {
@@ -1814,6 +1849,7 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 		settings->TlsSecurity = FALSE;
 	}
 	settings->NlaSecurity = FALSE;
+#endif
 
 	if (!client->Initialize(client)) {
 		rdp_debug_error(b, "peer initialization failed\n");
@@ -1840,6 +1876,7 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 	settings->RedirectClipboard = TRUE;
 	settings->HasExtendedMouseEvent = TRUE;
 	settings->HasHorizontalWheel = TRUE;
+	settings->FastPathInput = TRUE;
 
 	client->Capabilities = xf_peer_capabilities;
 	client->PostConnect = xf_peer_post_connect;
@@ -1867,12 +1904,16 @@ rdp_peer_init(freerdp_peer *client, struct rdp_backend *b)
 
 	PWtsApiFunctionTable fn = FreeRDP_InitWtsApi();
 	WTSRegisterWtsApiFunctionTable(fn);
+#if 0
 	peerCtx->vcm = WTSOpenServerA((LPSTR)peerCtx);
 	if (peerCtx->vcm) {
 		handles[handle_count++] = WTSVirtualChannelManagerGetEventHandle(peerCtx->vcm);
 	} else {
 		rdp_debug_error(b, "WTSOpenServer is failed! continue without virtual channel.\n");
 	}
+#else
+	peerCtx->vcm = NULL;
+#endif
 
 	loop = wl_display_get_event_loop(b->compositor->wl_display);
 	for (i = 0; i < handle_count; i++) {
